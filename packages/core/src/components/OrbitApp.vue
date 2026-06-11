@@ -9,8 +9,7 @@ const props = defineProps<Props>()
 </script>
 
 <template>
-  <div class="orbit">
+  <div class="ob-root">
     <RouterView></RouterView>
   </div>
-  <!-- <OrbitApp environment="web" /> -->
 </template>
