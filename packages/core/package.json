@@ -12,7 +12,9 @@
   },
   "dependencies": {
     "@dolanske/vui": "catalog:",
-    "vue": "^3.5.34"
+    "pinia": "catalog:",
+    "vue": "^3.5.34",
+    "vue-router": "catalog:"
   },
   "devDependencies": {
     "@types/node": "^24.12.3",

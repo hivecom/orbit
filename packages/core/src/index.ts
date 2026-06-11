@@ -1,5 +1,7 @@
-import OrbitCore from "./components/OrbitCore.vue"
+import OrbitApp from "./components/OrbitApp.vue"
+import  { router } from "./router/index.ts"
 
 export {
-  OrbitCore
+  OrbitApp,
+  router
 }

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { OrbitCore } from "core"
+import { OrbitApp } from "core"
 </script>
 
 <template>
-  <OrbitCore environment="desktop" />
+  <OrbitApp environment="web" />
 </template>

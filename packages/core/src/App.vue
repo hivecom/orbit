@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import OrbitCore from './components/OrbitCore.vue';
+import OrbitApp from './components/OrbitApp.vue';
 
 </script>
 
 <template>
-  <OrbitCore environment="desktop" />
+  <OrbitApp environment="web" />
 </template>

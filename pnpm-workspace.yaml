@@ -12,6 +12,8 @@ catalog:
   vitest: npm:@voidzero-dev/vite-plus-test@latest
   vite-plus: latest
   '@dolanske/vui': ^1.15.2
+  vue-router: ^5.1.0
+  pinia: ^3.0.4
 overrides:
   vite: "catalog:"
   vitest: "catalog:"
