@@ -11,6 +11,7 @@ catalog:
   vite: npm:@voidzero-dev/vite-plus-core@latest
   vitest: npm:@voidzero-dev/vite-plus-test@latest
   vite-plus: latest
+  '@dolanske/vui': ^1.15.2
 overrides:
   vite: "catalog:"
   vitest: "catalog:"
@@ -21,3 +22,6 @@ peerDependencyRules:
   allowedVersions:
     vite: "*"
     vitest: "*"
+allowBuilds:
+  '@parcel/watcher': set this to true or false
+  vue-demi: set this to true or false
