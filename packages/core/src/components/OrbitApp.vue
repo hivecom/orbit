@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import "../style/index.css";
+import "../style/index.css"
 
 interface Props {
-  environment: 'web' | 'mobile' | 'native'
+  environment: "web" | "mobile" | "native"
 }
 
 const props = defineProps<Props>()
@@ -14,4 +14,3 @@ const props = defineProps<Props>()
   </div>
   <!-- <OrbitApp environment="web" /> -->
 </template>
-
