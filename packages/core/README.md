@@ -1,5 +1,28 @@
-# Vue 3 + TypeScript + Vite
+# core
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+The heart of the Orbit client. Every build target - web, desktop, and the embeddable widget - is served from this package with only the platform adapter swapped out. Application logic lives here, never in the entrypoints.
 
-Learn more about the recommended Project Setup and IDE Support in the [Vue Docs TypeScript Guide](https://vuejs.org/guide/typescript/overview.html#project-setup).
+UI is built with [`@dolanske/vui`](https://github.com/Dolanske/vui); state uses Pinia.
+
+## The Platform Seam
+
+Core never imports `@tauri-apps/api` or reaches into raw `navigator.*`. Instead it declares capability ports and consumes them through an injected `Platform`:
+
+```ts
+import { usePlatform } from "core"
+
+const platform = usePlatform()
+await platform.notifications.requestPermission()
+```
+
+The seam is shaped by capability, not by platform - core asks a port to do a thing, it never asks "am I running in Tauri". A port an environment can't provide is `null`, and core degrades explicitly. Each entrypoint supplies a concrete adapter from `platform` and injects it once at boot via `providePlatform(app, ...)`.
+
+## Commands
+
+```sh
+vp test          # run the test suite (test/)
+```
+
+Run from the workspace root with `vp lint` / `vp run -r test` / `vp run -r build` to include every package.
+
+See the spec's [Application Seams](https://github.com/hivecom/orbit-spec/blob/main/spec/05-infrastructure/04-application-seams.md) for the full design.
