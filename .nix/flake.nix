@@ -37,6 +37,16 @@
               echo "nix-direnv: installing vite-plus..."
               npm install -g vite-plus --silent
             fi
+
+            # vite-plus runs from this global prefix, and its test runner
+            # resolves the jsdom test environment relative to its own install -
+            # not the workspace - so jsdom must live here too. Without it,
+            # `vp run -r test` fails for any package using `environment: jsdom`
+            # (Vue component mounts, DOM-touching platform adapters).
+            if [ ! -d "$NPM_PREFIX/lib/node_modules/jsdom" ]; then
+              echo "nix-direnv: installing jsdom (test environment)..."
+              npm install -g jsdom --silent
+            fi
           '';
         };
       }

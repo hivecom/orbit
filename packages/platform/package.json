@@ -1,5 +1,5 @@
 {
-  "name": "core",
+  "name": "platform",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -10,15 +10,11 @@
     "test": "vp test"
   },
   "dependencies": {
-    "@dolanske/vui": "catalog:",
-    "pinia": "catalog:",
-    "vue": "^3.5.34",
-    "vue-router": "catalog:"
+    "core": "workspace:*",
+    "vue": "^3.5.34"
   },
   "devDependencies": {
     "@types/node": "^24.12.3",
-    "@vitejs/plugin-vue": "^6.0.6",
-    "@vue/test-utils": "catalog:",
     "@vue/tsconfig": "^0.9.1",
     "jsdom": "catalog:",
     "typescript": "~6.0.2",

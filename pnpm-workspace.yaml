@@ -26,6 +26,12 @@ peerDependencyRules:
   allowedVersions:
     vite: "*"
     vitest: "*"
+# Vue-3-only project: let vue-demi run its postinstall so it resolves against
+# Vue 3. @parcel/watcher's native build is optional (it has a JS fallback), so
+# we skip it rather than depend on a toolchain at install time.
+# Build script approval for pnpm 11. vue-demi must run its postinstall to
+# patch itself for Vue 3; @parcel/watcher's native build is optional (JS
+# fallback exists) so we skip it rather than depend on a native toolchain.
 allowBuilds:
-  "@parcel/watcher": set this to true or false
-  vue-demi: set this to true or false
+  "@parcel/watcher": false
+  vue-demi: true
