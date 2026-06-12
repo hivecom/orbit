@@ -10,13 +10,13 @@ This repository is the **client monorepo**: the Vue 3 application that runs as a
 
 Orbit owns only the parts where product value lives - the clients, Satellite (voice/video), and Depot (file access / permissions). The IRC server, identity provider, and storage backend are stock and adopted.
 
-| Component | Role |
-|-----------|------|
-| **Clients** | Desktop + Mobile (Tauri), web app, embeddable widget - this repo. |
-| **Uplink** | Any stock IRCv3 server (Ergo is the reference). Text, history, presence, signaling. |
-| **Satellite** | Real-time voice, video, and screen sharing over LiveKit. |
-| **Depot** | Thin storage gateway over S3-compatible backends or local disk. |
-| **Transponder** | Any OIDC provider (Keycloak, Authentik, Supabase). One login, verified everywhere. |
+| Component       | Role                                                                                |
+| --------------- | ----------------------------------------------------------------------------------- |
+| **Clients**     | Desktop + Mobile (Tauri), web app, embeddable widget - this repo.                   |
+| **Uplink**      | Any stock IRCv3 server (Ergo is the reference). Text, history, presence, signaling. |
+| **Satellite**   | Real-time voice, video, and screen sharing over LiveKit.                            |
+| **Depot**       | Thin storage gateway over S3-compatible backends or local disk.                     |
+| **Transponder** | Any OIDC provider (Keycloak, Authentik, Supabase). One login, verified everywhere.  |
 
 ## Development
 
