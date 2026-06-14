@@ -1,4 +1,4 @@
-import type { AudioDevice, AudioDevicePort, FileTransferPort, NotificationPort, Platform } from "core"
+import type { AudioDevice, AudioDevicePort, FileTransferPort, NotificationPort, Platform } from "./types"
 
 function createNotificationPort(): NotificationPort {
   return {

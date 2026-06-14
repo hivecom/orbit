@@ -1,9 +1,8 @@
-import { createApp } from "vue"
-import { providePlatform, router } from "core"
+import { createOrbitApp } from "core"
 import { createWebPlatform } from "platform"
 import App from "./App.vue"
 
-const app = createApp(App)
-app.use(router)
-providePlatform(app, createWebPlatform())
+const platform = createWebPlatform()
+const app = createOrbitApp(App, platform)
+
 app.mount("#app")
