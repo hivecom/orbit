@@ -8,7 +8,7 @@ import { PLATFORM_KEY } from "./constants"
 export function usePlatform(): Platform {
   const platform = inject<Platform>(PLATFORM_KEY)
   if (!platform) {
-    throw new Error("No platform adapter provided. Call providePlatform(app, ...) at app boot.")
+    throw new Error("No platform adapter provided. Make sure to provide a platform adapter during Orbit app initialization.")
   }
   return platform
 }
