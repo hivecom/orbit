@@ -20,6 +20,8 @@ describe("Setup Orbit application", () => {
         },
       },
     })
-    expect(selector.get("[data-test-target]")).not.toBeNull()
+
+    const target = selector.get("[data-test-target]")
+    expect(target.attributes("data-test-target")).toBe("web")
   })
 })
