@@ -119,9 +119,6 @@ importers:
 
   packages/platform:
     dependencies:
-      core:
-        specifier: workspace:*
-        version: link:../core
       vue:
         specifier: ^3.5.34
         version: 3.5.35(typescript@6.0.3)
