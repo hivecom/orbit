@@ -1,16 +1,3 @@
-import type { App, InjectionKey } from "vue"
-import { inject } from "vue"
-
-// The platform contract. `packages/core` owns this and consumes it through
-// the injected `Platform`; it never imports `@tauri-apps/api` or touches raw
-// `navigator.*` directly. Each app entrypoint (web, desktop, mobile) supplies
-// a concrete adapter from `packages/platform` and injects it once at boot.
-//
-// The seam is shaped by capability, not by platform: core asks a port to do a
-// thing, it never asks "am I running in Tauri". A port an environment cannot
-// provide is `null`, and core degrades explicitly rather than scattering
-// platform checks.
-
 export interface NotificationOptions {
   title: string
   body?: string
@@ -18,9 +5,7 @@ export interface NotificationOptions {
 }
 
 export interface NotificationPort {
-  /** Request permission to display notifications. Resolves to whether granted. */
   requestPermission: () => Promise<boolean>
-  /** Display a notification. No-op if permission has not been granted. */
   notify: (options: NotificationOptions) => Promise<void>
 }
 
@@ -69,7 +54,6 @@ export interface DnsPort {
 }
 
 export interface Platform {
-  /** Identifies which adapter is active. */
   readonly target: "web" | "desktop" | "mobile"
   readonly notifications: NotificationPort
   readonly tray: TrayPort | null
@@ -77,20 +61,4 @@ export interface Platform {
   readonly deepLinks: DeepLinkPort | null
   readonly fileTransfer: FileTransferPort
   readonly dns: DnsPort | null
-}
-
-export const PLATFORM_KEY: InjectionKey<Platform> = Symbol("orbit-platform")
-
-/** Wire a concrete platform adapter into the app at boot. */
-export function providePlatform(app: App, platform: Platform): void {
-  app.provide(PLATFORM_KEY, platform)
-}
-
-/** Access the injected platform adapter from a component or composable. */
-export function usePlatform(): Platform {
-  const platform = inject(PLATFORM_KEY)
-  if (!platform) {
-    throw new Error("No platform adapter provided. Call providePlatform(app, ...) at app boot.")
-  }
-  return platform
 }
