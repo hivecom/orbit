@@ -20,26 +20,18 @@ Orbit owns only the parts where product value lives - the clients, Satellite (vo
 
 ## Development
 
-The workspace uses **pnpm** with a dependency catalog and **[vite-plus](https://github.com/vitejs/vite-plus)** (`vp`) as the task runner. Requires Node >= 24.
+The workspace uses **[vite-plus](https://github.com/vitejs/vite-plus)** (`vp`) as the task runner. Requires Node >= 24.
 
 ```sh
-pnpm install            # install workspace dependencies
-pnpm dev                # web dev server (runs apps/web)
-pnpm ready              # gate: vp check && vp run -r test && vp run -r build
+vp i                    # initialize the project
+vp create               # add a new package/app to the monorepo
+vp run test             # run every test suite
+
+vp run dev              # start the apps/web dev server
+vp run build            # build the apps/web application
 ```
 
-Scoped and recursive commands:
-
-```sh
-vp run web#dev          # Vite dev server for the web app
-vp run web#build        # build the web app / PWA
-vp run -r test          # run every test suite
-vp run -r build         # build every package and app
-```
-
-## Specification
-
-The complete design spec - architecture, components, identity, clients, infrastructure, ADRs, and research tracks - lives in [orbit-spec](https://github.com/hivecom/orbit-spec). Start with the [Platform Comparison](https://github.com/hivecom/orbit-spec/blob/main/spec/01-architecture/05-platform-comparison.md) and [Design Philosophy](https://github.com/hivecom/orbit-spec/blob/main/spec/01-architecture/02-philosophy.md).
+Use `vp test` inside an individual package when you want that package's local Vite/Vitest config, for example `packages/app` or `packages/platform`. From the workspace root, use `vp run -r test` so each package runs under its own test setup.
 
 ## License
 
