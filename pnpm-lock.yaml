@@ -19,7 +19,7 @@ catalogs:
       specifier: ^3.0.4
       version: 3.0.4
     vite-plus:
-      specifier: ^0.2.1
+      specifier: latest
       version: 0.2.1
     vue-router:
       specifier: ^5.1.0
