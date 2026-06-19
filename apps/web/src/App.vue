@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { OrbitApp } from "core"
+import { OrbitApp } from "app"
 </script>
 
 <template>

@@ -1,4 +1,4 @@
-import { createOrbitApp } from "core"
+import { createOrbitApp } from "app"
 import { createWebPlatform } from "platform"
 import App from "./App.vue"
 

@@ -9,7 +9,7 @@
     "preview": "vp preview"
   },
   "dependencies": {
-    "core": "workspace:*",
+    "app": "workspace:*",
     "platform": "workspace:*",
     "vue": "^3.5.34"
   },
