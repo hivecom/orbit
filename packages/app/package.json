@@ -1,5 +1,5 @@
 {
-  "name": "core",
+  "name": "app",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -12,6 +12,7 @@
   "dependencies": {
     "@dolanske/vui": "catalog:",
     "pinia": "catalog:",
+    "platform": "workspace:*",
     "vue": "^3.5.34",
     "vue-router": "catalog:"
   },
