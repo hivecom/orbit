@@ -11,7 +11,7 @@ catalog:
   vite: npm:@voidzero-dev/vite-plus-core@latest
   vitest: 4.1.9
   vite-plus: ^0.2.1
-  "@dolanske/vui": ^1.17.0
+  "@dolanske/vui": ^1.17.2
   vue-router: ^5.1.0
   pinia: ^3.0.4
   "@vue/test-utils": ^2.4.11
@@ -37,4 +37,5 @@ allowBuilds:
   "@parcel/watcher": false
   vue-demi: true
 minimumReleaseAgeExclude:
-  - "@dolanske/vui@1.17.0"
+  - "@dolanske/vui@1.17.1"
+  - "@dolanske/vui@1.17.2"
