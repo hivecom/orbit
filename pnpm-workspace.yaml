@@ -10,8 +10,8 @@ catalog:
   typescript: ^5
   vite: npm:@voidzero-dev/vite-plus-core@latest
   vitest: 4.1.9
-  vite-plus: latest
-  "@dolanske/vui": ^1.15.2
+  vite-plus: ^0.2.1
+  "@dolanske/vui": ^1.17.0
   vue-router: ^5.1.0
   pinia: ^3.0.4
   "@vue/test-utils": ^2.4.11
@@ -36,3 +36,5 @@ peerDependencyRules:
 allowBuilds:
   "@parcel/watcher": false
   vue-demi: true
+minimumReleaseAgeExclude:
+  - "@dolanske/vui@1.17.0"
