@@ -16,6 +16,7 @@ catalog:
   pinia: ^3.0.4
   "@vue/test-utils": ^2.4.11
   jsdom: ^29.1.1
+  "@tauri-apps/cli": ^2.11.3
 overrides:
   vite: "catalog:"
   vitest: "catalog:"

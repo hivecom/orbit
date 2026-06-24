@@ -10,7 +10,6 @@ export interface NotificationPort {
 }
 
 export interface TrayPort {
-  /** Set the unread badge count shown on the tray / dock / taskbar icon. */
   setBadgeCount: (count: number) => Promise<void>
 }
 
@@ -22,12 +21,10 @@ export interface AudioDevice {
 
 export interface AudioDevicePort {
   enumerate: () => Promise<AudioDevice[]>
-  /** Subscribe to device changes. Returns an unsubscribe function. */
   onChange: (listener: () => void) => () => void
 }
 
 export interface DeepLinkPort {
-  /** Subscribe to inbound orbit:// / satellite:// links. Returns unsubscribe. */
   onOpen: (listener: (url: string) => void) => () => void
 }
 
@@ -37,7 +34,6 @@ export interface FileDownloadRequest {
 }
 
 export interface FileTransferPort {
-  /** Download a remote file to the user's machine. */
   download: (request: FileDownloadRequest) => Promise<void>
 }
 
@@ -49,16 +45,15 @@ export interface SrvRecord {
 }
 
 export interface DnsPort {
-  /** Resolve a DNS SRV record (e.g. `_satellite._tcp.example.org`). */
   resolveSrv: (service: string) => Promise<SrvRecord[]>
 }
 
 export interface Platform {
   readonly target: "web" | "desktop" | "mobile"
-  readonly notifications: NotificationPort
+  readonly notifications: NotificationPort | null
   readonly tray: TrayPort | null
-  readonly audioDevices: AudioDevicePort
+  readonly audioDevices: AudioDevicePort | null
   readonly deepLinks: DeepLinkPort | null
-  readonly fileTransfer: FileTransferPort
+  readonly fileTransfer: FileTransferPort | null
   readonly dns: DnsPort | null
 }

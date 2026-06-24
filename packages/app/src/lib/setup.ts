@@ -9,7 +9,7 @@ import { type Platform, PLATFORM_KEY } from "platform"
  * @param platform Platform adapter
  * @returns Vue application instance
  */
-export function createOrbitApp(root: Component, platform: Platform) {
+export function createOrbitApp(root: Component<any, any, any, any, any>, platform: Platform) {
   const app = createApp(root)
   app.use(router)
   app.provide(PLATFORM_KEY, platform)
