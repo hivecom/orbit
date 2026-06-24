@@ -37,5 +37,4 @@ allowBuilds:
   "@parcel/watcher": false
   vue-demi: true
 minimumReleaseAgeExclude:
-  - "@dolanske/vui@1.17.1"
-  - "@dolanske/vui@1.17.2"
+  - "@dolanske/vui"
