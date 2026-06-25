@@ -2,7 +2,7 @@
 
 The heart of the Orbit client. Every build target - web, desktop, and the embeddable widget - is served from this package with only the platform adapter swapped out. Application logic lives here.
 
-UI is built with [`@dolanske/vui`](https://github.com/Dolanske/vui); state uses Pinia.
+UI is built with [`@dolanske/vui`](https://github.com/dolanske/vui); state uses Pinia.
 
 ## The Platform Seam
 

@@ -8,7 +8,9 @@
     "ready": "vp check && vp run -r test && vp run -r build",
     "prepare": "vp config",
     "dev": "vp run web#dev",
-    "build": "vp run web#build"
+    "dev:desktop": "vp run desktop#dev",
+    "build": "vp run web#build",
+    "build:desktop": "vp run desktop#build"
   },
   "devDependencies": {
     "vite-plus": "catalog:"
