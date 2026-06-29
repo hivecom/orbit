@@ -10,6 +10,7 @@
     "test": "vp test"
   },
   "dependencies": {
+    "@dolanske/v-valid": "catalog:",
     "@dolanske/vui": "catalog:",
     "pinia": "catalog:",
     "platform": "workspace:*",

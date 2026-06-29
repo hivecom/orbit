@@ -1,0 +1,35 @@
+/* Vui related style overrides */
+
+:root {
+  --font-size-xxs: 1.1rem;
+  --font-size-xs: 1.175rem;
+  --font-size-s: 1.3rem;
+  --font-size-m: 1.5rem;
+  --font-size-l: 1.8rem;
+  --font-size-xl: 2rem;
+  --font-size-xxl: 2.4rem;
+  --font-size-xxxl: 2.8rem;
+  --font-size-xxxxl: 3.2rem;
+
+  --space-0: 0;
+  --space-xxxs: 2px;
+  --space-xxs: 4px;
+  --space-xs: 8px;
+  --space-s: 10px;
+  --space-m: 14px;
+  --space-l: 20px;
+  --space-xl: 26px;
+  --space-xxl: 34px;
+  --space-xxxl: 42px;
+}
+
+/* Theme overrides */
+:root {
+  /* --dark-color-accent:  */
+}
+
+.vui-card {
+  background-color: var(--color-bg-medium);
+  .vui-card-footer {
+  }
+}

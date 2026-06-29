@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import "../style/index.css"
+import "./style/index.css"
 // The main App entrypoint for orbit. It replaces the usual `App.vue` with an
 // exportable component consumed by target applications (desktop/mobile/web).
 
@@ -8,7 +8,7 @@ import "../style/index.css"
 </script>
 
 <template>
-  <div class="ob-root">
+  <div class="o-root">
     <RouterView />
   </div>
 </template>
