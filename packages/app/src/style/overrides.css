@@ -23,13 +23,16 @@
   --space-xxxl: 42px;
 }
 
-/* Theme overrides */
+/* Theme */
 :root {
-  /* --dark-color-accent:  */
+  --dark-color-accent: #93efd8;
 }
 
+/* Vui components */
 .vui-card {
   background-color: var(--color-bg-medium);
-  .vui-card-footer {
+
+  .vui-card-header {
+    background-color: var(--color-bg-medium);
   }
 }

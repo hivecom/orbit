@@ -1,11 +1,48 @@
-import { createMemoryHistory, createRouter, type RouteRecordRaw, type RouteRecordInfo } from "vue-router"
-import RouteMain from "./views/RouteMain.vue"
-import RouteChat from "./views/RouteChat.vue"
+import { createMemoryHistory, createRouter, type RouteRecordInfo } from "vue-router"
+import RouteWindowManager from "./views/RouteWindowManager.vue"
+import RouteSettings from "./views/RouteSettings.vue"
+import WindowVoice from "./views/windows/WindowVoice.vue"
+import WindowChat from "./views/windows/WindowChat.vue"
 
 export const routes = [
-  { path: "/", component: RouteMain, name: "RouteMain" },
-  { path: "/chat/:serverId/:channelId", component: RouteChat, name: "RouteChat" },
-] as const satisfies RouteRecordRaw[]
+  {
+    // Main Window host which allows spawning multiple sub-routes so they can be
+    // displayed side by side. By default, it will display only a single
+    // sub-route as-s. Like a call, or a chat. But Orbit will always allow
+    // tiling multiple interaction windows side by side. To make a window
+    // tilable, it needs to be a child-route of WindowTiler
+    //
+    // Everything else like settings or admin pages cannot be tiled.
+    //
+    // TODO: still need to figure out how this will work with
+    name: "RouteWindowManager",
+    path: "/",
+    component: RouteWindowManager,
+    children: [
+      {
+        name: "WindowChat",
+        path: "/c/:serverId/:channelId",
+        component: WindowChat,
+      },
+      {
+        name: "WindowVoice",
+        path: "/v/:voiceId",
+        component: WindowVoice,
+      },
+    ],
+  },
+  {
+    name: "RouteSettings",
+    path: "/settings",
+    component: RouteSettings,
+  },
+  // Catchall
+  {
+    name: "NotFound",
+    path: "/:pathMatch(.*)*",
+    redirect: "/",
+  },
+]
 
 export const router = createRouter({
   history: createMemoryHistory(),
@@ -16,7 +53,7 @@ export const router = createRouter({
 export interface RouteNamedMap {
   main: RouteRecordInfo<
     // Name
-    "main",
+    "RouteWindowManager",
     // Path
     "/",
     // Params for 'router.push' or RouterLink's 'to' prop
@@ -24,12 +61,13 @@ export interface RouteNamedMap {
     // Normalized param object from 'useRoute'
     Record<never, never>,
     // Union of child route names
-    never
+    "WindowChat" | "WindowVoice"
   >
-  chat: RouteRecordInfo<"chat", "/chat/:serverId/:channelId", { serverId: string; channelId: string }, { serverId: string; channelId: string }, never>
+  // Insert routes here
+  chat: RouteRecordInfo<"WindowChat", "/c/:serverId/:channelId", { serverId: string; channelId: string }, { serverId: string; channelId: string }, never>
+  voice: RouteRecordInfo<"WindowVoice", "/v/:id", { id: string }, { id: string }, never>
 }
 
-// Last, you will need to augment the Vue Router types with this map of routes
 declare module "vue-router" {
   interface TypesConfig {
     RouteNamedMap: RouteNamedMap
