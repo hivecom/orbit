@@ -1,6 +1,6 @@
 import { createApp, type Component } from "vue"
 import { router } from "../router/router"
-import { type Platform, PLATFORM_KEY } from "platform"
+import { type Platform, PLATFORM_KEY } from "connector"
 import { createPinia } from "pinia"
 
 /**

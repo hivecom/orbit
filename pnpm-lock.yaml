@@ -48,9 +48,9 @@ importers:
       app:
         specifier: workspace:*
         version: link:../../packages/app
-      platform:
+      connector:
         specifier: workspace:*
-        version: link:../../packages/platform
+        version: link:../../packages/platform/connector
       vue:
         specifier: ^3.5.38
         version: 3.5.38(typescript@6.0.3)
@@ -91,9 +91,9 @@ importers:
       app:
         specifier: workspace:*
         version: link:../../packages/app
-      platform:
+      connector:
         specifier: workspace:*
-        version: link:../../packages/platform
+        version: link:../../packages/platform/connector
       vue:
         specifier: ^3.5.38
         version: 3.5.38(typescript@6.0.3)
@@ -128,12 +128,12 @@ importers:
       '@dolanske/vui':
         specifier: 'catalog:'
         version: 1.17.2(reka-ui@2.10.0(vue@3.5.38(typescript@6.0.3)))(vue@3.5.38(typescript@6.0.3))
+      connector:
+        specifier: workspace:*
+        version: link:../platform/connector
       pinia:
         specifier: 'catalog:'
         version: 3.0.4(typescript@6.0.3)(vue@3.5.38(typescript@6.0.3))
-      platform:
-        specifier: workspace:*
-        version: link:../platform
       vue:
         specifier: ^3.5.34
         version: 3.5.38(typescript@6.0.3)
@@ -169,8 +169,11 @@ importers:
         specifier: ^3.2.8
         version: 3.3.5(typescript@6.0.3)
 
-  packages/platform:
+  packages/platform/connector:
     dependencies:
+      core-wasm:
+        specifier: workspace:*
+        version: link:../core-wasm/pkg
       vue:
         specifier: ^3.5.34
         version: 3.5.38(typescript@6.0.3)
@@ -196,6 +199,8 @@ importers:
       vue-tsc:
         specifier: ^3.2.8
         version: 3.3.5(typescript@6.0.3)
+
+  packages/platform/core-wasm/pkg: {}
 
 packages:
 

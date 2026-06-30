@@ -1,6 +1,9 @@
 packages:
   - apps/*
-  - packages/*
+  - packages/app
+  - packages/depot
+  - packages/platform/connector
+  - packages/platform/core-wasm/pkg
   - tools/*
 
 catalogMode: prefer

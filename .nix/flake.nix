@@ -18,10 +18,16 @@
         devShells.default = pkgs.mkShell {
           nativeBuildInputs = with pkgs; [
             nodejs
+
             cargo-tauri
+            cargo-watch
             rust-analyzer
+            wasm-pack
+            bacon
+            tmux
 
             pkg-config
+            llvmPackages.bintools
           ];
 
           buildInputs = with pkgs; [
