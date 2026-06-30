@@ -12,6 +12,7 @@
   "dependencies": {
     "@dolanske/v-valid": "catalog:",
     "@dolanske/vui": "catalog:",
+    "@vueuse/core": "catalog:",
     "connector": "workspace:*",
     "pinia": "catalog:",
     "vue": "^3.5.34",

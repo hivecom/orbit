@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { defineRules, required, useValidation } from "@dolanske/v-valid"
-import { Button, Card, Flex, Input } from "@dolanske/vui"
+import { Button, Card, Flex, Input, Password } from "@dolanske/vui"
 import { reactive, ref } from "vue"
 import Stepper from "../shared/Stepper.vue"
 
@@ -43,6 +43,23 @@ const userForm = reactive({
   username: "",
   password: "",
 })
+
+const userRules = defineRules<typeof userForm>({
+  username: [required],
+  password: [required],
+})
+
+const { validate: userValidate, errors: userErrors } = useValidation(userForm, userRules, { autoclear: true })
+
+function submitUserSignIn() {
+  userValidate().then(async () => {
+    loading.value = true
+
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+
+    loading.value = false
+  })
+}
 </script>
 
 <template>
@@ -54,19 +71,20 @@ const userForm = reactive({
     <!-- Server connection -->
     <form @submit.prevent="submitServerConnect" v-if="step === Step.Connect">
       <Flex column>
-        <Input expand v-model="serverForm.serverName" required :errors="serverErrors.serverName.messages" placeholder="Enter server address..." label="Server" />
+        <Input expand v-model="serverForm.serverName" required :errors="serverErrors.serverName.messages" placeholder="Enter server address" label="Server" />
       </Flex>
     </form>
 
     <!-- User sign in -->
-    <form @submit.prevent="submitServerConnect" v-else-if="step === Step.SignIn">
+    <form @submit.prevent="submitUserSignIn" v-else-if="step === Step.SignIn">
       <Flex column>
-        <Input expand v-model="userForm.username" required :errors="serverErrors.serverName.messages" placeholder="Enter server address..." label="Server" />
+        <Input expand v-model="userForm.username" required :errors="userErrors.username.messages" placeholder="Enter your username" label="Username" />
+        <Password expand v-model="userForm.password" required :errors="userErrors.password.messages" placeholder="********************" label="Password" />
       </Flex>
     </form>
     <template #footer>
       <Flex x-end>
-        <Button variant="accent" :loading :inert="loading" @click="submitServerConnect">Connect</Button>
+        <Button variant="accent" :loading :inert="loading" @click="submitUserSignIn">Connect</Button>
       </Flex>
     </template>
   </Card>

@@ -21,6 +21,7 @@ catalog:
   jsdom: ^29.1.1
   "@tauri-apps/cli": ^2.11.3
   "@dolanske/v-valid": ^3.0.0
+  "@vueuse/core": ^14.3.0
 overrides:
   vite: "catalog:"
   vitest: "catalog:"

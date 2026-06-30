@@ -1,7 +1,8 @@
 import { createApp, type Component } from "vue"
 import { router } from "../router/router"
-import { type Platform, PLATFORM_KEY } from "connector"
+import { type Platform, PLATFORM_KEY } from "platform/connector"
 import { createPinia } from "pinia"
+import { setColorTheme } from "@dolanske/vui"
 
 /**
  * Creates the Orbit application and initializes the UI & connectors.
@@ -12,6 +13,8 @@ import { createPinia } from "pinia"
  */
 export function createOrbitApp(root: Component<any, any, any, any, any>, platform: Platform) {
   const app = createApp(root)
+
+  setColorTheme("dark")
 
   app.use(router)
   app.use(createPinia())

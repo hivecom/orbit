@@ -1,42 +1,30 @@
-import { createMemoryHistory, createRouter, type RouteRecordInfo } from "vue-router"
+import { createRouter, createWebHistory, type RouteRecordInfo } from "vue-router"
 import RouteWindowManager from "./views/RouteWindowManager.vue"
 import RouteSettings from "./views/RouteSettings.vue"
-import WindowVoice from "./views/windows/WindowVoice.vue"
-import WindowChat from "./views/windows/WindowChat.vue"
+import RouteMain from "./views/RouteMain.vue"
 
 export const routes = [
   {
-    // Main Window host which allows spawning multiple sub-routes so they can be
-    // displayed side by side. By default, it will display only a single
-    // sub-route as-s. Like a call, or a chat. But Orbit will always allow
-    // tiling multiple interaction windows side by side. To make a window
-    // tilable, it needs to be a child-route of WindowTiler
-    //
-    // Everything else like settings or admin pages cannot be tiled.
-    //
-    // TODO: still need to figure out how this will work with
-    name: "RouteWindowManager",
     path: "/",
-    component: RouteWindowManager,
-    children: [
-      {
-        name: "WindowChat",
-        path: "/c/:serverId/:channelId",
-        component: WindowChat,
-      },
-      {
-        name: "WindowVoice",
-        path: "/v/:voiceId",
-        component: WindowVoice,
-      },
-    ],
+    component: RouteMain,
+    name: "RouteMain",
   },
+  {
+    // Main interaction window manager. It stores all window information as a
+    // search parameter. By default, only a fullscreen chat/call/etc view is
+    // visible. But user can split this view into 5 different views (on a 2x2 grid).
+    name: "RouteWindowManager",
+    path: "/wm",
+    component: RouteWindowManager,
+  },
+  // Settings page. Need to figure out if we want each settings section to be a
+  // linkable sub-route
   {
     name: "RouteSettings",
     path: "/settings",
     component: RouteSettings,
   },
-  // Catchall
+  // Catch all
   {
     name: "NotFound",
     path: "/:pathMatch(.*)*",
@@ -44,16 +32,22 @@ export const routes = [
   },
 ]
 
-export const router = createRouter({
-  history: createMemoryHistory(),
+const router = createRouter({
+  history: createWebHistory(),
   routes,
 })
 
+// Before resolve guard. Runs before any of the target pages/components are in
+// any way loaded. Good place for redirects, auth checks and data fetching
+// router.beforeResolve((to, from, next) => {
+//   return next(true)
+// })
+
 // Manually type routes from https://router.vuejs.org/guide/advanced/typed-routes
 export interface RouteNamedMap {
-  main: RouteRecordInfo<
+  RouteMain: RouteRecordInfo<
     // Name
-    "RouteWindowManager",
+    "RouteMain",
     // Path
     "/",
     // Params for 'router.push' or RouterLink's 'to' prop
@@ -61,11 +55,10 @@ export interface RouteNamedMap {
     // Normalized param object from 'useRoute'
     Record<never, never>,
     // Union of child route names
-    "WindowChat" | "WindowVoice"
+    never
   >
-  // Insert routes here
-  chat: RouteRecordInfo<"WindowChat", "/c/:serverId/:channelId", { serverId: string; channelId: string }, { serverId: string; channelId: string }, never>
-  voice: RouteRecordInfo<"WindowVoice", "/v/:id", { id: string }, { id: string }, never>
+  RouteWindowManager: RouteRecordInfo<"RouteWindowManager", "/wm", Record<never, never>, Record<never, never>, never>
+  RouteSettings: RouteRecordInfo<"RouteSettings", "/settings", Record<never, never>, Record<never, never>, never>
 }
 
 declare module "vue-router" {
@@ -73,3 +66,5 @@ declare module "vue-router" {
     RouteNamedMap: RouteNamedMap
   }
 }
+
+export { router }
