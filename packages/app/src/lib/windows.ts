@@ -57,7 +57,7 @@ export function serializeWindow(window: Window): WindowURLState {
 
 // Convers a single window into a state object
 export function deserializeWindow(encoded: string): Window | undefined {
-  const [_, type, ...params] = encoded.split(":")
+  const [type, ...params] = encoded.split(":")
 
   switch (type) {
     case "c":
@@ -82,7 +82,7 @@ export function deserializeWindow(encoded: string): Window | undefined {
   }
 }
 
-// Cibverts the entire state into a single URL search param value
+// Converts the entire state into a single URL search param value
 function serializeState(state: WindowState): string {
   const entries: string[] = []
 
@@ -96,14 +96,18 @@ function serializeState(state: WindowState): string {
   return entries.join(";")
 }
 
-// FIXME
+// Turns a raw URL search param into the state object
 function deserializeState(url: string): WindowState {
   const windows = url.split(";")
   const state: WindowState = {}
 
   for (const windowRaw of windows) {
-    const [location, windowPartition] = windowRaw.split(":") as [WindowLocation, string]
-    const windowState = deserializeWindow(windowPartition)
+    const separatorIndex = windowRaw.indexOf(":")
+
+    if (separatorIndex === -1) continue
+
+    const location = windowRaw.slice(0, separatorIndex) as WindowLocation
+    const windowState = deserializeWindow(windowRaw.slice(separatorIndex + 1))
 
     if (!windowState) continue
 
@@ -126,7 +130,8 @@ function loadInitialState(urlValue?: string): WindowState {
     const raw = localStorage.getItem(WIN_STORAGE_KEY)
 
     if (raw) {
-      return deserializeState(JSON.parse(raw))
+      const parsed = deserializeState(raw)
+      return parsed
     }
   } catch {}
   return { ...WIN_DEFAULT_STATE }
@@ -152,7 +157,7 @@ export function useTiler() {
     },
   )
 
-  // Keep State -> URL in sync
+  // // Keep State -> URL in sync
   watch(
     state,
     (newState) => {
@@ -160,17 +165,16 @@ export function useTiler() {
       params[WIN_URL_KEY] = serialized
       localStorage.setItem(WIN_STORAGE_KEY, serialized)
     },
-    { deep: true },
+    { deep: true, immediate: true },
   )
 
-  // Closes a window
+  /**
+   * Closes a window at a location. The layout will automatically reflow
+   */
   function close(location: WindowLocation) {
     if (!state.value[location] || location === "f") return
 
     delete state.value[location]
-
-    // TODO l & r
-    // L has two cases, when it has a r OR rt and rb
 
     switch (location) {
       case "lt": {
@@ -212,24 +216,41 @@ export function useTiler() {
           delete current.rb
           state.value = current
         }
-
         break
       }
 
       case "r": {
         if (state.value.l) {
+          state.value = { f: state.value.l }
         } else {
+          const current = unref(state.value)
+          current.l = state.value.lt
+          current.r = state.value.lb
+          delete current.lt
+          delete current.lb
+          state.value = current
         }
-
         break
       }
     }
   }
 
-  // // Swaps two windows
-  // function move(from: WindowLocation, to: WindowLocation) {}
+  /**
+   * Swaps two windows
+   */
+  function swap(from: WindowLocation, to: WindowLocation) {
+    const fromRaw = state.value[from]
+    const toRaw = state.value[to]
+    const current = state.value
 
-  // Places a new empty pane to a location
+    current[from] = toRaw
+    current[to] = fromRaw
+    state.value = current
+  }
+
+  /**
+   * Splits a window into two if possible
+   */
   function split(from: WindowLocation, split?: Window) {
     if (!split) return
 
@@ -263,10 +284,18 @@ export function useTiler() {
     }
   }
 
+  /**
+   * Inserts a new window into a specific location
+   */
+  function replace(location: WindowLocation, newState: Window) {
+    state.value[location] = newState
+  }
+
   return {
-    tileset: readonly(state),
+    windows: readonly(state),
     close,
-    // move,
     split,
+    swap,
+    replace,
   }
 }

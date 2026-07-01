@@ -1,6 +1,6 @@
 import { createApp, type Component } from "vue"
 import { router } from "../router/router"
-import { type Platform, PLATFORM_KEY } from "platform/connector"
+import { type Platform, PLATFORM_KEY } from "connector"
 import { createPinia } from "pinia"
 import { setColorTheme } from "@dolanske/vui"
 

@@ -1,17 +1,38 @@
 <script setup lang="ts">
-import { Button } from "@dolanske/vui"
+import { Button, ButtonGroup, Dropdown, DropdownItem } from "@dolanske/vui"
 import { useTiler } from "../../lib/windows"
 
-const { tileset, split, close } = useTiler()
+const { windows, split, close, swap, replace } = useTiler()
 </script>
 
 <template>
   <div class="o-wm">
-    <div v-for="(tile, key, index) in tileset" :class="[`wm-${key}`, 'wm-tile']">
-      <h1>{{ key }} | {{ index }}</h1>
+    <div v-for="(window, location, index) in windows" :class="[`wm-${location}`, 'wm-window']">
+      <h1>{{ window?.type }} | {{ index }}</h1>
+      <p v-if="window && window.type !== 'empty'">
+        {{ window.type === "chat" ? `Server: ${window.serverId} | Channel: ${window.channelId}` : `Channel: ${window.channelId}` }}
+      </p>
 
-      <Button @click="split(key, tile)">Split</Button>
-      <Button @click="close">Remove</Button>
+      <ButtonGroup :gap="2">
+        <Button @click="split(location, window)">Split</Button>
+        <Button @click="close(location)">Remove</Button>
+        <Dropdown>
+          <template #trigger="{ toggle }">
+            <Button @click="toggle">Swap</Button>
+          </template>
+
+          <template v-for="(w, l) in windows" :key="w?.type">
+            <DropdownItem v-if="l !== location" @click="swap(location, l)">
+              With <b>{{ l }}</b>
+            </DropdownItem>
+          </template>
+        </Dropdown>
+      </ButtonGroup>
+
+      <ButtonGroup :gap="2">
+        <Button @click="replace(location, { type: 'chat', serverId: Math.random().toFixed(2), channelId: Math.random().toFixed(2) })">Chat</Button>
+        <Button @click="replace(location, { type: 'voice', channelId: Math.random().toFixed(4) })">Voice</Button>
+      </ButtonGroup>
     </div>
   </div>
 </template>
@@ -39,14 +60,6 @@ const { tileset, split, close } = useTiler()
     grid-area: 1 / 2 / 3 / 3;
   }
 
-  /* .wm-t {
-    grid-area: 1 / 1 / 2 / 3;
-  } */
-
-  /* .wm-b {
-    grid-area: 2 / 1 / 3 / 3;
-  } */
-
   .wm-lt {
     grid-area: 1 / 1 / 2 / 2;
   }
@@ -63,10 +76,12 @@ const { tileset, split, close } = useTiler()
     grid-area: 2 / 2 / 3 / 3;
   }
 
-  .wm-tile {
+  .wm-window {
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-direction: column;
+    gap: var(--space-l);
     width: 100%;
     height: 100%;
     border-radius: var(--border-radius-l);
