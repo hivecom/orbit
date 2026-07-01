@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vp run connector#wasm && vp dev",
+    "dev": "wasm-pack build ../../packages/platform/core-wasm --target web && vp dev",
     "dev:core": "./dev.sh",
     "build": "vue-tsc -b && vp build && cargo build",
     "preview": "vp preview"

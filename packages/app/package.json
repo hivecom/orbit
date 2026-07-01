@@ -12,6 +12,7 @@
   "dependencies": {
     "@dolanske/v-valid": "catalog:",
     "@dolanske/vui": "catalog:",
+    "@iconify-prerendered/vue-solar": "catalog:",
     "@vueuse/core": "catalog:",
     "connector": "workspace:*",
     "pinia": "catalog:",

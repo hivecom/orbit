@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Button, ButtonGroup, Dropdown, DropdownItem } from "@dolanske/vui"
+import { Button, ButtonGroup, Divider, Dropdown, DropdownItem } from "@dolanske/vui"
 import { useWindowManager } from "../../lib/windows"
 
 const { windows, split, close, swap, replace } = useWindowManager()
@@ -13,21 +13,22 @@ const { windows, split, close, swap, replace } = useWindowManager()
         {{ window.type === "chat" ? `Server: ${window.serverId} | Channel: ${window.channelId}` : `Channel: ${window.channelId}` }}
       </p>
 
-      <ButtonGroup :gap="2">
-        <Button @click="split(location, window)">Split</Button>
-        <Button @click="close(location)">Remove</Button>
-        <Dropdown>
-          <template #trigger="{ toggle }">
-            <Button @click="toggle">Swap</Button>
-          </template>
+      <Dropdown>
+        <template #trigger="{ toggle }">
+          <Button @click="toggle">Actions</Button>
+        </template>
 
-          <template v-for="(w, l) in windows" :key="w?.type">
-            <DropdownItem v-if="l !== location" @click="swap(location, l)">
-              With <b>{{ l }}</b>
-            </DropdownItem>
-          </template>
-        </Dropdown>
-      </ButtonGroup>
+        <DropdownItem @click="split(location, window)">Split</DropdownItem>
+        <DropdownItem @click="close(location)">Close</DropdownItem>
+
+        <Divider />
+
+        <template v-for="(w, l) in windows" :key="w?.type">
+          <DropdownItem v-if="l !== location" @click="swap(location, l)">
+            With <b>{{ l }}</b>
+          </DropdownItem>
+        </template>
+      </Dropdown>
 
       <ButtonGroup :gap="2">
         <Button @click="replace(location, { type: 'chat', serverId: Math.random().toFixed(2), channelId: Math.random().toFixed(2) })">Chat</Button>
@@ -42,10 +43,10 @@ const { windows, split, close, swap, replace } = useWindowManager()
   display: grid;
   grid-template-columns: 1fr 1fr;
   grid-template-rows: 1fr 1fr;
-  gap: var(--space-l);
+  gap: var(--space-s);
   width: 100%;
   height: 100%;
-  padding: var(--space-m);
+  padding: var(--space-s);
 
   /* Classes which children consume and automatically get positioned */
   .wm-f {
@@ -84,9 +85,12 @@ const { windows, split, close, swap, replace } = useWindowManager()
     gap: var(--space-l);
     width: 100%;
     height: 100%;
-    border-radius: var(--border-radius-l);
-    background-color: var(--color-bg-raised);
-    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius-m);
+    background-color: var(--color-bg-medium);
+    /* border: 1px solid var(--color-border); */
+
+    & > div {
+    }
   }
 }
 </style>
