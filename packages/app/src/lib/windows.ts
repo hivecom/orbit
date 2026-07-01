@@ -1,5 +1,5 @@
 import { useUrlSearchParams } from "@vueuse/core"
-import { readonly, ref, unref, watch, watchEffect } from "vue"
+import { readonly, ref, unref, watch } from "vue"
 
 type WindowLocation = "f" | "l" | "r" | "lt" | "lb" | "rt" | "rb"
 
@@ -96,7 +96,7 @@ function serializeState(state: WindowState): string {
   return entries.join(";")
 }
 
-// FIX:
+// FIXME
 function deserializeState(url: string): WindowState {
   const windows = url.split(";")
   const state: WindowState = {}
@@ -164,7 +164,67 @@ export function useTiler() {
   )
 
   // Closes a window
-  // function close(location: WindowLocation) {}
+  function close(location: WindowLocation) {
+    if (!state.value[location] || location === "f") return
+
+    delete state.value[location]
+
+    // TODO l & r
+    // L has two cases, when it has a r OR rt and rb
+
+    switch (location) {
+      case "lt": {
+        const current = state.value.lb
+        delete state.value.lb
+        state.value.l = current
+        break
+      }
+
+      case "lb": {
+        const current = state.value.lt
+        delete state.value.lt
+        state.value.l = current
+        break
+      }
+
+      case "rt": {
+        const current = state.value.rb
+        delete state.value.rb
+        state.value.r = current
+        break
+      }
+
+      case "rb": {
+        const current = state.value.rt
+        delete state.value.rt
+        state.value.r = current
+        break
+      }
+
+      case "l": {
+        if (state.value.r) {
+          state.value = { f: state.value.r }
+        } else {
+          const current = unref(state.value)
+          current.l = state.value.rt
+          current.r = state.value.rb
+          delete current.rt
+          delete current.rb
+          state.value = current
+        }
+
+        break
+      }
+
+      case "r": {
+        if (state.value.l) {
+        } else {
+        }
+
+        break
+      }
+    }
+  }
 
   // // Swaps two windows
   // function move(from: WindowLocation, to: WindowLocation) {}
@@ -203,13 +263,9 @@ export function useTiler() {
     }
   }
 
-  watchEffect(() => {
-    console.log("STATE UPDATE", state.value)
-  })
-
   return {
     tileset: readonly(state),
-    // close,
+    close,
     // move,
     split,
   }
