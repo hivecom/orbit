@@ -1,5 +1,4 @@
-use gloo_console::log;
-use serde::{Deserialize, Serialize};
+use gloo_console::{debug};
 use wasm_bindgen::prelude::*;
 
 #[macro_export]
@@ -72,6 +71,7 @@ irc./_/ /_/_/ |___/\\___/\\___/\\____/_/ /_/ /_/.net (Frankfurt, Germany)
 #[wasm_bindgen(start)]
 pub fn init() {
     console_error_panic_hook::set_once();
+    debug!("WASM panic hook initialized");
 }
 
 #[wasm_bindgen]
@@ -109,28 +109,34 @@ pub async fn initialize_orbit() -> Vec<Server> {
                         description: Some(String::from("Channel for this app.")),
                         icon: None,
                     },
-                    // messages: vec![
-                    //     Message::Join(EventMessage{
-                    //         msgid: String::from("msgidmsgidmsgidmsgid"),
-                    //         server_time: 1782601862,
-                    //         user_id: 0,
-                    //     }),
-                    //     Message::Privmsg(TextMessage{
-                    //         msgid: String::from("msgidmsgidmsgidmsgid"),
-                    //         server_time: 1782601862,
-                    //         user_id: 0,
-                    //         text: String::from("Hey there!"),
-                    //         reactions: vec![
-                    //             Reaction{user_id: vec![0], text: String::from("🫪")}
-                    //         ],
-                    //         reply: None,
-                    //         redacted: false, // tombstone overlay; original text is NOT retained when set
-                    //         edited: false,   // set when text was edited in place (post-MVP)
-                    //     }),
-                    // ]
-                    // .into_iter()
-                    // .map(|m| serde_wasm_bindgen::to_value(&m).unwrap())
-                    // .collect(),
+                    messages: vec![
+                        Message {
+                            metadata: MessageMetadata{
+                                msgid: String::from("msgidmsgidmsgidmsgid"),
+                                message_type: MessageType::Join,
+                                server_time: 1782601862,
+                                user_id: 0,
+                            },
+                            text: None,
+                        },
+                        Message{ 
+                            metadata: MessageMetadata{
+                                msgid: String::from("msgidmsgidmsgidmsgid"),
+                                server_time: 1782601862,
+                                user_id: 0,
+                                message_type: MessageType::Privmsg,
+                            },
+                            text: Some(TextMessage{
+                                content: String::from("Hey there!"),
+                                reactions: vec![
+                                    Reaction{user_id: vec![0], text: String::from("🫪")}
+                                ],
+                                reply: None,
+                                redacted: false, // tombstone overlay; original text is NOT retained when set
+                                edited: false,   // set when text was edited in place (post-MVP)
+                            }),
+                        },
+                    ],
                     users: vec![0],
                 },
             ],
@@ -149,7 +155,7 @@ pub async fn initialize_orbit() -> Vec<Server> {
     ]
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 #[wasm_bindgen(getter_with_clone)]
 pub struct Server {
     pub id: i64,
@@ -160,7 +166,7 @@ pub struct Server {
     pub me: User,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 #[wasm_bindgen(getter_with_clone)]
 pub struct ServerMetadata {
     pub name: String,
@@ -172,16 +178,16 @@ pub struct ServerMetadata {
     pub depot_url: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 #[wasm_bindgen(getter_with_clone)]
 pub struct Channel {
     pub id: i64,
     pub metadata: ChannelMetadata,
-    // pub messages: Vec<JsValue>,
+    pub messages: Vec<Message>,
     pub users: Vec<i64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 #[wasm_bindgen(getter_with_clone)]
 pub struct ChannelMetadata {
     pub name: String,
@@ -190,10 +196,9 @@ pub struct ChannelMetadata {
     pub icon: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 #[wasm_bindgen]
 pub struct Capabilities {
-    // irc
     pub sasl: bool,
     // reacts / replies
     pub message_tags: bool,
@@ -204,61 +209,67 @@ pub struct Capabilities {
     pub webpush: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 #[wasm_bindgen(getter_with_clone)]
 pub struct User {
-    id: i64,
-    username: String,
-    realname: String,
-    nickname: String,
-    account: Option<String>,
-    display_name: Option<String>,
-    description: Option<String>,
-    profile_picture_url: Option<String>,
-    bot: bool,
+    pub id: i64,
+    pub username: String,
+    pub realname: String,
+    pub nickname: String,
+    pub account: Option<String>,
+    pub display_name: Option<String>,
+    pub description: Option<String>,
+    pub profile_picture_url: Option<String>,
+    pub bot: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Message {
-    Privmsg(TextMessage),
-    Notice(TextMessage),
-    Action(TextMessage),
-    Join(EventMessage),
-    Part(EventMessage),
-    Quit(EventMessage),
+#[derive(Debug, Clone)]
+#[wasm_bindgen(getter_with_clone)]
+pub struct Message {
+    pub text: Option<TextMessage>,
+    pub metadata: MessageMetadata,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
+#[wasm_bindgen]
+pub enum MessageType {
+    Privmsg,
+    Notice,
+    Action,
+    Join,
+    Part,
+    Quit,
+}
+
+#[derive(Debug, Clone)]
 #[wasm_bindgen(getter_with_clone)]
 pub struct TextMessage {
-    msgid: String,                   // primary key: server msgid, or a synthetic evt:* key for keyless lines
-    server_time: i64,                // sort key, from server-time (epoch ms)
-    user_id: i64,                    // nick at send time (display only; account is authoritative)
-    text: String,
-    reactions: Vec<Reaction>,
-    reply: Option<MessageReference>,
-    redacted: bool,                  // tombstone overlay; original text is NOT retained when set
-    edited: bool,                    // set when text was edited in place (post-MVP)
+    pub content: String,
+    pub reactions: Vec<Reaction>,
+    pub reply: Option<MessageReference>,
+    pub redacted: bool,
+    pub edited: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 #[wasm_bindgen(getter_with_clone)]
-pub struct EventMessage {
-    msgid: String,                   // primary key: server msgid, or a synthetic evt:* key for keyless lines
-    server_time: i64,                // sort key, from server-time (epoch ms)
-    user_id: i64,                    // nick at send time (display only; account is authoritative)
+pub struct MessageMetadata {
+    pub msgid: String,
+    pub server_time: i64,
+    pub message_type: MessageType,
+    pub user_id: i64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 #[wasm_bindgen(getter_with_clone)]
 pub struct MessageReference {
-    user_id: i64,
-    text: String,
+    pub user_id: i64,
+    pub text: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 #[wasm_bindgen(getter_with_clone)]
 pub struct Reaction {
-    user_id: Vec<i64>,
-    text: String,
+    pub user_id: Vec<i64>,
+    pub text: String,
 }

@@ -1,5 +1,5 @@
 {
-  "name": "connector",
+  "name": "platform",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -8,8 +8,8 @@
   "scripts": {
     "build": "vp run wasm && vue-tsc -b",
     "test": "vp test",
-    "wasm": "wasm-pack build ../core-wasm --target web",
-    "dev": "cargo watch -i pkg -C ../core-wasm -s 'wasm-pack build ../core-wasm --target web'"
+    "wasm": "wasm-pack build ../core/core-wasm --target web",
+    "dev": "cargo watch -i pkg -C ../core/core-wasm -s 'wasm-pack build . --target web'"
   },
   "dependencies": {
     "core-wasm": "workspace:*",

@@ -1,5 +1,5 @@
 import { createOrbitApp } from "app"
-import { createWebPlatform } from "connector"
+import { createWebPlatform } from "platform"
 import App from "./App.vue"
 
 const platform = createWebPlatform()
