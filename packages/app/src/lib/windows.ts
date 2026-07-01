@@ -9,18 +9,18 @@ type WindowEmptyURLState = `e`
 
 type WindowURLState = WindowChatURLState | WindowVoiceURLState | WindowEmptyURLState
 
-interface WindowChat {
+export interface WindowChat {
   type: "chat"
   serverId: string
   channelId: string
 }
 
-interface WindowVoice {
+export interface WindowVoice {
   type: "voice"
   channelId: string
 }
 
-interface WindowEmpty {
+export interface WindowEmpty {
   type: "empty"
 }
 
@@ -33,23 +33,27 @@ export type WindowState = Partial<Record<WindowLocation, Window>>
 const WIN_STORAGE_KEY = "o-wm-state"
 const WIN_URL_KEY = "w1" // Includes a number for versioning
 const WIN_LOCATIONS: WindowLocation[] = ["f", "l", "r", "lt", "lb", "rt", "rb"]
-const WIN_DEFAULT_STATE: WindowState = {
-  f: {
-    type: "empty",
-  },
+
+export function getDefaultState() {
+  return {
+    f: {
+      type: "empty",
+    },
+  } as const
 }
 
 ////////////////////////////////////////////////////////////////////////
 
 // Converts window object into a URL search param value
 export function serializeWindow(window: Window): WindowURLState {
-  switch (window.type) {
+  switch (window?.type) {
     case "chat":
       return `c:${window.serverId}:${window.channelId}` satisfies WindowChatURLState
 
     case "voice":
       return `v:${window.channelId}` satisfies WindowVoiceURLState
 
+    default:
     case "empty":
       return `e` satisfies WindowEmptyURLState
   }
@@ -57,6 +61,10 @@ export function serializeWindow(window: Window): WindowURLState {
 
 // Convers a single window into a state object
 export function deserializeWindow(encoded: string): Window | undefined {
+  if (!encoded || !encoded.includes(":")) {
+    return getDefaultState().f
+  }
+
   const [type, ...params] = encoded.split(":")
 
   switch (type) {
@@ -76,14 +84,16 @@ export function deserializeWindow(encoded: string): Window | undefined {
       }
 
     case "e":
-      return {
-        type: "empty",
-      }
+      return getDefaultState().f
   }
 }
 
 // Converts the entire state into a single URL search param value
-function serializeState(state: WindowState): string {
+export function serializeState(state: WindowState): string {
+  if (!state || Object.keys(state).length === 0) {
+    return "f:e"
+  }
+
   const entries: string[] = []
 
   for (const location of WIN_LOCATIONS) {
@@ -97,7 +107,9 @@ function serializeState(state: WindowState): string {
 }
 
 // Turns a raw URL search param into the state object
-function deserializeState(url: string): WindowState {
+export function deserializeState(url: string): WindowState {
+  if (!url) return getDefaultState()
+
   const windows = url.split(";")
   const state: WindowState = {}
 
@@ -114,14 +126,14 @@ function deserializeState(url: string): WindowState {
     state[location] = windowState
   }
 
-  if (windows.length === 0) {
-    return { ...WIN_DEFAULT_STATE }
+  if (Object.keys(state).length === 0) {
+    return getDefaultState()
   }
 
   return state
 }
 
-function loadInitialState(urlValue?: string): WindowState {
+export function loadInitialState(urlValue?: string): WindowState {
   if (urlValue) {
     return deserializeState(urlValue)
   }
@@ -134,13 +146,13 @@ function loadInitialState(urlValue?: string): WindowState {
       return parsed
     }
   } catch {}
-  return { ...WIN_DEFAULT_STATE }
+  return getDefaultState()
 }
 
 // Main window state stored as JSON object in the URL search params. Where
 // location is the key (because it's always unique) and value is the
 // Window<Type> object.
-export function useTiler() {
+export function useWindowManager() {
   const params = useUrlSearchParams<{ [WIN_URL_KEY]?: string }>("history", {
     writeMode: "push",
   })
@@ -258,7 +270,7 @@ export function useTiler() {
       case "f": {
         const current = unref(state)
         current.l = split
-        current.r = { ...WIN_DEFAULT_STATE.f! }
+        current.r = getDefaultState().f
         delete current.f
         state.value = current
         break
@@ -267,7 +279,7 @@ export function useTiler() {
       case "l": {
         const current = unref(state)
         current.lt = split
-        current.lb = { ...WIN_DEFAULT_STATE.f! }
+        current.lb = getDefaultState().f
         delete current.l
         state.value = current
         break
@@ -276,7 +288,7 @@ export function useTiler() {
       case "r": {
         const current = unref(state)
         current.rt = split
-        current.rb = { ...WIN_DEFAULT_STATE.f! }
+        current.rb = getDefaultState().f
         delete current.r
         state.value = current
         break

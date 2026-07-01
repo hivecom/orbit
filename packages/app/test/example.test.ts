@@ -4,6 +4,6 @@ import { expect, test } from "vite-plus/test"
 
 test("Renders the landing page", () => {
   const wrapper = mount(RouteMain)
-  const title = wrapper.get("h2")
-  expect(title.text()).toBe("Orbit")
+  const title = wrapper.get("div")
+  expect(title.text()).toBe("main route Open chat")
 })

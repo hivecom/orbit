@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { Button, ButtonGroup, Dropdown, DropdownItem } from "@dolanske/vui"
-import { useTiler } from "../../lib/windows"
+import { useWindowManager } from "../../lib/windows"
 
-const { windows, split, close, swap, replace } = useTiler()
+const { windows, split, close, swap, replace } = useWindowManager()
 </script>
 
 <template>
