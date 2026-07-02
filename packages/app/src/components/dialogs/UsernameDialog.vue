@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { defineRules, required, useValidation } from "@dolanske/v-valid"
+import { defineRules, minLength, required, useValidation } from "@dolanske/v-valid"
 import { Button, Card, Flex, Input } from "@dolanske/vui"
 import { reactive, ref } from "vue"
 
 const loading = ref(false)
 
 const form = reactive({
-  serverName: "",
+  nickname: "",
+  displayName: "",
+  password: "",
 })
 
 const emit = defineEmits<{
@@ -14,7 +16,9 @@ const emit = defineEmits<{
 }>()
 
 const rules = defineRules<typeof form>({
-  serverName: [required],
+  nickname: [required, minLength(3)],
+  displayName: [required, minLength(3)],
+  password: [required],
 })
 
 const { validate, errors } = useValidation(form, rules, { autoclear: true })
@@ -22,10 +26,7 @@ const { validate, errors } = useValidation(form, rules, { autoclear: true })
 function submit() {
   validate().then(async () => {
     loading.value = true
-
     await new Promise((resolve) => setTimeout(resolve, 1500))
-    // TODO: connect to server
-    // Navigate to the server page
     loading.value = false
   })
 }
@@ -34,17 +35,18 @@ function submit() {
 <template>
   <Card expand separators>
     <Flex class="mb-m" y-center x-between>
-      <h2>Connect</h2>
+      <h2>Username</h2>
       <slot name="stepper"></slot>
     </Flex>
     <form @submit.prevent="submit">
-      <Flex column>
-        <Input expand v-model="form.serverName" required :errors="errors.serverName.messages" placeholder="Enter server address" label="Server" />
+      <Flex column gap="l">
+        <Input expand v-model="form.nickname" required placeholder="Enter your username" label="Username" />
+        <Input expand v-model="form.displayName" :errors="errors.displayName.messages" required placeholder="Enter your display name" label="Display name" />
       </Flex>
     </form>
     <template #footer>
       <Flex x-end>
-        <Button variant="accent" :loading :inert="loading" @click="submit">Connect</Button>
+        <Button variant="accent" :loading :inert="loading" @click="submit">Create</Button>
       </Flex>
     </template>
   </Card>

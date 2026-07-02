@@ -28,11 +28,15 @@
   --dark-color-accent: #93efd8;
 }
 
-/* Vui components */
+/* Vui component overrides */
 .vui-card {
   background-color: var(--color-bg-medium);
 
   .vui-card-header {
     background-color: var(--color-bg-medium);
   }
+}
+
+.vui-button {
+  --border-radius-s: var(--border-radius-pill);
 }

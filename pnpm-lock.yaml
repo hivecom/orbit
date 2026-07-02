@@ -7,8 +7,8 @@ settings:
 catalogs:
   default:
     '@dolanske/v-valid':
-      specifier: ^3.0.0
-      version: 3.0.0
+      specifier: ^3.0.1
+      version: 3.0.1
     '@dolanske/vui':
       specifier: ^1.17.2
       version: 1.17.2
@@ -130,7 +130,7 @@ importers:
     dependencies:
       '@dolanske/v-valid':
         specifier: 'catalog:'
-        version: 3.0.0(vue@3.5.38(typescript@6.0.3))
+        version: 3.0.1(vue@3.5.38(typescript@6.0.3))
       '@dolanske/vui':
         specifier: 'catalog:'
         version: 1.17.2(reka-ui@2.10.0(vue@3.5.38(typescript@6.0.3)))(vue@3.5.38(typescript@6.0.3))
@@ -442,8 +442,8 @@ packages:
   '@date-fns/tz@1.5.0':
     resolution: {integrity: sha512-lwYN/vDPeNRULcepoE/LO2Pgx+7/RV+S9ARfbc9lr2DtGkOD7pAiruHvbR1RX3Qyf6ja47EWJDMsNK5vK08DJg==}
 
-  '@dolanske/v-valid@3.0.0':
-    resolution: {integrity: sha512-YK3qpX1kEFfCBJ42RB4Phzxgkj5HBydjkzpv6/aCn7B5yBiQ/q8blYYGdH1W8jNwRh2kju1y/87Y1vQn1IWA5w==}
+  '@dolanske/v-valid@3.0.1':
+    resolution: {integrity: sha512-+lDTM7MDQmYUf5aZeQk+VgYkFrXu1ZG694XtxB8mtgwqI1536UvTn8TG3eCBi6PdLoDwtszShSMOrpk1o2n+fw==}
     peerDependencies:
       vue: latest
 
@@ -2683,7 +2683,7 @@ snapshots:
 
   '@date-fns/tz@1.5.0': {}
 
-  '@dolanske/v-valid@3.0.0(vue@3.5.38(typescript@6.0.3))':
+  '@dolanske/v-valid@3.0.1(vue@3.5.38(typescript@6.0.3))':
     dependencies:
       vue: 3.5.38(typescript@6.0.3)
       vue-demi: 0.14.10(vue@3.5.38(typescript@6.0.3))

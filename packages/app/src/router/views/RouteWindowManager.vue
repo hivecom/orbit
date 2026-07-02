@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Button, ButtonGroup, Divider, Dropdown, DropdownItem } from "@dolanske/vui"
 import { useWindowManager } from "../../lib/windows"
+import { IconHamburgerMenuLinear } from "@iconify-prerendered/vue-solar"
 
 const { windows, split, close, swap, replace } = useWindowManager()
 </script>
@@ -8,32 +9,36 @@ const { windows, split, close, swap, replace } = useWindowManager()
 <template>
   <div class="o-wm">
     <div v-for="(window, location, index) in windows" :class="[`wm-${location}`, 'wm-window']">
-      <h1>{{ window?.type }} | {{ index }}</h1>
+      <div class="wm-window-actions">
+        <Dropdown>
+          <template #trigger="{ toggle }">
+            <Button @click="toggle" square plain>
+              <IconHamburgerMenuLinear />
+            </Button>
+          </template>
+
+          <DropdownItem @click="split(location, window)">Split</DropdownItem>
+          <DropdownItem @click="close(location)">Close</DropdownItem>
+
+          <template v-for="(w, l) in windows" :key="w?.type">
+            <DropdownItem v-if="l !== location" @click="swap(location, l)">
+              <!-- TODO: show actual chat title -->
+              Swap with {{ l }}
+            </DropdownItem>
+          </template>
+        </Dropdown>
+      </div>
+
+      <!-- <h1>{{ window?.type }} | {{ index }}</h1>
       <p v-if="window && window.type !== 'empty'">
         {{ window.type === "chat" ? `Server: ${window.serverId} | Channel: ${window.channelId}` : `Channel: ${window.channelId}` }}
       </p>
 
-      <Dropdown>
-        <template #trigger="{ toggle }">
-          <Button @click="toggle">Actions</Button>
-        </template>
-
-        <DropdownItem @click="split(location, window)">Split</DropdownItem>
-        <DropdownItem @click="close(location)">Close</DropdownItem>
-
-        <Divider />
-
-        <template v-for="(w, l) in windows" :key="w?.type">
-          <DropdownItem v-if="l !== location" @click="swap(location, l)">
-            With <b>{{ l }}</b>
-          </DropdownItem>
-        </template>
-      </Dropdown>
 
       <ButtonGroup :gap="2">
         <Button @click="replace(location, { type: 'chat', serverId: Math.random().toFixed(2), channelId: Math.random().toFixed(2) })">Chat</Button>
         <Button @click="replace(location, { type: 'voice', channelId: Math.random().toFixed(4) })">Voice</Button>
-      </ButtonGroup>
+      </ButtonGroup> -->
     </div>
   </div>
 </template>
@@ -87,9 +92,22 @@ const { windows, split, close, swap, replace } = useWindowManager()
     height: 100%;
     border-radius: var(--border-radius-m);
     background-color: var(--color-bg-medium);
-    /* border: 1px solid var(--color-border); */
+    position: relative;
 
-    & > div {
+    &:has([aria-expanded="true"]),
+    &:hover {
+      .wm-window-actions {
+        visibility: visible;
+        pointer-events: all;
+      }
+    }
+
+    .wm-window-actions {
+      visibility: hidden;
+      pointer-events: none;
+      position: absolute;
+      right: 8px;
+      top: 8px;
     }
   }
 }

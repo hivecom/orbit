@@ -1,5 +1,7 @@
 import type { Platform } from "./types"
 
+// TODO: this will consume tauri APIs imported from core
+
 export function createDesktopPlatform(): Platform {
   return {
     target: "desktop",
