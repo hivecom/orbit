@@ -34,7 +34,7 @@ function submit() {
 <template>
   <Card expand separators>
     <Flex class="mb-m" y-center x-between>
-      <h2>Connect</h2>
+      <h3>Connect to server</h3>
       <slot name="stepper"></slot>
     </Flex>
     <form @submit.prevent="submit">
@@ -43,9 +43,9 @@ function submit() {
       </Flex>
     </form>
     <template #footer>
-      <Flex x-end>
-        <Button variant="accent" :loading :inert="loading" @click="submit">Connect</Button>
-      </Flex>
+      <!-- <Flex x-end> -->
+      <Button expand :loading :inert="loading" @click="submit">Connect</Button>
+      <!-- </Flex> -->
     </template>
   </Card>
 </template>

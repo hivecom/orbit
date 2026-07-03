@@ -35,7 +35,7 @@ function submit() {
 <template>
   <Card expand separators>
     <Flex class="mb-m" y-center x-between>
-      <h2>Username</h2>
+      <h3>Create username</h3>
       <slot name="stepper"></slot>
     </Flex>
     <form @submit.prevent="submit">
@@ -45,9 +45,9 @@ function submit() {
       </Flex>
     </form>
     <template #footer>
-      <Flex x-end>
-        <Button variant="accent" :loading :inert="loading" @click="submit">Create</Button>
-      </Flex>
+      <!-- <Flex x-end> -->
+      <Button expand :loading :inert="loading" @click="submit">Create</Button>
+      <!-- </Flex> -->
     </template>
   </Card>
 </template>

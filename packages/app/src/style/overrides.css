@@ -21,6 +21,12 @@
   --space-xl: 26px;
   --space-xxl: 34px;
   --space-xxxl: 42px;
+
+  --border-radius-xs: 3px;
+  --border-radius-s: 4px;
+  --border-radius-m: 6px;
+  --border-radius-l: 10px;
+  --border-radius-pill: 164px;
 }
 
 /* Theme */
@@ -32,11 +38,14 @@
 .vui-card {
   background-color: var(--color-bg-medium);
 
+  .vui-card-footer,
   .vui-card-header {
     background-color: var(--color-bg-medium);
   }
 }
 
+.vui-dropdown-item,
 .vui-button {
-  --border-radius-s: var(--border-radius-pill);
+  --border-radius-s: var(--border-radius-m);
+  corner-shape: squircle;
 }

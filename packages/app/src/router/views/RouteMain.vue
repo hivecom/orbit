@@ -6,7 +6,7 @@ import UsernameDialog from "../../components/dialogs/UsernameDialog.vue"
 
 <template>
   <Flex x-center y-center column class="h-100">
-    <div class="container-s">
+    <div class="container-xs">
       <ServerConnectDialog />
       <div class="mb-m"></div>
       <UsernameDialog />

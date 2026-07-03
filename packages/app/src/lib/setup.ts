@@ -3,6 +3,9 @@ import { router } from "../router/router"
 import { type Platform, PLATFORM_KEY } from "platform"
 import { createPinia } from "pinia"
 import { setColorTheme } from "@dolanske/vui"
+import { initialize_orbit } from "../../../core/core-wasm/pkg/core_wasm"
+import { useIrcStore } from "../stores/irc"
+import { useAppStateStore } from "../stores/app-state"
 
 /**
  * Creates the Orbit application and initializes the UI & connectors.
@@ -13,11 +16,12 @@ import { setColorTheme } from "@dolanske/vui"
  */
 export function createOrbitApp(root: Component<any, any, any, any, any>, platform: Platform) {
   const app = createApp(root)
+  const pinia = createPinia()
 
   setColorTheme("dark")
 
   app.use(router)
-  app.use(createPinia())
+  app.use(pinia)
 
   app.provide(PLATFORM_KEY, platform)
 
@@ -30,6 +34,17 @@ export function createOrbitApp(root: Component<any, any, any, any, any>, platfor
 
   //    2.1 Handle server capabilities
   //    2.2 Handle other server & channel state
+
+  // non-blocking operation, app receives a loading spinner while this is happening
+  void initialize_orbit()
+    .then(async (controller) => {
+      const ircStore = useIrcStore(pinia)
+      await ircStore.init(controller)
+    })
+    .catch(() => {
+      const appState = useAppStateStore()
+      appState.globalError = "Failed to initialize Orbit. Check console for errors."
+    })
 
   return app
 }
