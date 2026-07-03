@@ -4,3 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+futures = { version = "0.3.32", optional = true }
+gloo-console = { version = "0.4.0", optional = true }
+gloo-net = { version = "0.7.0", optional = true }
+indexed_db_futures = { version = "0.6.4", features = ["serde"] }
+irc-proto = "1.1.0"
+wasm-bindgen = { version = "0.2.126", optional = true }
+
+[features]
+web = ["dep:gloo-net", "dep:wasm-bindgen", "dep:futures", "dep:gloo-console"]

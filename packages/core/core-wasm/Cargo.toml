@@ -12,7 +12,10 @@ wasm-bindgen-futures = "0.4.75"
 futures = "0.3.32"
 console_error_panic_hook = "0.1.7"
 
-gloo-console = "0.4.0"
+gloo-console = { version = "0.4.0" }
 gloo-net = "0.7.0"
 
 irc-proto = "1.1.0"
+core-shared = { version = "0.1.0", path = "../core-shared", features = ["web"] }
+indexed_db_futures = { version = "0.6.4", features = ["async-upgrade", "serde"] }
+serde = { version = "1.0.228", features = ["derive"] }
