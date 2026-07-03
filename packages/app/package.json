@@ -14,6 +14,7 @@
     "@dolanske/vui": "catalog:",
     "@iconify-prerendered/vue-solar": "catalog:",
     "@vueuse/core": "catalog:",
+    "core-wasm": "workspace:*",
     "pinia": "catalog:",
     "platform": "workspace:*",
     "vue": "^3.5.34",

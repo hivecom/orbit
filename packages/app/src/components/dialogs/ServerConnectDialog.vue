@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { defineRules, required, useValidation } from "@dolanske/v-valid"
 import { Button, Card, Flex, Input } from "@dolanske/vui"
+import type { ServerData } from "core-wasm"
 import { reactive, ref } from "vue"
+import { useIrcStore } from "../../stores/irc"
 
 const loading = ref(false)
 
@@ -10,7 +12,7 @@ const form = reactive({
 })
 
 const emit = defineEmits<{
-  success: [data: typeof form]
+  success: [data: ServerData]
 }>()
 
 const rules = defineRules<typeof form>({
@@ -23,7 +25,6 @@ function submit() {
   validate().then(async () => {
     loading.value = true
 
-    await new Promise((resolve) => setTimeout(resolve, 1500))
     // TODO: connect to server
     // Navigate to the server page
     loading.value = false

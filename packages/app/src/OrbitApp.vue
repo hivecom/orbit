@@ -15,7 +15,7 @@ const appState = useAppStateStore()
 
 <template>
   <Flex class="o-root" v-if="appState.globalError" y-center x-center>
-    <h5 class="text-color-red">Global error</h5>
+    <h3 class="text-color-red">Global error</h3>
     <p>{{ appState.globalError }}</p>
   </Flex>
 
@@ -27,9 +27,9 @@ const appState = useAppStateStore()
   </div>
 
   <Flex x-center y-center v-else class="o-fullscreen-loading" column gap="s">
+    <h3>Initializing Orbit</h3>
+    <p class="text-color-light mb-l">Orbit was conceptualized in 2022 and since then, 2 failed versions have been developed. This is the third and final one.</p>
     <Spinner />
-    <h5>Initializing Orbit</h5>
-    <p>Did you know Orbit was conceptualized in 2022 and since 2 failed versions have been developed?</p>
   </Flex>
 </template>
 
@@ -43,5 +43,11 @@ const appState = useAppStateStore()
 .o-fullscreen-loading {
   position: fixed;
   inset: 0;
+
+  p {
+    max-width: 512px;
+    text-align: center;
+    line-height: var(--line-height-loose);
+  }
 }
 </style>

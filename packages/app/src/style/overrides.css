@@ -22,10 +22,10 @@
   --space-xxl: 34px;
   --space-xxxl: 42px;
 
-  --border-radius-xs: 3px;
-  --border-radius-s: 4px;
-  --border-radius-m: 6px;
-  --border-radius-l: 10px;
+  --border-radius-xs: 5px;
+  --border-radius-s: 10px;
+  --border-radius-m: 14px;
+  --border-radius-l: 20px;
   --border-radius-pill: 164px;
 }
 
@@ -48,4 +48,8 @@
 .vui-button {
   --border-radius-s: var(--border-radius-m);
   corner-shape: squircle;
+}
+
+.vui-sidebar .vui-dropdown-item {
+  gap: var(--space-m);
 }
