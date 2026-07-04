@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "app": "workspace:*",
+    "core-wasm": "workspace:*",
     "platform": "workspace:*",
     "vue": "^3.5.38"
   },

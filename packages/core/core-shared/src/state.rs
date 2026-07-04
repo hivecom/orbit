@@ -1,13 +1,13 @@
 #[cfg(feature = "web")]
-use wasm_bindgen::prelude::*;
-#[cfg(feature = "web")]
 use tsify::Tsify;
+#[cfg(feature = "web")]
+use wasm_bindgen::prelude::*;
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "web", derive(Tsify))]
 #[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone))]
 pub struct Server {
-    pub id: i64,
+    pub id: u32,
     pub metadata: ServerMetadata,
     pub channels: Vec<Channel>,
     pub capabilities: Capabilities,
@@ -268,9 +268,9 @@ impl Capabilities {
 #[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone))]
 pub struct User {
     pub id: i64,
-    pub username: String,
-    pub realname: String,
     pub nickname: String,
+    pub username: Option<String>,
+    pub realname: Option<String>,
     pub account: Option<String>,
     pub display_name: Option<String>,
     pub description: Option<String>,
@@ -279,12 +279,12 @@ pub struct User {
 }
 
 impl User {
-    pub fn new(id: i64, username: String) -> Self {
+    pub fn new(id: i64, nickname: String) -> Self {
         Self {
             id,
-            nickname: username.clone(),
-            realname: username.clone(),
-            username,
+            nickname,
+            realname: None,
+            username: None,
             account: None,
             display_name: None,
             description: None,
@@ -354,5 +354,6 @@ pub struct Reaction {
 #[cfg_attr(feature = "web", derive(Tsify))]
 #[cfg_attr(feature = "web", wasm_bindgen)]
 pub enum ServerEvent {
-    Connected,
+    Connected = "Connected",
+    Privmsg(Message),
 }

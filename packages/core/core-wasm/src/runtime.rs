@@ -16,8 +16,8 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::{js_sys, spawn_local};
 
 use core_shared::{
-    SendCommand, handle_message,
-    state::{Capabilities, Server, ServerEvent, ServerMetadata},
+    CommandKey, CommandResponse, ResponseChannels, SendCommand, ServerError, handle_message,
+    state::{Capabilities, Message, Server, ServerEvent, ServerMetadata},
 };
 
 async fn open_db() -> Database {
@@ -87,7 +87,7 @@ impl ServerList {
 
         let server = IrcServer::new(
             IrcRuntime::new(ServerData {
-                id: id as i64,
+                id: id as u32,
                 name: server_name,
                 address,
                 username: username.clone(),
@@ -110,7 +110,7 @@ impl ServerList {
     }
 
     #[wasm_bindgen]
-    pub async fn get_server_by_id(&self, id: i64) -> IrcServer {
+    pub async fn get_server_by_id(&self, id: u32) -> IrcServer {
         debug_assert_eq!(self.servers[id as usize].0.lock().await.my_id, id);
         self.servers[id as usize].clone()
     }
@@ -164,13 +164,12 @@ impl IrcServer {
     }
 
     #[wasm_bindgen]
-    pub async fn join_channel(&self, channel: String, password: Option<String>) {
-        self.0.lock().await.join(channel, password).await.unwrap();
-    }
-
-    #[wasm_bindgen]
-    pub async fn on_message(&self, f: js_sys::Function) {
-        self.0.lock().await.on_message(f).await;
+    pub async fn join_channel(
+        &self,
+        channel: String,
+        password: Option<String>,
+    ) -> Result<IrcChannel, JsError> {
+        self.0.lock().await.join_channel(channel, password).await
     }
 
     #[wasm_bindgen]
@@ -199,23 +198,36 @@ impl IrcServer {
 pub struct IrcChannel {
     name: String,
     outgoing: UnboundedSender<IrcMessage>,
+    response_channels: ResponseChannels,
 }
 
 #[wasm_bindgen]
 impl IrcChannel {
     #[wasm_bindgen]
-    pub async fn send_message(&mut self, message: String) {
+    pub async fn send_message(&mut self, message: String) -> Message {
+        let msg = self
+            .response_channels
+            .create(CommandKey::Privmsg {
+                channel: self.name.clone(),
+                text: message.clone(),
+            })
+            .await;
         self.outgoing
             .privmsg(self.name.clone(), message)
             .await
             .unwrap();
+
+        match msg.await.unwrap() {
+            CommandResponse::Privmsg(msg) => msg,
+            _ => unreachable!(),
+        }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[wasm_bindgen(getter_with_clone)]
 pub struct ServerData {
-    pub id: i64,
+    pub id: u32,
     pub name: String,
     pub address: String, // separate port?
     pub username: String,
@@ -226,10 +238,13 @@ pub struct ServerData {
 
 pub struct IrcRuntime {
     db: Database,
-    my_id: i64,
+    my_id: u32,
     state: Arc<Mutex<Server>>,
     outgoing: Option<UnboundedSender<IrcMessage>>,
+    response_channels: ResponseChannels,
     server_events: Option<UnboundedReceiver<ServerEvent>>,
+    disconnect_events: Option<UnboundedReceiver<()>>,
+    errors: Option<UnboundedReceiver<ServerError>>,
 }
 
 impl IrcRuntime {
@@ -276,11 +291,14 @@ impl IrcRuntime {
                 connected: false,
             })),
             outgoing: None,
+            response_channels: ResponseChannels::default(),
             server_events: None,
+            disconnect_events: None,
+            errors: None,
         }
     }
 
-    async fn register(&mut self) {
+    async fn register(&mut self, nick: String, user: String, realname: String) {
         let irc_version = String::from("302");
         self.ls_caps(irc_version).await.unwrap();
         self.req_caps(&[
@@ -299,23 +317,18 @@ impl IrcRuntime {
         .unwrap();
         self.end_caps().await.unwrap();
 
-        let name = String::from("orbit-testj");
-        self.nick(name.clone()).await.unwrap();
-        self.user(name, String::from("0"), String::from("Jokler"))
-            .await
-            .unwrap();
+        self.nick(nick).await.unwrap();
+        self.user(user, String::from("0"), realname).await.unwrap();
     }
 
     /// Connect to server by id
     pub async fn connect(&mut self) -> Result<(), JsError> {
-        dbg!("connect");
-        log!("connect");
         let server_data = {
             let transaction = self.db.transaction("servers").build().unwrap();
             let store = transaction.object_store("servers").unwrap();
             dbg!(
                 store
-                    .get::<ServerData, i64, i64>(self.my_id)
+                    .get::<ServerData, u32, u32>(self.my_id)
                     .serde()
                     .unwrap()
                     .await
@@ -330,6 +343,8 @@ impl IrcRuntime {
         self.outgoing = Some(outgoing_tx.clone());
         let (mut server_event_tx, server_event_rx) = mpsc::unbounded();
         self.server_events = Some(server_event_rx);
+        let (mut errors_tx, errors_rx) = mpsc::unbounded();
+        self.errors = Some(errors_rx);
 
         spawn_local(async move {
             while let Ok(msg) = outgoing_rx.recv().await {
@@ -337,9 +352,18 @@ impl IrcRuntime {
             }
         });
 
-        self.register().await;
+        let connect_ev = self.response_channels.create(CommandKey::Connect).await;
+
+        self.register(
+            server_data.nickname,
+            server_data.username,
+            server_data.realname,
+        )
+        .await;
 
         let state = self.state.clone();
+
+        let response_channels = self.response_channels.clone();
         spawn_local(async move {
             while let Some(msg) = read.next().await {
                 let WsMessage::Text(text) = msg.unwrap() else {
@@ -347,19 +371,47 @@ impl IrcRuntime {
                     return;
                 };
                 let message = IrcMessage::from_str(&text).unwrap();
-                handle_message(message, &mut outgoing_tx, &mut server_event_tx, &state).await;
+                handle_message(
+                    message,
+                    &mut outgoing_tx,
+                    &mut server_event_tx,
+                    &mut errors_tx,
+                    &response_channels,
+                    &state,
+                )
+                .await;
             }
             log!("WebSocket Closed");
         });
 
+        connect_ev.await.unwrap();
         Ok(())
     }
 
-    pub async fn disconnect(&mut self) {
-        unimplemented!()
+    pub async fn join_channel(
+        &mut self,
+        name: String,
+        password: Option<String>,
+    ) -> Result<IrcChannel, JsError> {
+        let response = self
+            .response_channels
+            .create(CommandKey::Join(name.clone()))
+            .await;
+
+        self.join(name, password).await.unwrap();
+
+        let CommandResponse::Join(name) = response.await.unwrap() else {
+            unreachable!();
+        };
+
+        Ok(IrcChannel {
+            name,
+            outgoing: self.outgoing.as_ref().unwrap().clone(),
+            response_channels: self.response_channels.clone(),
+        })
     }
 
-    pub async fn on_message(&self, f: js_sys::Function) {
+    pub async fn disconnect(&mut self) {
         unimplemented!()
     }
 
@@ -373,12 +425,24 @@ impl IrcRuntime {
         });
     }
 
-    pub async fn on_error(&self, f: js_sys::Function) {
-        unimplemented!()
+    pub async fn on_error(&mut self, f: js_sys::Function) {
+        let mut errors = self.errors.take().unwrap();
+
+        spawn_local(async move {
+            while let Some(event) = errors.next().await {
+                f.call1(&JsValue::null(), &event.into()).unwrap();
+            }
+        });
     }
 
-    pub async fn on_disconnect(&self, f: js_sys::Function) {
-        unimplemented!()
+    pub async fn on_disconnect(&mut self, f: js_sys::Function) {
+        let mut event = self.disconnect_events.take().unwrap();
+
+        spawn_local(async move {
+            while let Some(_) = event.next().await {
+                f.call0(&JsValue::null()).unwrap();
+            }
+        });
     }
 }
 

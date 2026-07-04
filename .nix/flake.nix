@@ -25,6 +25,7 @@
             wasm-pack
             bacon
             tmux
+            rustfmt
 
             pkg-config
             llvmPackages.bintools
