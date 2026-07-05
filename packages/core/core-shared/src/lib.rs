@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use anyhow::anyhow;
 use futures::{
     SinkExt,
     channel::{
@@ -103,16 +104,16 @@ pub async fn handle_message(
     errors: &mut UnboundedSender<ServerError>,
     response_channels: &ResponseChannels,
     state: &Arc<Mutex<Server>>,
-) {
+) -> Result<(), anyhow::Error> {
     match message.command {
         CAP(_, sub, param, caps) => {
-            handle_caps(sub, param, caps, &state).await;
+            handle_caps(sub, param, caps, &state).await?;
         }
         PING(server1, server2) => {
-            out.pong(server1, server2).await.unwrap();
+            out.pong(server1, server2).await?;
         }
         Response(rpl, params) => {
-            handle_response(rpl, params, &state, response_channels).await;
+            handle_response(rpl, params, &state, response_channels).await?;
         }
         JOIN(channel, _, _) => {
             response_channels
@@ -121,7 +122,7 @@ pub async fn handle_message(
                     CommandResponse::Join(channel),
                 )
                 .await
-                .unwrap();
+                .map_err(|e| anyhow!("Failed to reply to JOIN command {e:?}"))?;
         }
         PRIVMSG(channel, text) => {
             let mut msgid = None;
@@ -150,8 +151,8 @@ pub async fn handle_message(
                     edited: false,
                 }),
                 metadata: MessageMetadata {
-                    msgid: msgid.unwrap(),
-                    server_time: server_time.unwrap().unix_timestamp(),
+                    msgid: msgid.expect("unimplemented"),
+                    server_time: server_time.expect("unimplemented").unix_timestamp(),
                     message_type: MessageType::Privmsg,
                     user_id: 0,
                 },
@@ -163,17 +164,16 @@ pub async fn handle_message(
                     CommandResponse::Privmsg(message.clone()),
                 )
                 .await
-                .unwrap();
+                .map_err(|e| anyhow!("Failed to reply to PRIVMSG command {e:?}"))?;
 
-            server_events
-                .send(ServerEvent::Privmsg(message))
-                .await
-                .unwrap();
+            server_events.send(ServerEvent::Privmsg(message)).await?;
         }
         _ => {
             dbg!(message);
         }
     }
+
+    Ok(())
 }
 
 pub async fn handle_caps(
@@ -181,20 +181,26 @@ pub async fn handle_caps(
     param: Option<String>,
     caps: Option<String>,
     state: &Arc<Mutex<Server>>,
-) {
+) -> anyhow::Result<()> {
     match sub {
         CapSubCommand::LS if let Some(caps) = caps => {
             for cap in caps.split_whitespace() {
-                let cap = cap.split('=').next().unwrap();
+                let cap = cap
+                    .split('=')
+                    .next()
+                    .ok_or_else(|| anyhow!("Cap is empty: \"{}\"", cap))?;
                 state.lock().await.capabilities.set_from_name(cap, None);
             }
         }
         CapSubCommand::LS if let Some(param) = param => {
             if param == "*" {
-                return;
+                return Ok(());
             }
             for cap in param.split_whitespace() {
-                let cap = cap.split('=').next().unwrap();
+                let cap = cap
+                    .split('=')
+                    .next()
+                    .ok_or_else(|| anyhow!("Cap is empty: \"{}\"", cap))?;
                 state.lock().await.capabilities.set_from_name(cap, None);
             }
         }
@@ -211,6 +217,8 @@ pub async fn handle_caps(
             dbg!(sub, &param, caps);
         }
     }
+
+    Ok(())
 }
 
 pub async fn handle_response(
@@ -218,7 +226,7 @@ pub async fn handle_response(
     params: Vec<String>,
     state: &Arc<Mutex<Server>>,
     response_channels: &ResponseChannels,
-) {
+) -> anyhow::Result<()> {
     match rpl {
         Response::RPL_WELCOME => state.lock().await.me = Some(User::new(0, params[0].clone())),
         Response::RPL_MOTDSTART => {
@@ -232,8 +240,7 @@ pub async fn handle_response(
                 response_channels
                     .reply(&CommandKey::Connect, CommandResponse::Connect)
                     .await
-                    .unwrap();
-                // server_events.send(ServerEvent::Connected).await.unwrap();
+                    .map_err(|e| anyhow!("Failed to reply to connetion command {e:?}"))?;
                 state.lock().await.connected = true;
             }
         }
@@ -251,6 +258,8 @@ pub async fn handle_response(
             dbg!(rpl, params);
         }
     }
+
+    Ok(())
 }
 
 pub trait SendCommand {

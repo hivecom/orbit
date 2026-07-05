@@ -20,7 +20,7 @@ use core_shared::{
     state::{Capabilities, Message, Server, ServerEvent, ServerMetadata},
 };
 
-async fn open_db() -> Database {
+async fn open_db() -> Result<Database, JsError> {
     Database::open("orbit-connector")
         .with_on_upgrade_needed_fut(|event, db| async move {
             let old_version = event.old_version() as u64;
@@ -36,7 +36,7 @@ async fn open_db() -> Database {
             Ok(())
         })
         .await
-        .unwrap()
+        .map_err(Into::into)
 }
 
 #[derive(Default)]
@@ -49,22 +49,22 @@ pub struct ServerList {
 impl ServerList {
     #[wasm_bindgen]
     pub async fn new() -> Result<Self, JsError> {
-        let db = open_db().await;
+        let db = open_db().await?;
+
         let servers = {
             let transaction = db
                 .transaction("servers")
                 .with_mode(TransactionMode::Readwrite)
-                .build()
-                .unwrap();
+                .build()?;
 
-            let store = transaction.object_store("servers").unwrap();
+            let store = transaction.object_store("servers")?;
 
             let mut servers = Vec::new();
 
             for data in store.get_all::<ServerData>().serde()?.await? {
                 debug!(format!("Loaded server: {:?}", &data));
-                let data = data.unwrap();
-                let server = IrcServer::new(IrcRuntime::new(data).await);
+                let data = data?;
+                let server = IrcServer::new(IrcRuntime::new(data).await?);
                 server.connect().await?;
                 servers.push(server);
             }
@@ -95,7 +95,7 @@ impl ServerList {
                 realname: username,
                 password: None,
             })
-            .await,
+            .await?,
         );
         server.connect().await?;
         debug!("Connected");
@@ -173,18 +173,18 @@ impl IrcServer {
     }
 
     #[wasm_bindgen]
-    pub async fn on_event(&self, f: js_sys::Function) {
-        self.0.lock().await.on_event(f).await;
+    pub async fn on_event(&self, f: js_sys::Function) -> Result<(), JsError> {
+        self.0.lock().await.on_event(f).await
     }
 
     #[wasm_bindgen]
-    pub async fn on_error(&self, f: js_sys::Function) {
-        self.0.lock().await.on_error(f).await;
+    pub async fn on_error(&self, f: js_sys::Function) -> Result<(), JsError> {
+        self.0.lock().await.on_error(f).await
     }
 
     #[wasm_bindgen]
-    pub async fn on_disconnect(&self, f: js_sys::Function) {
-        self.0.lock().await.on_disconnect(f).await;
+    pub async fn on_disconnect(&self, f: js_sys::Function) -> Result<(), JsError> {
+        self.0.lock().await.on_disconnect(f).await
     }
 
     #[wasm_bindgen]
@@ -204,7 +204,7 @@ pub struct IrcChannel {
 #[wasm_bindgen]
 impl IrcChannel {
     #[wasm_bindgen]
-    pub async fn send_message(&mut self, message: String) -> Message {
+    pub async fn send_message(&mut self, message: String) -> Result<Message, JsError> {
         let msg = self
             .response_channels
             .create(CommandKey::Privmsg {
@@ -212,13 +212,10 @@ impl IrcChannel {
                 text: message.clone(),
             })
             .await;
-        self.outgoing
-            .privmsg(self.name.clone(), message)
-            .await
-            .unwrap();
+        self.outgoing.privmsg(self.name.clone(), message).await?;
 
-        match msg.await.unwrap() {
-            CommandResponse::Privmsg(msg) => msg,
+        match msg.await.expect("Message sender disconnected") {
+            CommandResponse::Privmsg(msg) => Ok(msg),
             _ => unreachable!(),
         }
     }
@@ -248,8 +245,8 @@ pub struct IrcRuntime {
 }
 
 impl IrcRuntime {
-    pub async fn new(server_data: ServerData) -> Self {
-        let db = open_db().await;
+    pub async fn new(server_data: ServerData) -> Result<Self, JsError> {
+        let db = open_db().await?;
 
         let id = server_data.id;
         let name = server_data.name.clone();
@@ -258,20 +255,18 @@ impl IrcRuntime {
             let transaction = db
                 .transaction("servers")
                 .with_mode(TransactionMode::Readwrite)
-                .build()
-                .unwrap();
-            let store = transaction.object_store("servers").unwrap();
+                .build()?;
+            let store = transaction.object_store("servers")?;
             store
                 .put(server_data)
                 .with_key(id)
                 .with_key_type::<i64>()
-                .serde()
-                .unwrap();
+                .serde()?;
 
-            transaction.commit().await.unwrap();
+            transaction.commit().await?;
         }
 
-        Self {
+        Ok(Self {
             db,
             my_id: id,
             state: Arc::new(Mutex::new(Server {
@@ -295,12 +290,17 @@ impl IrcRuntime {
             server_events: None,
             disconnect_events: None,
             errors: None,
-        }
+        })
     }
 
-    async fn register(&mut self, nick: String, user: String, realname: String) {
+    async fn register(
+        &mut self,
+        nick: String,
+        user: String,
+        realname: String,
+    ) -> Result<(), JsError> {
         let irc_version = String::from("302");
-        self.ls_caps(irc_version).await.unwrap();
+        self.ls_caps(irc_version).await?;
         self.req_caps(&[
             "echo-message",
             "message-tags",
@@ -313,26 +313,21 @@ impl IrcRuntime {
             "draft/multiline",
             "server-time",
         ])
-        .await
-        .unwrap();
-        self.end_caps().await.unwrap();
+        .await?;
+        self.end_caps().await?;
 
-        self.nick(nick).await.unwrap();
-        self.user(user, String::from("0"), realname).await.unwrap();
+        self.nick(nick).await?;
+        self.user(user, String::from("0"), realname).await?;
+
+        Ok(())
     }
 
     /// Connect to server by id
     pub async fn connect(&mut self) -> Result<(), JsError> {
         let server_data = {
-            let transaction = self.db.transaction("servers").build().unwrap();
-            let store = transaction.object_store("servers").unwrap();
-            dbg!(
-                store
-                    .get::<ServerData, u32, u32>(self.my_id)
-                    .serde()
-                    .unwrap()
-                    .await
-            )
+            let transaction = self.db.transaction("servers").build()?;
+            let store = transaction.object_store("servers")?;
+            dbg!(store.get::<ServerData, u32, u32>(self.my_id).serde()?.await)
         }?
         .ok_or(JsError::new("can't connect to server, invalid id"))?;
 
@@ -348,7 +343,7 @@ impl IrcRuntime {
 
         spawn_local(async move {
             while let Ok(msg) = outgoing_rx.recv().await {
-                write.message(msg).await.unwrap();
+                write.message(msg).await.expect("Failed to write message");
             }
         });
 
@@ -359,32 +354,41 @@ impl IrcRuntime {
             server_data.username,
             server_data.realname,
         )
-        .await;
+        .await?;
 
         let state = self.state.clone();
 
         let response_channels = self.response_channels.clone();
         spawn_local(async move {
             while let Some(msg) = read.next().await {
-                let WsMessage::Text(text) = msg.unwrap() else {
+                let WsMessage::Text(text) = msg.expect("read loop channel disconnected") else {
                     error!("unexpected binary message on websocket");
                     return;
                 };
-                let message = IrcMessage::from_str(&text).unwrap();
-                handle_message(
-                    message,
+                let message = match IrcMessage::from_str(&text) {
+                    Ok(m) => m,
+                    Err(e) => {
+                        error!(&format!("Failed to parse messsage: {}", e));
+                        continue;
+                    }
+                };
+                if let Err(e) = handle_message(
+                    message.clone(),
                     &mut outgoing_tx,
                     &mut server_event_tx,
                     &mut errors_tx,
                     &response_channels,
                     &state,
                 )
-                .await;
+                .await
+                {
+                    error!(&format!("Failed to handle message: {:?}", message));
+                }
             }
             log!("WebSocket Closed");
         });
 
-        connect_ev.await.unwrap();
+        connect_ev.await?;
         Ok(())
     }
 
@@ -398,15 +402,19 @@ impl IrcRuntime {
             .create(CommandKey::Join(name.clone()))
             .await;
 
-        self.join(name, password).await.unwrap();
+        self.join(name, password).await?;
 
-        let CommandResponse::Join(name) = response.await.unwrap() else {
+        let CommandResponse::Join(name) = response.await? else {
             unreachable!();
         };
 
         Ok(IrcChannel {
             name,
-            outgoing: self.outgoing.as_ref().unwrap().clone(),
+            outgoing: self
+                .outgoing
+                .as_ref()
+                .ok_or(JsError::new("no outgoing channel, maybe not connected?"))?
+                .clone(),
             response_channels: self.response_channels.clone(),
         })
     }
@@ -415,34 +423,55 @@ impl IrcRuntime {
         unimplemented!()
     }
 
-    pub async fn on_event(&mut self, f: js_sys::Function) {
-        let mut server_events = self.server_events.take().unwrap();
+    pub async fn on_event(&mut self, f: js_sys::Function) -> Result<(), JsError> {
+        let mut server_events = self
+            .server_events
+            .take()
+            .ok_or(JsError::new("No server event stream"))?;
 
         spawn_local(async move {
             while let Some(event) = server_events.next().await {
-                f.call1(&JsValue::null(), &event.into()).unwrap();
+                if let Err(e) = f.call1(&JsValue::null(), &event.into()) {
+                    error!("Erorr during event callback", e);
+                }
             }
         });
+
+        Ok(())
     }
 
-    pub async fn on_error(&mut self, f: js_sys::Function) {
-        let mut errors = self.errors.take().unwrap();
+    pub async fn on_error(&mut self, f: js_sys::Function) -> Result<(), JsError> {
+        let mut errors = self
+            .errors
+            .take()
+            .ok_or(JsError::new("No server error stream"))?;
 
         spawn_local(async move {
             while let Some(event) = errors.next().await {
-                f.call1(&JsValue::null(), &event.into()).unwrap();
+                if let Err(e) = f.call1(&JsValue::null(), &event.into()) {
+                    error!("Erorr during error callback", e);
+                }
             }
         });
+
+        Ok(())
     }
 
-    pub async fn on_disconnect(&mut self, f: js_sys::Function) {
-        let mut event = self.disconnect_events.take().unwrap();
+    pub async fn on_disconnect(&mut self, f: js_sys::Function) -> Result<(), JsError> {
+        let mut event = self
+            .disconnect_events
+            .take()
+            .ok_or(JsError::new("No server disconnect stream"))?;
 
         spawn_local(async move {
             while let Some(_) = event.next().await {
-                f.call0(&JsValue::null()).unwrap();
+                if let Err(e) = f.call0(&JsValue::null()) {
+                    error!("Erorr during disconnect callback", e);
+                }
             }
         });
+
+        Ok(())
     }
 }
 

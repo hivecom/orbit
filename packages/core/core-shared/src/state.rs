@@ -354,6 +354,5 @@ pub struct Reaction {
 #[cfg_attr(feature = "web", derive(Tsify))]
 #[cfg_attr(feature = "web", wasm_bindgen)]
 pub enum ServerEvent {
-    Connected = "Connected",
     Privmsg(Message),
 }
