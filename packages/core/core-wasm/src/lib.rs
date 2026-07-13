@@ -88,10 +88,11 @@ impl ServerList {
     }
 
     #[wasm_bindgen]
-    pub async fn connect(&mut self, url: &str) -> Result<(), JsError> {
-        self.servers.push(IrcServer::connect(url).await?);
+    pub async fn connect(&mut self, url: &str) -> Result<IrcServer, JsError> {
+        let server = IrcServer::connect(url).await?;
+        self.servers.push(server);
 
-        Ok(())
+        Ok(server)
     }
 }
 
