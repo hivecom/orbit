@@ -5,12 +5,13 @@ use crate::dbg;
 use crate::{
     SendCommand,
     state::{
-        Channel, ChannelMetadata, Message, MessageMetadata, MessageType, Server, TextMessage, User,
+        Channel, ChannelMetadata, Message, MessageMetadata, MessageType, Server, ServerError,
+        ServerEvent, TextMessage, User,
     },
 };
-use anyhow::{anyhow, bail};
+use anyhow::anyhow;
 use futures::{
-    StreamExt,
+    SinkExt, StreamExt,
     channel::{
         mpsc::{self, UnboundedSender},
         oneshot,
@@ -19,7 +20,7 @@ use futures::{
 };
 use irc_proto::{CapSubCommand, Command::*, Message as IrcMessage, Response, message::Tag};
 use time::{OffsetDateTime, format_description::well_known::Iso8601};
-use tracing::debug;
+use tracing::{debug, error};
 
 #[derive(Debug, Default)]
 pub struct ResponseChannels(Vec<(CommandKey, oneshot::Sender<CommandResponse>)>);
@@ -63,18 +64,9 @@ impl ResponseChannels {
 }
 
 #[derive(Debug)]
-pub struct IrcActor<C: IrcConnection> {
-    cmd_rx: mpsc::UnboundedReceiver<ActorMessage>,
-    incoming: C::Incoming,
-    outgoing: C::Outgoing,
-    state: Server,
-    response_channels: ResponseChannels,
-}
-
-#[derive(Debug)]
 pub struct ActorMessage {
     pub command: ActorCommand,
-    pub reply_tx: oneshot::Sender<CommandResponse>,
+    pub reply_tx: Option<oneshot::Sender<CommandResponse>>,
 }
 
 #[derive(Debug)]
@@ -92,6 +84,15 @@ pub enum ActorCommand {
         text: String,
         target: String,
     },
+    AddEventHandler {
+        handler: UnboundedSender<ServerEvent>,
+    },
+    AddErrorHandler {
+        handler: UnboundedSender<ServerError>,
+    },
+    AddDisconectHandler {
+        handler: UnboundedSender<String>,
+    },
 }
 
 pub trait IrcConnection: fmt::Debug {
@@ -99,6 +100,18 @@ pub trait IrcConnection: fmt::Debug {
     type Outgoing: SendCommand;
 
     fn in_out(self) -> (Self::Incoming, Self::Outgoing);
+}
+
+#[derive(Debug)]
+pub struct IrcActor<C: IrcConnection> {
+    cmd_rx: mpsc::UnboundedReceiver<ActorMessage>,
+    incoming: C::Incoming,
+    outgoing: C::Outgoing,
+    state: Server,
+    response_channels: ResponseChannels,
+    event_handlers: Vec<UnboundedSender<ServerEvent>>,
+    error_handlers: Vec<UnboundedSender<ServerError>>,
+    disconnect_handlers: Vec<UnboundedSender<String>>,
 }
 
 impl<C: IrcConnection> IrcActor<C> {
@@ -113,6 +126,9 @@ impl<C: IrcConnection> IrcActor<C> {
             outgoing,
             state: Server::default(),
             response_channels: ResponseChannels::default(),
+            event_handlers: Vec::new(),
+            error_handlers: Vec::new(),
+            disconnect_handlers: Vec::new(),
         };
 
         spawn(actor);
@@ -124,8 +140,14 @@ impl<C: IrcConnection> IrcActor<C> {
     pub async fn run(mut self) {
         loop {
             futures::select! {
-                msg = self.incoming.select_next_some() => {
-                    self.handle_incoming(msg).await.unwrap();
+                msg = self.incoming.next() => {
+                    match msg {
+                        Some(m) => self.handle_incoming(m).await.unwrap(),
+                        None => {
+                            self.on_disconnect("Connection Closed".into()).await.unwrap();
+                            break;
+                        }
+                    }
                 }
                 cmd = self.cmd_rx.select_next_some() => {
                     self.handle_command(cmd).await.unwrap();
@@ -158,7 +180,7 @@ impl<C: IrcConnection> IrcActor<C> {
                     messages: Vec::new(),
                     users: Vec::new(),
                 };
-                self.state.channels.push(channel);
+                self.state.channels.push(channel.clone());
                 self.response_channels
                     .reply(
                         &CommandKey::Join(channel_name.clone()),
@@ -166,6 +188,8 @@ impl<C: IrcConnection> IrcActor<C> {
                     )
                     .await
                     .map_err(|e| anyhow!("Failed to reply to JOIN command {e:?}"))?;
+
+                self.on_event(ServerEvent::Joined(channel)).await?;
             }
             PRIVMSG(ref target, ref text) => {
                 let mut msgid = None;
@@ -226,12 +250,11 @@ impl<C: IrcConnection> IrcActor<C> {
                         )
                         .await
                     {
-                        bail!("Failed to reply to PRIVMSG command {e:?}");
+                        error!("Failed to reply to PRIVMSG command {e:?}");
                     }
                 }
 
-                // FIXME: what do here
-                // server_events.send(ServerEvent::Privmsg(message)).await?;
+                self.on_event(ServerEvent::Privmsg(state_message)).await?;
             }
             _ => {
                 dbg!(message);
@@ -336,12 +359,12 @@ impl<C: IrcConnection> IrcActor<C> {
                 realname,
             } => {
                 self.response_channels
-                    .register(CommandKey::Register, cmd.reply_tx);
+                    .register(CommandKey::Register, cmd.reply_tx.unwrap());
                 self.register(nick, user, realname).await?;
             }
             ActorCommand::Join { channel, password } => {
                 self.response_channels
-                    .register(CommandKey::Join(channel.clone()), cmd.reply_tx);
+                    .register(CommandKey::Join(channel.clone()), cmd.reply_tx.unwrap());
                 self.join(channel, password).await.unwrap();
             }
             ActorCommand::Privmsg { text, target } => {
@@ -350,10 +373,46 @@ impl<C: IrcConnection> IrcActor<C> {
                         target: target.clone(),
                         text: text.clone(),
                     },
-                    cmd.reply_tx,
+                    cmd.reply_tx.unwrap(),
                 );
                 self.privmsg(target, text).await.unwrap();
             }
+            ActorCommand::AddEventHandler { handler } => {
+                self.event_handlers.push(handler);
+            }
+            ActorCommand::AddErrorHandler { handler } => {
+                self.error_handlers.push(handler);
+            }
+            ActorCommand::AddDisconectHandler { handler } => {
+                self.disconnect_handlers.push(handler);
+            }
+        }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(ret, err, skip(self))]
+    pub async fn on_event(&mut self, event: ServerEvent) -> anyhow::Result<()> {
+        for handler in &mut self.event_handlers {
+            handler.send(event.clone()).await.unwrap();
+        }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(ret, err, skip(self))]
+    pub async fn on_error(&mut self, error: ServerError) -> anyhow::Result<()> {
+        for handler in &mut self.error_handlers {
+            handler.send(error.clone()).await.unwrap();
+        }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(ret, err, skip(self))]
+    pub async fn on_disconnect(&mut self, reason: String) -> anyhow::Result<()> {
+        for handler in &mut self.disconnect_handlers {
+            handler.send(reason.clone()).await.unwrap();
         }
 
         Ok(())

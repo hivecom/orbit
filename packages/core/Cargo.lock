@@ -136,6 +136,7 @@ dependencies = [
  "indexed_db_futures",
  "irc-proto",
  "serde",
+ "tracing",
  "tracing-subscriber",
  "tracing-subscriber-wasm",
  "tracing-wasm",

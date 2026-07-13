@@ -370,5 +370,13 @@ pub struct Reaction {
 #[cfg_attr(feature = "web", derive(Tsify))]
 #[cfg_attr(feature = "web", wasm_bindgen)]
 pub enum ServerEvent {
+    Joined(Channel),
     Privmsg(Message),
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "web", derive(Tsify))]
+#[cfg_attr(feature = "web", wasm_bindgen)]
+pub enum ServerError {
+    Placeholder(String),
 }

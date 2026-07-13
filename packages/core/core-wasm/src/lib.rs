@@ -7,13 +7,16 @@ use core_shared::{
 };
 use futures::{
     SinkExt, StreamExt,
-    channel::{mpsc::UnboundedSender, oneshot},
+    channel::{
+        mpsc::{self, UnboundedSender},
+        oneshot,
+    },
     stream::{Fuse, LocalBoxStream, SplitSink},
 };
-use gloo_console::debug;
 use gloo_net::websocket::{self, WebSocketError, futures::WebSocket};
+use tracing::debug;
 use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::spawn_local;
+use wasm_bindgen_futures::{js_sys, spawn_local};
 
 #[macro_export]
 macro_rules! dbg {
@@ -109,6 +112,75 @@ impl IrcServer {
     }
 
     #[wasm_bindgen]
+    pub async fn on_data(&mut self, f: js_sys::Function) -> Result<(), JsError> {
+        let (handler_tx, mut handler_rx) = mpsc::unbounded();
+        self.address
+            .send(ActorMessage {
+                command: ActorCommand::AddEventHandler {
+                    handler: handler_tx,
+                },
+                reply_tx: None,
+            })
+            .await?;
+
+        spawn_local(async move {
+            while let Ok(event) = handler_rx.recv().await {
+                if let Err(e) = f.call1(&JsValue::null(), &event.into()) {
+                    gloo_console::error!("Error during event callback: {}", e);
+                }
+            }
+        });
+
+        Ok(())
+    }
+
+    #[wasm_bindgen]
+    pub async fn on_error(&mut self, f: js_sys::Function) -> Result<(), JsError> {
+        let (handler_tx, mut handler_rx) = mpsc::unbounded();
+        self.address
+            .send(ActorMessage {
+                command: ActorCommand::AddErrorHandler {
+                    handler: handler_tx,
+                },
+                reply_tx: None,
+            })
+            .await?;
+
+        spawn_local(async move {
+            while let Ok(event) = handler_rx.recv().await {
+                if let Err(e) = f.call1(&JsValue::null(), &event.into()) {
+                    gloo_console::error!("Error during event callback: {}", e);
+                }
+            }
+        });
+
+        Ok(())
+    }
+
+    #[wasm_bindgen]
+    pub async fn on_disconnect(&mut self, f: js_sys::Function) -> Result<(), JsError> {
+        let (handler_tx, mut handler_rx) = mpsc::unbounded();
+        self.address
+            .send(ActorMessage {
+                command: ActorCommand::AddDisconectHandler {
+                    handler: handler_tx,
+                },
+                reply_tx: None,
+            })
+            .await?;
+
+        spawn_local(async move {
+            while let Ok(event) = handler_rx.recv().await {
+                if let Err(e) = f.call1(&JsValue::null(), &event.into()) {
+                    gloo_console::error!("Error during event callback: {}", e);
+                }
+            }
+        });
+
+        Ok(())
+    }
+
+    #[wasm_bindgen]
     pub async fn register(
         &mut self,
         nick: String,
@@ -123,7 +195,7 @@ impl IrcServer {
                     user,
                     realname,
                 },
-                reply_tx: tx,
+                reply_tx: Some(tx),
             })
             .await?;
 
@@ -145,7 +217,7 @@ impl IrcServer {
         self.address
             .send(ActorMessage {
                 command: ActorCommand::Join { channel, password },
-                reply_tx: tx,
+                reply_tx: Some(tx),
             })
             .await?;
 
@@ -178,7 +250,7 @@ impl IrcChannel {
                     target: self.name.clone(),
                     text,
                 },
-                reply_tx: tx,
+                reply_tx: Some(tx),
             })
             .await?;
 
