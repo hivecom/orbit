@@ -46,7 +46,7 @@ macro_rules! dbg {
 use tracing_subscriber::prelude::*;
 use tracing_subscriber_wasm::MakeConsoleWriter;
 
-pub fn init_tracing() {
+fn init_tracing() {
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_writer(MakeConsoleWriter::default()) // Bridges to browser console
         .with_ansi(false) // Browser console doesn't support colors
@@ -59,7 +59,7 @@ pub fn init_tracing() {
 }
 
 #[wasm_bindgen(start)]
-pub fn init() {
+fn init() {
     console_error_panic_hook::set_once();
     // tracing_wasm::set_as_global_default();
 
@@ -90,7 +90,7 @@ impl ServerList {
     #[wasm_bindgen]
     pub async fn connect(&mut self, url: &str) -> Result<IrcServer, JsError> {
         let server = IrcServer::connect(url).await?;
-        self.servers.push(server);
+        self.servers.push(server.clone());
 
         Ok(server)
     }
