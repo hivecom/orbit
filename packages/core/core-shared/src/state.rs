@@ -3,7 +3,7 @@ use tsify::Tsify;
 #[cfg(feature = "web")]
 use wasm_bindgen::prelude::*;
 
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 #[cfg_attr(feature = "web", derive(Tsify))]
 #[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone))]
 pub struct Server {
@@ -16,7 +16,7 @@ pub struct Server {
     pub connected: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 #[cfg_attr(feature = "web", derive(Tsify))]
 #[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone))]
 pub struct ServerMetadata {
@@ -302,6 +302,14 @@ pub struct Message {
     pub metadata: MessageMetadata,
 }
 
+impl PartialEq for Message {
+    fn eq(&self, other: &Self) -> bool {
+        self.metadata == other.metadata
+    }
+}
+
+impl Eq for Message {}
+
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "web", wasm_bindgen)]
 pub enum MessageType {
@@ -333,6 +341,14 @@ pub struct MessageMetadata {
     pub message_type: MessageType,
     pub user_id: i64,
 }
+
+impl PartialEq for MessageMetadata {
+    fn eq(&self, other: &Self) -> bool {
+        self.msgid == other.msgid
+    }
+}
+
+impl Eq for MessageMetadata {}
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "web", derive(Tsify))]

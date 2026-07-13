@@ -20,3 +20,6 @@ core-shared = { version = "0.1.0", path = "../core-shared", features = ["web"] }
 indexed_db_futures = { version = "0.6.4", features = ["async-upgrade", "serde"] }
 serde = { version = "1.0.228", features = ["derive"] }
 anyhow = { version = "1.0.103", features = ["backtrace"] }
+tracing-wasm = "0.2.1"
+tracing-subscriber = { version = "0.3.23", features = ["fmt"] }
+tracing-subscriber-wasm = "0.1.0"
