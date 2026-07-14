@@ -3,7 +3,7 @@ use std::{fmt, str::FromStr};
 use core_shared::{
     SendCommand,
     actor::{ActorCommand, ActorMessage, CommandResponse, IrcActor, IrcConnection},
-    state::{Message, Server},
+    state::{self, Capabilities, Message, ServerMetadata, User},
 };
 use futures::{
     SinkExt, StreamExt,
@@ -14,7 +14,9 @@ use futures::{
     stream::{Fuse, LocalBoxStream, SplitSink},
 };
 use gloo_net::websocket::{self, WebSocketError, futures::WebSocket};
+use js_sys::{JsString, Map};
 use tracing::debug;
+use tsify::Tsify;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::{js_sys, spawn_local};
 
@@ -104,10 +106,11 @@ pub struct IrcServer {
 
 #[wasm_bindgen]
 impl IrcServer {
-    pub async fn connect(url: &str) -> Result<Self, JsError> {
+    async fn connect(url: &str) -> Result<Self, JsError> {
         let connection = WsConnection::new(url)?;
-        let address =
-            IrcActor::new(connection, |actor| spawn_local(async { actor.run().await })).await;
+        let address = IrcActor::new(connection, |actor| spawn_local(async { actor.run().await }))
+            .await
+            .map_err(|e| JsError::new(&e.to_string()))?;
 
         Ok(Self { address })
     }
@@ -182,7 +185,36 @@ impl IrcServer {
     }
 
     #[wasm_bindgen]
-    pub async fn register(
+    pub async fn sign_in(
+        &mut self,
+        nick: String,
+        user: String,
+        realname: String,
+        password: String,
+    ) -> Result<Server, JsError> {
+        let (tx, rx) = oneshot::channel();
+        self.address
+            .send(ActorMessage {
+                command: ActorCommand::SignIn {
+                    nick,
+                    user,
+                    realname,
+                    password,
+                },
+                reply_tx: Some(tx),
+            })
+            .await?;
+
+        let resp = rx.await?;
+        let CommandResponse::SignIn(server) = resp else {
+            unreachable!("expected sign in, got: {:?}", resp);
+        };
+
+        Ok(server.into())
+    }
+
+    #[wasm_bindgen]
+    pub async fn sign_in_anonymous(
         &mut self,
         nick: String,
         user: String,
@@ -191,7 +223,7 @@ impl IrcServer {
         let (tx, rx) = oneshot::channel();
         self.address
             .send(ActorMessage {
-                command: ActorCommand::Register {
+                command: ActorCommand::SignInAnonymous {
                     nick,
                     user,
                     realname,
@@ -201,11 +233,11 @@ impl IrcServer {
             .await?;
 
         let resp = rx.await?;
-        let CommandResponse::Register(server) = resp else {
-            unreachable!("expected register, got: {:?}", resp);
+        let CommandResponse::SignIn(server) = resp else {
+            unreachable!("expected sign in, got: {:?}", resp);
         };
 
-        Ok(server)
+        Ok(server.into())
     }
 
     #[wasm_bindgen]
@@ -275,7 +307,7 @@ impl fmt::Debug for WsConnection {
 }
 
 impl WsConnection {
-    pub fn new(url: &str) -> Result<Self, JsError> {
+    fn new(url: &str) -> Result<Self, JsError> {
         Ok(WsConnection {
             socket: WebSocket::open(url)?,
         })
@@ -314,5 +346,37 @@ impl SendCommand for OutgoingSink {
             .await?;
 
         Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Tsify)]
+#[wasm_bindgen(getter_with_clone)]
+pub struct Server {
+    pub metadata: ServerMetadata,
+    pub channels: Map<JsString, JsValue>,
+    pub capabilities: Capabilities,
+    pub users: Map<JsString, JsValue>,
+    pub me: Option<User>,
+}
+
+impl From<state::Server> for Server {
+    fn from(server: state::Server) -> Self {
+        let channels = js_sys::Map::new_typed();
+        for (k, v) in server.channels {
+            channels.set(&JsString::from(k), &JsValue::from(v));
+        }
+
+        let users = js_sys::Map::new_typed();
+        for (k, v) in server.users {
+            users.set(&JsString::from(k), &JsValue::from(v));
+        }
+
+        Self {
+            metadata: server.metadata,
+            channels,
+            capabilities: server.capabilities,
+            users,
+            me: server.me,
+        }
     }
 }

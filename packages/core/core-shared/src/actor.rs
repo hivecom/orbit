@@ -10,6 +10,7 @@ use crate::{
     },
 };
 use anyhow::anyhow;
+use base64::prelude::*;
 use futures::{
     SinkExt, StreamExt,
     channel::{
@@ -27,14 +28,16 @@ pub struct ResponseChannels(Vec<(CommandKey, oneshot::Sender<CommandResponse>)>)
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CommandKey {
-    Register,
+    RequestCaps,
+    SignIn,
     Join(String),
     Privmsg { target: String, text: String },
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum CommandResponse {
-    Register(Server),
+    Caps,
+    SignIn(Server),
     Join(String),
     Privmsg(Message),
 }
@@ -71,7 +74,13 @@ pub struct ActorMessage {
 
 #[derive(Debug)]
 pub enum ActorCommand {
-    Register {
+    SignIn {
+        nick: String,
+        user: String,
+        realname: String,
+        password: String,
+    },
+    SignInAnonymous {
         nick: String,
         user: String,
         realname: String,
@@ -115,12 +124,15 @@ pub struct IrcActor<C: IrcConnection> {
 }
 
 impl<C: IrcConnection> IrcActor<C> {
-    #[tracing::instrument(ret)]
-    pub async fn new(connection: C, spawn: fn(IrcActor<C>) -> ()) -> UnboundedSender<ActorMessage> {
+    #[tracing::instrument]
+    pub async fn new(
+        connection: C,
+        spawn: fn(IrcActor<C>) -> (),
+    ) -> anyhow::Result<UnboundedSender<ActorMessage>> {
         let (incoming, outgoing) = connection.in_out();
 
         let (cmd_tx, cmd_rx) = mpsc::unbounded();
-        let actor = Self {
+        let mut actor = Self {
             cmd_rx,
             incoming,
             outgoing,
@@ -131,12 +143,20 @@ impl<C: IrcConnection> IrcActor<C> {
             disconnect_handlers: Vec::new(),
         };
 
+        let (tx, rx) = oneshot::channel();
+        actor
+            .response_channels
+            .register(CommandKey::RequestCaps, tx);
+        actor.request_caps().await?;
+
         spawn(actor);
 
-        cmd_tx
+        rx.await.unwrap();
+
+        Ok(cmd_tx)
     }
 
-    #[tracing::instrument(ret, skip(self))]
+    #[tracing::instrument(skip(self))]
     pub async fn run(mut self) {
         loop {
             futures::select! {
@@ -169,18 +189,10 @@ impl<C: IrcConnection> IrcActor<C> {
                 self.handle_response(rpl, params).await?;
             }
             JOIN(channel_name, _, _) => {
-                let channel = Channel {
-                    id: self.state.channels.iter().map(|c| c.id).max().unwrap_or(0),
-                    metadata: ChannelMetadata {
-                        name: channel_name.clone(),
-                        display_name: None,
-                        description: None,
-                        icon: None,
-                    },
-                    messages: Vec::new(),
-                    users: Vec::new(),
-                };
-                self.state.channels.push(channel.clone());
+                let channel = Channel::new(channel_name.clone());
+                self.state
+                    .channels
+                    .insert(channel_name.clone(), channel.clone());
                 self.response_channels
                     .reply(
                         &CommandKey::Join(channel_name.clone()),
@@ -194,10 +206,12 @@ impl<C: IrcConnection> IrcActor<C> {
             PRIVMSG(ref target, ref text) => {
                 let mut msgid = None;
                 let mut server_time = None;
+                let mut username = None;
                 if let Some(ref tags) = message.tags {
                     for Tag(key, value) in tags {
                         match key.as_str() {
                             "msgid" => msgid = value.clone(),
+                            "account" => username = value.clone(),
                             "time" => {
                                 server_time = value
                                     .as_ref()
@@ -222,6 +236,16 @@ impl<C: IrcConnection> IrcActor<C> {
                     hasher.finalize().to_string()
                 });
 
+                let nickname = message.source_nickname().unwrap();
+                let user = self
+                    .state
+                    .users
+                    .entry(nickname.to_string())
+                    .or_insert_with(|| User::new(nickname.to_string()));
+                if username.is_some() {
+                    user.username = username;
+                }
+
                 let state_message = Message {
                     text: Some(TextMessage {
                         content: text.clone(),
@@ -234,11 +258,11 @@ impl<C: IrcConnection> IrcActor<C> {
                         msgid,
                         server_time,
                         message_type: MessageType::Privmsg,
-                        user_id: 0,
+                        user: nickname.to_string(),
                     },
                 };
 
-                if message.source_nickname() == Some(&self.state.me.as_ref().unwrap().nickname) {
+                if nickname == self.state.me.as_ref().unwrap().nickname {
                     if let Err(e) = self
                         .response_channels
                         .reply(
@@ -264,7 +288,7 @@ impl<C: IrcConnection> IrcActor<C> {
         Ok(())
     }
 
-    #[tracing::instrument(ret, err, skip(self))]
+    #[tracing::instrument(err, skip(self))]
     pub async fn handle_caps(
         &mut self,
         sub: CapSubCommand,
@@ -297,6 +321,10 @@ impl<C: IrcConnection> IrcActor<C> {
                 for cap in param.split_whitespace() {
                     self.state.capabilities.set_from_name(cap, Some(true));
                 }
+                self.response_channels
+                    .reply(&CommandKey::RequestCaps, CommandResponse::Caps)
+                    .await
+                    .unwrap();
             }
             _ => {
                 dbg!(sub, &param, caps);
@@ -306,14 +334,14 @@ impl<C: IrcConnection> IrcActor<C> {
         Ok(())
     }
 
-    #[tracing::instrument(ret, err, skip(self))]
+    #[tracing::instrument(err, skip(self))]
     pub async fn handle_response(
         &mut self,
         rpl: Response,
         params: Vec<String>,
     ) -> anyhow::Result<()> {
         match rpl {
-            Response::RPL_WELCOME => self.state.me = Some(User::new(0, params[0].clone())),
+            Response::RPL_WELCOME => self.state.me = Some(User::new(params[0].clone())),
             Response::RPL_MOTDSTART => {
                 self.state.metadata.reset_motd();
             }
@@ -321,16 +349,36 @@ impl<C: IrcConnection> IrcActor<C> {
                 self.state.metadata.add_motd(&params[1]);
             }
             Response::RPL_ENDOFMOTD => {
-                if !self.state.connected {
-                    self.response_channels
-                        .reply(
-                            &CommandKey::Register,
-                            CommandResponse::Register(self.state.clone()),
-                        )
-                        .await
-                        .map_err(|e| anyhow!("Failed to reply to connetion command {e:?}"))?;
-                    self.state.connected = true;
-                }
+                self.response_channels
+                    .reply(
+                        &CommandKey::SignIn,
+                        CommandResponse::SignIn(self.state.clone()),
+                    )
+                    .await
+                    .map_err(|e| anyhow!("Failed to reply to connetion command {e:?}"))?;
+            }
+            Response::RPL_TOPIC => {
+                let channel_name = params[1].to_string();
+                let topic = params[2].to_string();
+                let channel = self
+                    .state
+                    .channels
+                    .entry(channel_name.clone())
+                    .or_insert_with(|| Channel::new(channel_name));
+
+                channel.metadata.topic = Some(topic);
+                dbg!(channel);
+            }
+            Response::RPL_NAMREPLY => {
+                let channel_name = params[2].to_string();
+                let users: Vec<_> = params[3].split_whitespace().map(|u| u.to_owned()).collect();
+                let channel = self
+                    .state
+                    .channels
+                    .entry(channel_name.clone())
+                    .or_insert_with(|| Channel::new(channel_name));
+
+                channel.users = users;
             }
             Response::RPL_YOURHOST
             | Response::RPL_CREATED
@@ -350,17 +398,27 @@ impl<C: IrcConnection> IrcActor<C> {
         Ok(())
     }
 
-    #[tracing::instrument(ret, err, skip(self))]
+    #[tracing::instrument(err, skip(self))]
     pub async fn handle_command(&mut self, cmd: ActorMessage) -> anyhow::Result<()> {
         match cmd.command {
-            ActorCommand::Register {
+            ActorCommand::SignIn {
+                nick,
+                user,
+                realname,
+                password,
+            } => {
+                self.response_channels
+                    .register(CommandKey::SignIn, cmd.reply_tx.unwrap());
+                self.sign_in(nick, user, realname, password).await?;
+            }
+            ActorCommand::SignInAnonymous {
                 nick,
                 user,
                 realname,
             } => {
                 self.response_channels
-                    .register(CommandKey::Register, cmd.reply_tx.unwrap());
-                self.register(nick, user, realname).await?;
+                    .register(CommandKey::SignIn, cmd.reply_tx.unwrap());
+                self.sign_in_anonymous(nick, user, realname).await?;
             }
             ActorCommand::Join { channel, password } => {
                 self.response_channels
@@ -391,7 +449,7 @@ impl<C: IrcConnection> IrcActor<C> {
         Ok(())
     }
 
-    #[tracing::instrument(ret, err, skip(self))]
+    #[tracing::instrument(err, skip(self))]
     pub async fn on_event(&mut self, event: ServerEvent) -> anyhow::Result<()> {
         for handler in &mut self.event_handlers {
             handler.send(event.clone()).await.unwrap();
@@ -400,7 +458,7 @@ impl<C: IrcConnection> IrcActor<C> {
         Ok(())
     }
 
-    #[tracing::instrument(ret, err, skip(self))]
+    #[tracing::instrument(err, skip(self))]
     pub async fn on_error(&mut self, error: ServerError) -> anyhow::Result<()> {
         for handler in &mut self.error_handlers {
             handler.send(error.clone()).await.unwrap();
@@ -409,7 +467,7 @@ impl<C: IrcConnection> IrcActor<C> {
         Ok(())
     }
 
-    #[tracing::instrument(ret, err, skip(self))]
+    #[tracing::instrument(err, skip(self))]
     pub async fn on_disconnect(&mut self, reason: String) -> anyhow::Result<()> {
         for handler in &mut self.disconnect_handlers {
             handler.send(reason.clone()).await.unwrap();
@@ -418,13 +476,8 @@ impl<C: IrcConnection> IrcActor<C> {
         Ok(())
     }
 
-    #[tracing::instrument(ret, err, skip(self))]
-    async fn register(
-        &mut self,
-        nick: String,
-        user: String,
-        realname: String,
-    ) -> anyhow::Result<()> {
+    #[tracing::instrument(err, skip(self))]
+    async fn request_caps(&mut self) -> anyhow::Result<()> {
         let irc_version = String::from("302");
         self.ls_caps(irc_version).await?;
         self.req_caps(&[
@@ -440,10 +493,64 @@ impl<C: IrcConnection> IrcActor<C> {
             "server-time",
         ])
         .await?;
-        self.end_caps().await?;
 
-        self.nick(nick).await?;
-        self.user(user, String::from("0"), realname).await?;
+        Ok(())
+    }
+
+    #[tracing::instrument(err, skip(self))]
+    async fn sign_in_anonymous(
+        &mut self,
+        nick: String,
+        user: String,
+        realname: String,
+    ) -> anyhow::Result<()> {
+        self.end_caps().await?;
+        self.nick(nick.clone()).await?;
+        self.user(user.clone(), String::from("0"), realname.clone())
+            .await?;
+
+        self.state.me = Some(User {
+            nickname: nick,
+            username: Some(user),
+            realname: Some(realname),
+            display_name: None,
+            description: None,
+            profile_picture_url: None,
+            bot: false,
+        });
+
+        Ok(())
+    }
+
+    #[tracing::instrument(err, skip(self))]
+    async fn sign_in(
+        &mut self,
+        nickname: String,
+        username: String,
+        realname: String,
+        password: String,
+    ) -> anyhow::Result<()> {
+        if self.state.capabilities.sasl.enabled {
+            self.sasl_plain().await?;
+            self.sasl(BASE64_STANDARD.encode(format!("\0{}\0{}", username, password).as_bytes()))
+                .await?;
+        } else {
+            unimplemented!("sasl cap not enabled")
+        }
+        self.end_caps().await?;
+        self.nick(nickname.clone()).await?;
+        self.user(username.clone(), String::from("0"), realname.clone())
+            .await?;
+
+        self.state.me = Some(User {
+            nickname,
+            username: Some(username),
+            realname: Some(realname),
+            display_name: None,
+            description: None,
+            profile_picture_url: None,
+            bot: false,
+        });
 
         Ok(())
     }

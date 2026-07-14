@@ -64,6 +64,18 @@ pub trait SendCommand {
         async { self.command(NICK(nick)).await }
     }
 
+    fn sasl(&mut self, req: String) -> impl std::future::Future<Output = Result<(), Self::Error>> {
+        async { self.command(AUTHENTICATE(req)).await }
+    }
+
+    fn sasl_plain(&mut self) -> impl std::future::Future<Output = Result<(), Self::Error>> {
+        async { self.sasl("PLAIN".into()).await }
+    }
+
+    fn sasl_abort(&mut self) -> impl std::future::Future<Output = Result<(), Self::Error>> {
+        async { self.sasl("*".into()).await }
+    }
+
     fn user(
         &mut self,
         user: String,
