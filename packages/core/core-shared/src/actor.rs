@@ -6,7 +6,7 @@ use crate::{
     SendCommand,
     state::{
         Channel, ChannelMetadata, Message, MessageMetadata, MessageType, Server, ServerError,
-        ServerEvent, TextMessage, User,
+        ServerEvent, TextMessage, User, UserList,
     },
 };
 use anyhow::anyhow;
@@ -21,7 +21,7 @@ use futures::{
 };
 use irc_proto::{CapSubCommand, Command::*, Message as IrcMessage, Response, message::Tag};
 use time::{OffsetDateTime, format_description::well_known::Iso8601};
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 #[derive(Debug, Default)]
 pub struct ResponseChannels(Vec<(CommandKey, oneshot::Sender<CommandResponse>)>);
@@ -34,10 +34,10 @@ pub enum CommandKey {
     Privmsg { target: String, text: String },
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum CommandResponse {
     Caps,
-    SignIn(Server),
+    SignIn(anyhow::Result<Server>),
     Join(String),
     Privmsg(Message),
 }
@@ -47,6 +47,7 @@ impl ResponseChannels {
         self.0.push((key, os_tx));
     }
 
+    #[tracing::instrument]
     pub async fn reply(
         &mut self,
         key: &CommandKey,
@@ -56,10 +57,7 @@ impl ResponseChannels {
             let (_, ch) = self.0.remove(idx);
             ch.send(response)?;
         } else {
-            debug!(
-                "Failed to find response channel for key: {key:?}, response: {response:?}, list: {:?}",
-                self.0
-            );
+            debug!("Failed to find response channel",);
         }
 
         Ok(())
@@ -176,7 +174,7 @@ impl<C: IrcConnection> IrcActor<C> {
         }
     }
 
-    #[tracing::instrument(err, skip(self))]
+    #[tracing::instrument(err, skip(self, message))]
     pub async fn handle_incoming(&mut self, message: IrcMessage) -> anyhow::Result<()> {
         match message.command {
             CAP(_, sub, param, caps) => {
@@ -218,7 +216,7 @@ impl<C: IrcConnection> IrcActor<C> {
                                     .and_then(|v| OffsetDateTime::parse(&v, &Iso8601::DEFAULT).ok())
                             }
                             _ => {
-                                dbg!("unhandled tag", key, value);
+                                warn!("unhandled tag: {key:?}: {value:?}");
                             }
                         }
                     }
@@ -281,7 +279,7 @@ impl<C: IrcConnection> IrcActor<C> {
                 self.on_event(ServerEvent::Privmsg(state_message)).await?;
             }
             _ => {
-                dbg!(message);
+                warn!("unhandled message, {message:?}");
             }
         }
 
@@ -327,7 +325,7 @@ impl<C: IrcConnection> IrcActor<C> {
                     .unwrap();
             }
             _ => {
-                dbg!(sub, &param, caps);
+                debug!("unhandled caps message");
             }
         }
 
@@ -348,14 +346,23 @@ impl<C: IrcConnection> IrcActor<C> {
             Response::RPL_MOTD => {
                 self.state.metadata.add_motd(&params[1]);
             }
-            Response::RPL_ENDOFMOTD => {
+            Response::RPL_SASLSUCCESS => {
                 self.response_channels
                     .reply(
                         &CommandKey::SignIn,
-                        CommandResponse::SignIn(self.state.clone()),
+                        CommandResponse::SignIn(Ok(self.state.clone())),
                     )
                     .await
-                    .map_err(|e| anyhow!("Failed to reply to connetion command {e:?}"))?;
+                    .map_err(|e| anyhow!("Failed to reply to sign in command {e:?}"))?;
+            }
+            Response::ERR_SASLFAIL => {
+                self.response_channels
+                    .reply(
+                        &CommandKey::SignIn,
+                        CommandResponse::SignIn(Err(anyhow!("{}", &params[1]))),
+                    )
+                    .await
+                    .map_err(|e| anyhow!("Failed to reply to sign in command {e:?}"))?;
             }
             Response::RPL_TOPIC => {
                 let channel_name = params[1].to_string();
@@ -367,7 +374,11 @@ impl<C: IrcConnection> IrcActor<C> {
                     .or_insert_with(|| Channel::new(channel_name));
 
                 channel.metadata.topic = Some(topic);
-                dbg!(channel);
+
+                let metadata = channel.metadata.clone();
+                self.on_event(ServerEvent::ChannelUpdated(metadata))
+                    .await
+                    .unwrap();
             }
             Response::RPL_NAMREPLY => {
                 let channel_name = params[2].to_string();
@@ -380,6 +391,13 @@ impl<C: IrcConnection> IrcActor<C> {
 
                 channel.users = users;
             }
+            Response::RPL_ENDOFNAMES => self
+                .on_event(ServerEvent::UserList(UserList {
+                    channel: params[1].to_string(),
+                    users: self.state.channels.get(&params[1]).unwrap().users.clone(),
+                }))
+                .await
+                .unwrap(),
             Response::RPL_YOURHOST
             | Response::RPL_CREATED
             | Response::RPL_MYINFO
@@ -388,10 +406,11 @@ impl<C: IrcConnection> IrcActor<C> {
             | Response::RPL_LUSERUNKNOWN
             | Response::RPL_LUSERCHANNELS
             | Response::RPL_LUSERME
+            | Response::RPL_TOPICWHOTIME
             | Response::RPL_LOCALUSERS
             | Response::RPL_GLOBALUSERS => (),
             _ => {
-                dbg!(rpl, params);
+                warn!("unhandled response");
             }
         }
 

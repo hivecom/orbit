@@ -394,7 +394,17 @@ pub struct Reaction {
 #[cfg_attr(feature = "web", serde(untagged))]
 pub enum ServerEvent {
     Joined(Channel),
+    ChannelUpdated(ChannelMetadata),
+    UserList(UserList),
     Privmsg(Message),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "web", derive(Tsify))]
+#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone))]
+pub struct UserList {
+    pub channel: String,
+    pub users: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

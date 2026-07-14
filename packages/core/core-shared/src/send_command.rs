@@ -110,17 +110,3 @@ impl SendCommand for UnboundedSender<IrcMessage> {
         Ok(())
     }
 }
-
-#[cfg(feature = "web")]
-use gloo_net::websocket::{self, Message as WsMessage, futures::WebSocket};
-
-#[cfg(feature = "web")]
-impl SendCommand for futures::stream::SplitSink<WebSocket, WsMessage> {
-    type Error = websocket::WebSocketError;
-    async fn message(&mut self, message: IrcMessage) -> Result<(), Self::Error> {
-        self.send(WsMessage::Text(dbg!(message.to_string())))
-            .await?;
-
-        Ok(())
-    }
-}

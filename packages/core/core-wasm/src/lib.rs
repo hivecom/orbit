@@ -210,7 +210,7 @@ impl IrcServer {
             unreachable!("expected sign in, got: {:?}", resp);
         };
 
-        Ok(server.into())
+        Ok(server.map_err(|e| JsError::new(&e.to_string()))?.into())
     }
 
     #[wasm_bindgen]
@@ -237,7 +237,7 @@ impl IrcServer {
             unreachable!("expected sign in, got: {:?}", resp);
         };
 
-        Ok(server.into())
+        Ok(server.map_err(|e| JsError::new(&e.to_string()))?.into())
     }
 
     #[wasm_bindgen]
