@@ -103,7 +103,7 @@ pub enum ActorCommand {
 }
 
 pub trait IrcConnection: fmt::Debug {
-    type Incoming: FusedStream<Item = IrcMessage> + Unpin;
+    type Incoming: FusedStream<Item = anyhow::Result<IrcMessage>> + Unpin;
     type Outgoing: SendCommand;
 
     fn in_out(self) -> (Self::Incoming, Self::Outgoing);
@@ -159,8 +159,16 @@ impl<C: IrcConnection> IrcActor<C> {
         loop {
             futures::select! {
                 msg = self.incoming.next() => {
-                    match msg {
-                        Some(m) => self.handle_incoming(m).await.unwrap(),
+                        match msg {
+                            Some(m) => {
+                            match m {
+                                Ok(m) => self.handle_incoming(m).await.unwrap(),
+                                Err(e) => {
+                                    self.on_disconnect(e.to_string()).await.unwrap();
+                                    break;
+                                    }
+                            };
+                        }
                         None => {
                             self.on_disconnect("Connection Closed".into()).await.unwrap();
                             break;
@@ -278,6 +286,7 @@ impl<C: IrcConnection> IrcActor<C> {
 
                 self.on_event(ServerEvent::Privmsg(state_message)).await?;
             }
+            ERROR(msg) => self.on_error(ServerError::Generic(msg)).await?,
             _ => {
                 warn!("unhandled message, {message:?}");
             }
@@ -339,14 +348,13 @@ impl<C: IrcConnection> IrcActor<C> {
         params: Vec<String>,
     ) -> anyhow::Result<()> {
         match rpl {
-            Response::RPL_WELCOME => self.state.me = Some(User::new(params[0].clone())),
             Response::RPL_MOTDSTART => {
                 self.state.metadata.reset_motd();
             }
             Response::RPL_MOTD => {
                 self.state.metadata.add_motd(&params[1]);
             }
-            Response::RPL_SASLSUCCESS => {
+            Response::RPL_SASLSUCCESS | Response::RPL_WELCOME => {
                 self.response_channels
                     .reply(
                         &CommandKey::SignIn,
@@ -360,6 +368,15 @@ impl<C: IrcConnection> IrcActor<C> {
                     .reply(
                         &CommandKey::SignIn,
                         CommandResponse::SignIn(Err(anyhow!("{}", &params[1]))),
+                    )
+                    .await
+                    .map_err(|e| anyhow!("Failed to reply to sign in command {e:?}"))?;
+            }
+            Response::ERR_NICKNAMEINUSE => {
+                self.response_channels
+                    .reply(
+                        &CommandKey::SignIn,
+                        CommandResponse::SignIn(Err(anyhow!("{}", &params[2]))),
                     )
                     .await
                     .map_err(|e| anyhow!("Failed to reply to sign in command {e:?}"))?;

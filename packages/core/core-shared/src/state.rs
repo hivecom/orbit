@@ -412,5 +412,5 @@ pub struct UserList {
 #[cfg_attr(feature = "web", wasm_bindgen)]
 #[cfg_attr(feature = "web", serde(untagged))]
 pub enum ServerError {
-    Placeholder(String),
+    Generic(String),
 }

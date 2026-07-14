@@ -1,5 +1,6 @@
 use std::{fmt, str::FromStr};
 
+use anyhow::bail;
 use core_shared::{
     SendCommand,
     actor::{ActorCommand, ActorMessage, CommandResponse, IrcActor, IrcConnection},
@@ -315,18 +316,18 @@ impl WsConnection {
 }
 
 impl IrcConnection for WsConnection {
-    type Incoming = Fuse<LocalBoxStream<'static, irc_proto::Message>>;
+    type Incoming = Fuse<LocalBoxStream<'static, anyhow::Result<irc_proto::Message>>>;
     type Outgoing = OutgoingSink;
 
     fn in_out(self) -> (Self::Incoming, Self::Outgoing) {
         let (sink, stream) = self.socket.split();
         let incoming = stream
             .map(|msg| {
-                let msg = msg.unwrap();
-                let websocket::Message::Text(msg) = msg else {
-                    panic!("unexpected binary message");
+                let websocket::Message::Text(msg) = msg? else {
+                    bail!("unexpected binary message");
                 };
-                irc_proto::Message::from_str(&msg).unwrap()
+
+                Ok(irc_proto::Message::from_str(&msg)?)
             })
             .boxed_local();
 
