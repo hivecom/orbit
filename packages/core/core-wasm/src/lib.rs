@@ -3,7 +3,7 @@ use std::{fmt, str::FromStr};
 use anyhow::bail;
 use core_shared::{
     SendCommand,
-    actor::{ActorCommand, ActorMessage, CommandResponse, IrcActor, IrcConnection},
+    actor::{self, ActorCommand, ActorMessage, CommandResponse, IrcActor},
     state::{self, Capabilities, Message, ServerMetadata, User},
 };
 use futures::{
@@ -78,7 +78,7 @@ pub async fn initialize_orbit() -> Result<ServerList, JsError> {
 
 #[wasm_bindgen(getter_with_clone)]
 pub struct ServerList {
-    pub servers: Vec<IrcServer>,
+    pub servers: Vec<IrcConnection>,
 }
 
 #[wasm_bindgen]
@@ -91,29 +91,37 @@ impl ServerList {
     }
 
     #[wasm_bindgen]
-    pub async fn connect(&mut self, url: &str) -> Result<IrcServer, JsError> {
-        let server = IrcServer::connect(url).await?;
-        self.servers.push(server.clone());
+    pub async fn connect(&mut self, url: &str) -> Result<ConnectResult, JsError> {
+        let (connection, data) = IrcConnection::connect(url).await?;
+        self.servers.push(connection.clone());
 
-        Ok(server)
+        Ok(ConnectResult { connection, data })
     }
 }
 
 #[derive(Clone)]
+#[wasm_bindgen(getter_with_clone)]
+pub struct ConnectResult {
+    pub connection: IrcConnection,
+    pub data: Server,
+}
+
+#[derive(Clone)]
 #[wasm_bindgen]
-pub struct IrcServer {
+pub struct IrcConnection {
     address: UnboundedSender<ActorMessage>,
 }
 
 #[wasm_bindgen]
-impl IrcServer {
-    async fn connect(url: &str) -> Result<Self, JsError> {
+impl IrcConnection {
+    async fn connect(url: &str) -> Result<(Self, Server), JsError> {
         let connection = WsConnection::new(url)?;
-        let address = IrcActor::new(connection, |actor| spawn_local(async { actor.run().await }))
-            .await
-            .map_err(|e| JsError::new(&e.to_string()))?;
+        let (address, data) =
+            IrcActor::new(connection, |actor| spawn_local(async { actor.run().await }))
+                .await
+                .map_err(|e| JsError::new(&e.to_string()))?;
 
-        Ok(Self { address })
+        Ok((Self { address }, data.into()))
     }
 
     #[wasm_bindgen]
@@ -192,7 +200,7 @@ impl IrcServer {
         user: String,
         realname: String,
         password: String,
-    ) -> Result<Server, JsError> {
+    ) -> Result<(), JsError> {
         let (tx, rx) = oneshot::channel();
         self.address
             .send(ActorMessage {
@@ -207,11 +215,11 @@ impl IrcServer {
             .await?;
 
         let resp = rx.await?;
-        let CommandResponse::SignIn(server) = resp else {
+        let CommandResponse::SignIn(result) = resp else {
             unreachable!("expected sign in, got: {:?}", resp);
         };
 
-        Ok(server.map_err(|e| JsError::new(&e.to_string()))?.into())
+        Ok(result.map_err(|e| JsError::new(&e.to_string()))?)
     }
 
     #[wasm_bindgen]
@@ -220,7 +228,7 @@ impl IrcServer {
         nick: String,
         user: String,
         realname: String,
-    ) -> Result<Server, JsError> {
+    ) -> Result<(), JsError> {
         let (tx, rx) = oneshot::channel();
         self.address
             .send(ActorMessage {
@@ -234,11 +242,11 @@ impl IrcServer {
             .await?;
 
         let resp = rx.await?;
-        let CommandResponse::SignIn(server) = resp else {
+        let CommandResponse::SignIn(result) = resp else {
             unreachable!("expected sign in, got: {:?}", resp);
         };
 
-        Ok(server.map_err(|e| JsError::new(&e.to_string()))?.into())
+        Ok(result.map_err(|e| JsError::new(&e.to_string()))?)
     }
 
     #[wasm_bindgen]
@@ -315,7 +323,7 @@ impl WsConnection {
     }
 }
 
-impl IrcConnection for WsConnection {
+impl actor::IrcConnection for WsConnection {
     type Incoming = Fuse<LocalBoxStream<'static, anyhow::Result<irc_proto::Message>>>;
     type Outgoing = OutgoingSink;
 

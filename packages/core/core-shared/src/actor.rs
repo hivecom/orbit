@@ -5,8 +5,8 @@ use crate::dbg;
 use crate::{
     SendCommand,
     state::{
-        Channel, ChannelMetadata, Message, MessageMetadata, MessageType, Server, ServerError,
-        ServerEvent, TextMessage, User, UserList,
+        Channel, Message, MessageMetadata, MessageType, Server, ServerError, ServerEvent,
+        TextMessage, User, UserList,
     },
 };
 use anyhow::anyhow;
@@ -21,7 +21,7 @@ use futures::{
 };
 use irc_proto::{CapSubCommand, Command::*, Message as IrcMessage, Response, message::Tag};
 use time::{OffsetDateTime, format_description::well_known::Iso8601};
-use tracing::{debug, error, warn};
+use tracing::{debug, error, trace, warn};
 
 #[derive(Debug, Default)]
 pub struct ResponseChannels(Vec<(CommandKey, oneshot::Sender<CommandResponse>)>);
@@ -36,8 +36,8 @@ pub enum CommandKey {
 
 #[derive(Debug)]
 pub enum CommandResponse {
-    Caps,
-    SignIn(anyhow::Result<Server>),
+    Capabilities(Server),
+    SignIn(anyhow::Result<()>),
     Join(String),
     Privmsg(Message),
 }
@@ -57,7 +57,7 @@ impl ResponseChannels {
             let (_, ch) = self.0.remove(idx);
             ch.send(response)?;
         } else {
-            debug!("Failed to find response channel",);
+            trace!("Failed to find response channel");
         }
 
         Ok(())
@@ -126,7 +126,7 @@ impl<C: IrcConnection> IrcActor<C> {
     pub async fn new(
         connection: C,
         spawn: fn(IrcActor<C>) -> (),
-    ) -> anyhow::Result<UnboundedSender<ActorMessage>> {
+    ) -> anyhow::Result<(UnboundedSender<ActorMessage>, Server)> {
         let (incoming, outgoing) = connection.in_out();
 
         let (cmd_tx, cmd_rx) = mpsc::unbounded();
@@ -149,9 +149,12 @@ impl<C: IrcConnection> IrcActor<C> {
 
         spawn(actor);
 
-        rx.await.unwrap();
+        let resp = rx.await.unwrap();
+        let CommandResponse::Capabilities(server) = resp else {
+            unreachable!("expected caps, got: {:?}", resp);
+        };
 
-        Ok(cmd_tx)
+        Ok((cmd_tx, server))
     }
 
     #[tracing::instrument(skip(self))]
@@ -287,6 +290,7 @@ impl<C: IrcConnection> IrcActor<C> {
                 self.on_event(ServerEvent::Privmsg(state_message)).await?;
             }
             ERROR(msg) => self.on_error(ServerError::Generic(msg)).await?,
+            AUTHENTICATE(_) => (),
             _ => {
                 warn!("unhandled message, {message:?}");
             }
@@ -329,7 +333,10 @@ impl<C: IrcConnection> IrcActor<C> {
                     self.state.capabilities.set_from_name(cap, Some(true));
                 }
                 self.response_channels
-                    .reply(&CommandKey::RequestCaps, CommandResponse::Caps)
+                    .reply(
+                        &CommandKey::RequestCaps,
+                        CommandResponse::Capabilities(self.state.clone()),
+                    )
                     .await
                     .unwrap();
             }
@@ -354,14 +361,18 @@ impl<C: IrcConnection> IrcActor<C> {
             Response::RPL_MOTD => {
                 self.state.metadata.add_motd(&params[1]);
             }
+            Response::RPL_ENDOFMOTD => self
+                .on_event(ServerEvent::ServerInfo(self.state.metadata.clone()))
+                .await
+                .map_err(|e| anyhow!("Failed to send server event {e:?}"))?,
             Response::RPL_SASLSUCCESS | Response::RPL_WELCOME => {
                 self.response_channels
-                    .reply(
-                        &CommandKey::SignIn,
-                        CommandResponse::SignIn(Ok(self.state.clone())),
-                    )
+                    .reply(&CommandKey::SignIn, CommandResponse::SignIn(Ok(())))
                     .await
                     .map_err(|e| anyhow!("Failed to reply to sign in command {e:?}"))?;
+            }
+            Response::RPL_LOGGEDIN => {
+                self.state.me.as_mut().unwrap().username = Some(params[2].clone());
             }
             Response::ERR_SASLFAIL => {
                 self.response_channels
@@ -414,7 +425,7 @@ impl<C: IrcConnection> IrcActor<C> {
                     users: self.state.channels.get(&params[1]).unwrap().users.clone(),
                 }))
                 .await
-                .unwrap(),
+                .map_err(|e| anyhow!("Failed to send server event {e:?}"))?,
             Response::RPL_YOURHOST
             | Response::RPL_CREATED
             | Response::RPL_MYINFO

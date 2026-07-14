@@ -13,17 +13,6 @@ pub struct Server {
     pub capabilities: Capabilities,
     pub users: HashMap<String, User>,
     pub me: Option<User>,
-    auth: AuthState,
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
-pub(crate) enum AuthState {
-    #[default]
-    Unauthenticated,
-    Authenticating {
-        username: String,
-        password: String,
-    },
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
@@ -395,6 +384,7 @@ pub struct Reaction {
 pub enum ServerEvent {
     Joined(Channel),
     ChannelUpdated(ChannelMetadata),
+    ServerInfo(ServerMetadata),
     UserList(UserList),
     Privmsg(Message),
 }
