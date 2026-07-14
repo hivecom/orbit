@@ -568,8 +568,20 @@ impl<C: IrcConnection> IrcActor<C> {
     ) -> anyhow::Result<()> {
         if self.state.capabilities.sasl.enabled {
             self.sasl_plain().await?;
-            self.sasl(BASE64_STANDARD.encode(format!("\0{}\0{}", username, password).as_bytes()))
-                .await?;
+            let credentials =
+                BASE64_STANDARD.encode(format!("\0{}\0{}", username, password).as_bytes());
+
+            // Chunk overly long credentials
+            let mut sending = credentials.as_str();
+            while !sending.is_empty() {
+                let (chunk, rest) = sending.split_at(400.min(credentials.len()));
+                self.sasl(chunk.to_string()).await?;
+
+                if rest.is_empty() && chunk.len() == 400 {
+                    self.sasl("+".to_string()).await?;
+                }
+                sending = rest;
+            }
         } else {
             unimplemented!("sasl cap not enabled")
         }
