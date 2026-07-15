@@ -91,19 +91,12 @@ impl ServerList {
     }
 
     #[wasm_bindgen]
-    pub async fn connect(&mut self, url: &str) -> Result<ConnectResult, JsError> {
-        let (connection, data) = IrcConnection::connect(url).await?;
+    pub async fn connect(&mut self, url: &str) -> Result<IrcConnection, JsError> {
+        let connection = IrcConnection::connect(url).await?;
         self.servers.push(connection.clone());
 
-        Ok(ConnectResult { connection, data })
+        Ok(connection)
     }
-}
-
-#[derive(Clone)]
-#[wasm_bindgen(getter_with_clone)]
-pub struct ConnectResult {
-    pub connection: IrcConnection,
-    pub data: Server,
 }
 
 #[derive(Clone)]
@@ -114,14 +107,31 @@ pub struct IrcConnection {
 
 #[wasm_bindgen]
 impl IrcConnection {
-    async fn connect(url: &str) -> Result<(Self, Server), JsError> {
+    async fn connect(url: &str) -> Result<Self, JsError> {
         let connection = WsConnection::new(url)?;
-        let (address, data) =
-            IrcActor::new(connection, |actor| spawn_local(async { actor.run().await }))
-                .await
-                .map_err(|e| JsError::new(&e.to_string()))?;
+        let address = IrcActor::new(connection, |actor| spawn_local(async { actor.run().await }))
+            .await
+            .map_err(|e| JsError::new(&e.to_string()))?;
 
-        Ok((Self { address }, data.into()))
+        Ok(Self { address })
+    }
+
+    #[wasm_bindgen]
+    pub async fn state(&mut self) -> Result<Server, JsError> {
+        let (tx, rx) = oneshot::channel();
+        self.address
+            .send(ActorMessage {
+                command: ActorCommand::GetState,
+                reply_tx: Some(tx),
+            })
+            .await?;
+
+        let resp = rx.await?;
+        let CommandResponse::GetState(server) = resp else {
+            unreachable!("expected state, got: {:?}", resp);
+        };
+
+        Ok(server.into())
     }
 
     #[wasm_bindgen]

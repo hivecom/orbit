@@ -36,7 +36,8 @@ pub enum CommandKey {
 
 #[derive(Debug)]
 pub enum CommandResponse {
-    Capabilities(Server),
+    GetState(Server),
+    Capabilities,
     SignIn(anyhow::Result<()>),
     Join(String),
     Privmsg(Message),
@@ -72,6 +73,7 @@ pub struct ActorMessage {
 
 #[derive(Debug)]
 pub enum ActorCommand {
+    GetState,
     SignIn {
         nick: String,
         user: String,
@@ -126,7 +128,7 @@ impl<C: IrcConnection> IrcActor<C> {
     pub async fn new(
         connection: C,
         spawn: fn(IrcActor<C>) -> (),
-    ) -> anyhow::Result<(UnboundedSender<ActorMessage>, Server)> {
+    ) -> anyhow::Result<UnboundedSender<ActorMessage>> {
         let (incoming, outgoing) = connection.in_out();
 
         let (cmd_tx, cmd_rx) = mpsc::unbounded();
@@ -150,11 +152,8 @@ impl<C: IrcConnection> IrcActor<C> {
         spawn(actor);
 
         let resp = rx.await.unwrap();
-        let CommandResponse::Capabilities(server) = resp else {
-            unreachable!("expected caps, got: {:?}", resp);
-        };
 
-        Ok((cmd_tx, server))
+        Ok(cmd_tx)
     }
 
     #[tracing::instrument(skip(self))]
@@ -333,10 +332,7 @@ impl<C: IrcConnection> IrcActor<C> {
                     self.state.capabilities.set_from_name(cap, Some(true));
                 }
                 self.response_channels
-                    .reply(
-                        &CommandKey::RequestCaps,
-                        CommandResponse::Capabilities(self.state.clone()),
-                    )
+                    .reply(&CommandKey::RequestCaps, CommandResponse::Capabilities)
                     .await
                     .unwrap();
             }
@@ -455,6 +451,11 @@ impl<C: IrcConnection> IrcActor<C> {
     #[tracing::instrument(err, skip(self))]
     pub async fn handle_command(&mut self, cmd: ActorMessage) -> anyhow::Result<()> {
         match cmd.command {
+            ActorCommand::GetState => cmd
+                .reply_tx
+                .unwrap()
+                .send(CommandResponse::GetState(self.state.clone()))
+                .unwrap(),
             ActorCommand::SignIn {
                 nick,
                 user,
