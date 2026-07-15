@@ -91,8 +91,15 @@ impl ServerList {
     }
 
     #[wasm_bindgen]
-    pub async fn connect(&mut self, url: &str) -> Result<IrcConnection, JsError> {
-        let connection = IrcConnection::connect(url).await?;
+    pub async fn connect(&mut self, name: String, url: String) -> Result<IrcConnection, JsError> {
+        for server in &mut self.servers {
+            // FIXME: don't request the entire state
+            if server.state().await.unwrap().metadata.name == name {
+                return Err(JsError::new("Server with that name already exists"));
+            }
+        }
+
+        let connection = IrcConnection::connect(name, url).await?;
         self.servers.push(connection.clone());
 
         Ok(connection)
@@ -107,11 +114,13 @@ pub struct IrcConnection {
 
 #[wasm_bindgen]
 impl IrcConnection {
-    async fn connect(url: &str) -> Result<Self, JsError> {
+    async fn connect(name: String, url: String) -> Result<Self, JsError> {
         let connection = WsConnection::new(url)?;
-        let address = IrcActor::new(connection, |actor| spawn_local(async { actor.run().await }))
-            .await
-            .map_err(|e| JsError::new(&e.to_string()))?;
+        let address = IrcActor::new(name, connection, |actor| {
+            spawn_local(async { actor.run().await })
+        })
+        .await
+        .map_err(|e| JsError::new(&e.to_string()))?;
 
         Ok(Self { address })
     }
@@ -328,6 +337,7 @@ impl IrcChannel {
 }
 
 struct WsConnection {
+    address: String,
     socket: WebSocket,
 }
 
@@ -338,9 +348,10 @@ impl fmt::Debug for WsConnection {
 }
 
 impl WsConnection {
-    fn new(url: &str) -> Result<Self, JsError> {
+    fn new(url: String) -> Result<Self, JsError> {
         Ok(WsConnection {
-            socket: WebSocket::open(url)?,
+            socket: WebSocket::open(&url)?,
+            address: url,
         })
     }
 }
@@ -348,6 +359,10 @@ impl WsConnection {
 impl actor::IrcConnection for WsConnection {
     type Incoming = Fuse<LocalBoxStream<'static, anyhow::Result<irc_proto::Message>>>;
     type Outgoing = OutgoingSink;
+
+    fn address(&self) -> &str {
+        &self.address
+    }
 
     fn in_out(self) -> (Self::Incoming, Self::Outgoing) {
         let (sink, stream) = self.socket.split();

@@ -109,6 +109,7 @@ pub trait IrcConnection: fmt::Debug {
     type Outgoing: SendCommand;
 
     fn in_out(self) -> (Self::Incoming, Self::Outgoing);
+    fn address(&self) -> &str;
 }
 
 #[derive(Debug)]
@@ -126,9 +127,11 @@ pub struct IrcActor<C: IrcConnection> {
 impl<C: IrcConnection> IrcActor<C> {
     #[tracing::instrument]
     pub async fn new(
+        name: String,
         connection: C,
         spawn: fn(IrcActor<C>) -> (),
     ) -> anyhow::Result<UnboundedSender<ActorMessage>> {
+        let address = connection.address().to_string();
         let (incoming, outgoing) = connection.in_out();
 
         let (cmd_tx, cmd_rx) = mpsc::unbounded();
@@ -136,7 +139,7 @@ impl<C: IrcConnection> IrcActor<C> {
             cmd_rx,
             incoming,
             outgoing,
-            state: Server::default(),
+            state: Server::new(name, address),
             response_channels: ResponseChannels::default(),
             event_handlers: Vec::new(),
             error_handlers: Vec::new(),
@@ -151,7 +154,7 @@ impl<C: IrcConnection> IrcActor<C> {
 
         spawn(actor);
 
-        let resp = rx.await.unwrap();
+        rx.await.unwrap();
 
         Ok(cmd_tx)
     }

@@ -8,9 +8,8 @@ use tsify::Tsify;
 #[cfg(feature = "web")]
 use wasm_bindgen::prelude::*;
 
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Server {
-    pub id: u32,
     pub metadata: ServerMetadata,
     pub channels: HashMap<String, Channel>,
     pub capabilities: Capabilities,
@@ -19,7 +18,28 @@ pub struct Server {
     pub me: Option<User>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+impl Server {
+    pub fn new(name: String, address: String) -> Self {
+        Self {
+            metadata: ServerMetadata {
+                name,
+                motd: Default::default(),
+                address,
+
+                transponder_url: Default::default(),
+                satellite_url: Default::default(),
+                depot_url: Default::default(),
+            },
+            channels: Default::default(),
+            capabilities: Default::default(),
+            support: Default::default(),
+            users: Default::default(),
+            me: Default::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "web", derive(Tsify))]
 #[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone))]
 pub struct ServerMetadata {
