@@ -283,7 +283,6 @@ impl Capabilities {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-#[cfg_attr(feature = "web", derive(Tsify))]
 pub struct Support {
     pub away_length: Option<i64>,
     pub bot: Option<char>,
@@ -478,7 +477,7 @@ pub struct TextMessage {
 #[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone))]
 pub struct MessageMetadata {
     pub msgid: String,
-    pub server_time: i64,
+    pub server_time: f64,
     pub message_type: MessageType,
     pub user: String,
 }
@@ -495,7 +494,7 @@ impl Eq for MessageMetadata {}
 #[cfg_attr(feature = "web", derive(Tsify))]
 #[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone))]
 pub struct MessageReference {
-    pub user_id: i64,
+    pub username: String,
     pub text: String,
 }
 
@@ -503,7 +502,7 @@ pub struct MessageReference {
 #[cfg_attr(feature = "web", derive(Tsify))]
 #[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone))]
 pub struct Reaction {
-    pub user_id: Vec<i64>,
+    pub username: Vec<String>,
     pub text: String,
 }
 

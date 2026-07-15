@@ -51,12 +51,12 @@ use tracing_subscriber_wasm::MakeConsoleWriter;
 
 fn init_tracing() {
     let fmt_layer = tracing_subscriber::fmt::layer()
-        .with_writer(MakeConsoleWriter::default()) // Bridges to browser console
-        .with_ansi(false) // Browser console doesn't support colors
-        .without_time() // Browser already adds timestamps
-        .with_file(true) // Shows file
-        .with_line_number(true) // Shows line
-        .with_target(true); // Shows module/function path
+        .with_writer(MakeConsoleWriter::default())
+        .with_ansi(false)
+        .without_time()
+        .with_file(true)
+        .with_line_number(true)
+        .with_target(true);
 
     tracing_subscriber::registry().with(fmt_layer).init();
 }
@@ -125,7 +125,10 @@ impl IrcConnection {
     }
 
     #[wasm_bindgen]
-    pub async fn on_data(&mut self, f: js_sys::Function) -> Result<(), JsError> {
+    pub async fn on_data(
+        &mut self,
+        #[wasm_bindgen(unchecked_param_type = "(event: ServerEvent) => void")] f: js_sys::Function,
+    ) -> Result<(), JsError> {
         let (handler_tx, mut handler_rx) = mpsc::unbounded();
         self.address
             .send(ActorMessage {
@@ -148,7 +151,10 @@ impl IrcConnection {
     }
 
     #[wasm_bindgen]
-    pub async fn on_error(&mut self, f: js_sys::Function) -> Result<(), JsError> {
+    pub async fn on_error(
+        &mut self,
+        #[wasm_bindgen(unchecked_param_type = "(event: ServerError) => void")] f: js_sys::Function,
+    ) -> Result<(), JsError> {
         let (handler_tx, mut handler_rx) = mpsc::unbounded();
         self.address
             .send(ActorMessage {
@@ -171,7 +177,10 @@ impl IrcConnection {
     }
 
     #[wasm_bindgen]
-    pub async fn on_disconnect(&mut self, f: js_sys::Function) -> Result<(), JsError> {
+    pub async fn on_disconnect(
+        &mut self,
+        #[wasm_bindgen(unchecked_param_type = "(event: string) => void")] f: js_sys::Function,
+    ) -> Result<(), JsError> {
         let (handler_tx, mut handler_rx) = mpsc::unbounded();
         self.address
             .send(ActorMessage {
@@ -362,9 +371,15 @@ impl SendCommand for OutgoingSink {
 #[wasm_bindgen(getter_with_clone)]
 pub struct Server {
     pub metadata: ServerMetadata,
+
+    #[tsify(type = "Map<string, Channel>")]
     pub channels: Map<JsString, JsValue>,
+
     pub capabilities: Capabilities,
+
+    #[tsify(type = "Map<string, User>")]
     pub users: Map<JsString, JsValue>,
+
     pub me: Option<User>,
 }
 

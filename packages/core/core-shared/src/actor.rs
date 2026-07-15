@@ -265,7 +265,7 @@ impl<C: IrcConnection> IrcActor<C> {
                     }),
                     metadata: MessageMetadata {
                         msgid,
-                        server_time,
+                        server_time: server_time as f64,
                         message_type: MessageType::Privmsg,
                         user: nickname.to_string(),
                     },
