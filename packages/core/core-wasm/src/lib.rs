@@ -125,81 +125,84 @@ impl IrcConnection {
     }
 
     #[wasm_bindgen]
-    pub async fn on_data(
+    pub fn on_data(
         &mut self,
         #[wasm_bindgen(unchecked_param_type = "(event: ServerEvent) => void")] f: js_sys::Function,
-    ) -> Result<(), JsError> {
+    ) {
         let (handler_tx, mut handler_rx) = mpsc::unbounded();
-        self.address
-            .send(ActorMessage {
-                command: ActorCommand::AddEventHandler {
-                    handler: handler_tx,
-                },
-                reply_tx: None,
-            })
-            .await?;
 
+        let mut address = self.address.clone();
         spawn_local(async move {
+            address
+                .send(ActorMessage {
+                    command: ActorCommand::AddEventHandler {
+                        handler: handler_tx,
+                    },
+                    reply_tx: None,
+                })
+                .await
+                .expect("can send actor message");
+
             while let Ok(event) = handler_rx.recv().await {
                 if let Err(e) = f.call1(&JsValue::null(), &event.into()) {
                     gloo_console::error!("Error during event callback: {}", e);
                 }
             }
         });
-
-        Ok(())
     }
 
     #[wasm_bindgen]
-    pub async fn on_error(
+    pub fn on_error(
         &mut self,
         #[wasm_bindgen(unchecked_param_type = "(event: ServerError) => void")] f: js_sys::Function,
-    ) -> Result<(), JsError> {
+    ) {
         let (handler_tx, mut handler_rx) = mpsc::unbounded();
-        self.address
-            .send(ActorMessage {
-                command: ActorCommand::AddErrorHandler {
-                    handler: handler_tx,
-                },
-                reply_tx: None,
-            })
-            .await?;
 
+        let mut address = self.address.clone();
         spawn_local(async move {
+            address
+                .send(ActorMessage {
+                    command: ActorCommand::AddErrorHandler {
+                        handler: handler_tx,
+                    },
+                    reply_tx: None,
+                })
+                .await
+                .expect("can send actor message");
+
             while let Ok(event) = handler_rx.recv().await {
                 if let Err(e) = f.call1(&JsValue::null(), &event.into()) {
                     gloo_console::error!("Error during event callback: {}", e);
                 }
             }
         });
-
-        Ok(())
     }
 
     #[wasm_bindgen]
-    pub async fn on_disconnect(
+    pub fn on_disconnect(
         &mut self,
         #[wasm_bindgen(unchecked_param_type = "(event: string) => void")] f: js_sys::Function,
-    ) -> Result<(), JsError> {
+    ) {
         let (handler_tx, mut handler_rx) = mpsc::unbounded();
-        self.address
-            .send(ActorMessage {
-                command: ActorCommand::AddDisconectHandler {
-                    handler: handler_tx,
-                },
-                reply_tx: None,
-            })
-            .await?;
 
+        let mut address = self.address.clone();
         spawn_local(async move {
+            address
+                .send(ActorMessage {
+                    command: ActorCommand::AddDisconectHandler {
+                        handler: handler_tx,
+                    },
+                    reply_tx: None,
+                })
+                .await
+                .expect("can send actor message");
+
             while let Ok(event) = handler_rx.recv().await {
                 if let Err(e) = f.call1(&JsValue::null(), &event.into()) {
                     gloo_console::error!("Error during event callback: {}", e);
                 }
             }
         });
-
-        Ok(())
     }
 
     #[wasm_bindgen]
