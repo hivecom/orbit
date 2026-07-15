@@ -3,6 +3,7 @@ use std::str::FromStr;
 
 #[cfg(feature = "web")]
 use crate::dbg;
+use ordermap::OrderMap;
 #[cfg(feature = "web")]
 use tsify::Tsify;
 #[cfg(feature = "web")]
@@ -68,11 +69,9 @@ impl ServerMetadata {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "web", derive(Tsify))]
-#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone))]
 pub struct Channel {
     pub metadata: ChannelMetadata,
-    pub messages: Vec<Message>,
+    pub messages: OrderMap<String, Message>,
     pub users: Vec<String>,
 }
 
@@ -455,8 +454,6 @@ impl User {
 }
 
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "web", derive(Tsify))]
-#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone))]
 pub struct Message {
     pub text: Option<TextMessage>,
     pub metadata: MessageMetadata,
@@ -482,14 +479,13 @@ pub enum MessageType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "web", derive(Tsify))]
-#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone))]
 pub struct TextMessage {
     pub content: String,
-    pub reactions: Vec<Reaction>,
+    pub reactions: OrderMap<String, Vec<String>>,
     pub reply: Option<MessageReference>,
     pub redacted: bool,
     pub edited: bool,
+    pub relayed_by: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -519,23 +515,22 @@ pub struct MessageReference {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "web", derive(Tsify))]
-#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone))]
-pub struct Reaction {
-    pub username: Vec<String>,
-    pub text: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "web", derive(Tsify))]
-#[cfg_attr(feature = "web", wasm_bindgen)]
-#[cfg_attr(feature = "web", serde(untagged))]
 pub enum ServerEvent {
     Joined(Channel),
     ChannelUpdated(ChannelMetadata),
     ServerInfo(ServerMetadata),
     UserList(UserList),
     Privmsg(Message),
+    React(React),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "web", derive(Tsify))]
+#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone))]
+pub struct React {
+    pub target_message: String,
+    pub user: String,
+    pub text: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

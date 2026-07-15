@@ -5,8 +5,8 @@ use crate::dbg;
 use crate::{
     SendCommand,
     state::{
-        Channel, Message, MessageMetadata, MessageType, Server, ServerError, ServerEvent,
-        TextMessage, User, UserList,
+        Channel, Message, MessageMetadata, MessageReference, MessageType, React, Server,
+        ServerError, ServerEvent, TextMessage, User, UserList,
     },
 };
 use anyhow::anyhow;
@@ -20,8 +20,9 @@ use futures::{
     stream::FusedStream,
 };
 use irc_proto::{CapSubCommand, Command::*, Message as IrcMessage, Response, message::Tag};
+use ordermap::OrderMap;
 use time::{OffsetDateTime, format_description::well_known::Iso8601};
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, warn};
 
 #[derive(Debug, Default)]
 pub struct ResponseChannels(Vec<(CommandKey, oneshot::Sender<CommandResponse>)>);
@@ -58,7 +59,7 @@ impl ResponseChannels {
             let (_, ch) = self.0.remove(idx);
             ch.send(response)?;
         } else {
-            trace!("Failed to find response channel");
+            // trace!("Failed to find response channel");
         }
 
         Ok(())
@@ -188,7 +189,7 @@ impl<C: IrcConnection> IrcActor<C> {
     }
 
     #[tracing::instrument(err, skip(self, message))]
-    pub async fn handle_incoming(&mut self, message: IrcMessage) -> anyhow::Result<()> {
+    pub async fn handle_incoming(&mut self, mut message: IrcMessage) -> anyhow::Result<()> {
         match message.command {
             CAP(_, sub, param, caps) => {
                 self.handle_caps(sub, param, caps).await?;
@@ -218,11 +219,15 @@ impl<C: IrcConnection> IrcActor<C> {
                 let mut msgid = None;
                 let mut server_time = None;
                 let mut username = None;
+                let mut relayed_by = None;
+                let mut reply = None;
                 if let Some(ref tags) = message.tags {
                     for Tag(key, value) in tags {
                         match key.as_str() {
                             "msgid" => msgid = value.clone(),
                             "account" => username = value.clone(),
+                            "draft/relaymsg" => relayed_by = value.clone(),
+                            "+draft/reply" | "+reply" => reply = value.clone(),
                             "time" => {
                                 server_time = value
                                     .as_ref()
@@ -257,16 +262,31 @@ impl<C: IrcConnection> IrcActor<C> {
                     user.username = username;
                 }
 
+                let reply = reply
+                    .and_then(|r| {
+                        self.state
+                            .channels
+                            .get(target)
+                            .and_then(|c| c.messages.get(&r))
+                    })
+                    .and_then(|m| {
+                        Some(MessageReference {
+                            text: m.text.clone().map(|t| t.content)?,
+                            username: m.metadata.user.clone(),
+                        })
+                    });
+
                 let state_message = Message {
                     text: Some(TextMessage {
                         content: text.clone(),
-                        reactions: Vec::new(),
-                        reply: None,
+                        reactions: OrderMap::new(),
+                        reply,
                         redacted: false,
                         edited: false,
+                        relayed_by,
                     }),
                     metadata: MessageMetadata {
-                        msgid,
+                        msgid: msgid.clone(),
                         server_time: server_time as f64,
                         message_type: MessageType::Privmsg,
                         user: nickname.to_string(),
@@ -289,7 +309,62 @@ impl<C: IrcConnection> IrcActor<C> {
                     }
                 }
 
+                let channel = self
+                    .state
+                    .channels
+                    .entry(target.clone())
+                    .or_insert_with(|| Channel::new(target.clone()));
+                channel.messages.insert(msgid, state_message.clone());
+
                 self.on_event(ServerEvent::Privmsg(state_message)).await?;
+            }
+            Raw(ref cmd, ref mut target) if cmd == "TAGMSG" => {
+                let target = target.remove(0);
+
+                let mut react = None;
+                let mut reply = None;
+                if let Some(ref tags) = message.tags {
+                    for Tag(key, value) in tags {
+                        match key.as_str() {
+                            "+draft/reply" | "+reply" => reply = value.clone(),
+                            "+draft/react" => react = value.clone(),
+                            _ => {
+                                warn!("unhandled tag: {key:?}: {value:?}");
+                            }
+                        }
+                    }
+                }
+
+                let channel = self
+                    .state
+                    .channels
+                    .entry(target.clone())
+                    .or_insert_with(|| Channel::new(target.clone()));
+
+                if let Some(react) = react
+                    && let Some(reply) = reply
+                {
+                    let nickname = message.source_nickname().unwrap().to_string();
+                    let reactors = channel
+                        .messages
+                        .get_mut(&reply)
+                        .unwrap()
+                        .text
+                        .as_mut()
+                        .unwrap()
+                        .reactions
+                        .entry(react.clone())
+                        .or_insert_with(|| Vec::new());
+
+                    reactors.push(nickname.clone());
+
+                    self.on_event(ServerEvent::React(React {
+                        target_message: reply,
+                        user: nickname,
+                        text: react,
+                    }))
+                    .await?;
+                }
             }
             ERROR(msg) => self.on_error(ServerError::Generic(msg)).await?,
             AUTHENTICATE(_) => (),

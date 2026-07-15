@@ -4,7 +4,10 @@ use anyhow::bail;
 use core_shared::{
     SendCommand,
     actor::{self, ActorCommand, ActorMessage, CommandResponse, IrcActor},
-    state::{self, Capabilities, Message, ServerMetadata, User},
+    state::{
+        self, Capabilities, ChannelMetadata, MessageMetadata, MessageReference, React,
+        ServerMetadata, User, UserList,
+    },
 };
 use futures::{
     SinkExt, StreamExt,
@@ -163,7 +166,7 @@ impl IrcConnection {
                 .expect("can send actor message");
 
             while let Ok(event) = handler_rx.recv().await {
-                if let Err(e) = f.call1(&JsValue::null(), &event.into()) {
+                if let Err(e) = f.call1(&JsValue::null(), &ServerEvent::from(event).into()) {
                     gloo_console::error!("Error during event callback: {}", e);
                 }
             }
@@ -332,7 +335,7 @@ impl IrcChannel {
             unreachable!("expected join, got: {:?}", resp);
         };
 
-        Ok(message)
+        Ok(message.into())
     }
 }
 
@@ -415,7 +418,7 @@ impl From<state::Server> for Server {
     fn from(server: state::Server) -> Self {
         let channels = js_sys::Map::new_typed();
         for (k, v) in server.channels {
-            channels.set(&JsString::from(k), &JsValue::from(v));
+            channels.set(&JsString::from(k), &JsValue::from(Channel::from(v)));
         }
 
         let users = js_sys::Map::new_typed();
@@ -429,6 +432,95 @@ impl From<state::Server> for Server {
             capabilities: server.capabilities,
             users,
             me: server.me,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Tsify)]
+#[wasm_bindgen(getter_with_clone)]
+pub struct Channel {
+    pub metadata: ChannelMetadata,
+    pub messages: Vec<Message>,
+    pub users: Vec<String>,
+}
+
+impl From<state::Channel> for Channel {
+    fn from(channel: state::Channel) -> Self {
+        Self {
+            metadata: channel.metadata,
+            messages: channel.messages.into_values().map(Into::into).collect(),
+            users: channel.users,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Tsify)]
+#[wasm_bindgen]
+#[serde(untagged)]
+pub enum ServerEvent {
+    Joined(Channel),
+    ChannelUpdated(ChannelMetadata),
+    ServerInfo(ServerMetadata),
+    UserList(UserList),
+    Privmsg(Message),
+    React(React),
+}
+
+impl From<state::ServerEvent> for ServerEvent {
+    fn from(event: state::ServerEvent) -> Self {
+        match event {
+            state::ServerEvent::Joined(c) => Self::Joined(c.into()),
+            state::ServerEvent::ChannelUpdated(cm) => Self::ChannelUpdated(cm),
+            state::ServerEvent::ServerInfo(sm) => Self::ServerInfo(sm),
+            state::ServerEvent::UserList(ul) => Self::UserList(ul),
+            state::ServerEvent::Privmsg(m) => Self::Privmsg(m.into()),
+            state::ServerEvent::React(r) => Self::React(r),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Tsify)]
+#[wasm_bindgen(getter_with_clone)]
+pub struct TextMessage {
+    pub content: String,
+    #[tsify(type = "Map<string, string[]>")]
+    pub reactions: Map<JsString, JsValue>,
+    pub reply: Option<MessageReference>,
+    pub redacted: bool,
+    pub edited: bool,
+    pub relayed_by: Option<String>,
+}
+
+impl From<state::TextMessage> for TextMessage {
+    fn from(message: state::TextMessage) -> Self {
+        let reactions = js_sys::Map::new_typed();
+        for (k, v) in message.reactions {
+            reactions.set(&JsString::from(k), &JsValue::from(v));
+        }
+
+        Self {
+            content: message.content,
+            reactions,
+            reply: message.reply,
+            redacted: message.redacted,
+            edited: message.edited,
+            relayed_by: message.relayed_by,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Tsify)]
+#[wasm_bindgen(getter_with_clone)]
+pub struct Message {
+    pub text: Option<TextMessage>,
+    pub metadata: MessageMetadata,
+}
+
+impl From<state::Message> for Message {
+    fn from(message: state::Message) -> Self {
+        Self {
+            text: message.text.map(Into::into),
+            metadata: message.metadata,
         }
     }
 }
