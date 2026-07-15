@@ -1,5 +1,8 @@
 use std::collections::HashMap;
+use std::str::FromStr;
 
+#[cfg(feature = "web")]
+use crate::dbg;
 #[cfg(feature = "web")]
 use tsify::Tsify;
 #[cfg(feature = "web")]
@@ -11,6 +14,7 @@ pub struct Server {
     pub metadata: ServerMetadata,
     pub channels: HashMap<String, Channel>,
     pub capabilities: Capabilities,
+    pub support: Support,
     pub users: HashMap<String, User>,
     pub me: Option<User>,
 }
@@ -274,6 +278,132 @@ impl Capabilities {
             }
             _ if cap.starts_with("soju.im") || cap.starts_with("znc.in") => (),
             _ => unimplemented!("cap: {cap}"),
+        };
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "web", derive(Tsify))]
+pub struct Support {
+    pub away_length: Option<i64>,
+    pub bot: Option<char>,
+    pub case_mapping: Option<String>,
+    pub channel_limit: Option<HashMap<char, i64>>,
+    pub channel_modes: Option<Vec<String>>,
+    pub channel_length: Option<i64>,
+    pub channel_types: Option<String>,
+    pub chat_history: Option<i64>,
+    // search extensions for list command
+    pub elist: Option<String>,
+    pub excepts: bool,
+    pub extban: Option<String>,
+    pub forward: Option<String>,
+    pub invex: bool,
+    pub kick_length: Option<i64>,
+    pub max_list: Option<HashMap<String, i64>>,
+    pub max_targets: Option<i64>,
+    pub modes: bool,
+    pub monitor: Option<i64>,
+    pub message_ref_types: Option<Vec<String>>,
+    pub network: Option<String>,
+    pub nick_length: Option<i64>,
+    pub prefix: Option<Vec<(char, char)>>,
+    pub rp_channel: Option<char>,
+    pub rp_user: Option<char>,
+    pub safe_list: bool,
+    pub safe_rate: bool,
+    pub status_message: Option<String>,
+    pub target_max: Option<Vec<(String, Option<i64>)>>,
+    pub topic_length: Option<i64>,
+    pub utf8_mapping: Option<String>,
+    pub utf8_only: bool,
+    pub vapid: Option<String>,
+    pub whox: bool,
+}
+
+impl Support {
+    pub fn set(&mut self, key: &str, value: Option<&str>) {
+        match key.trim() {
+            "AWAYLEN" => self.away_length = value.map(|v| i64::from_str(v).unwrap()),
+            "BOT" => self.bot = value.map(|v| v.chars().nth(0).unwrap()),
+            "CASEMAPPING" => self.case_mapping = value.map(ToOwned::to_owned),
+            "CHANLIMIT" => {
+                self.channel_limit = value.map(|v| {
+                    v.split(',')
+                        .map(|ml| {
+                            ml.split_once(':')
+                                .map(|(a, b)| {
+                                    (a.chars().nth(0).unwrap(), i64::from_str(b).unwrap())
+                                })
+                                .unwrap()
+                        })
+                        .collect()
+                })
+            }
+            "CHANMODES" => {
+                self.channel_modes = value.map(|v| v.split(',').map(ToOwned::to_owned).collect())
+            }
+            "CHANNELLEN" => self.channel_length = value.map(|v| i64::from_str(v).unwrap()),
+            "CHANTYPES" => self.channel_types = value.map(ToOwned::to_owned),
+            "draft/CHATHISTORY" | "CHATHISTORY" => {
+                self.chat_history = value.map(|v| i64::from_str(v).unwrap())
+            }
+            "ELIST" => self.elist = value.map(ToOwned::to_owned),
+            "EXCEPTS" => self.excepts = true,
+            "EXTBAN" => self.extban = value.map(ToOwned::to_owned),
+            "FORWARD" => self.forward = value.map(ToOwned::to_owned),
+            "INVEX" => self.invex = true,
+            "KICKLEN" => self.kick_length = value.map(|v| i64::from_str(v).unwrap()),
+            "MAXLIST" => {
+                self.max_list = value.map(|v| {
+                    v.split(',')
+                        .map(|ml| {
+                            ml.split_once(':')
+                                .map(|(a, b)| (a.to_owned(), i64::from_str(b).unwrap()))
+                                .unwrap()
+                        })
+                        .collect()
+                })
+            }
+            "MAXTARGETS" => self.max_targets = value.map(|v| i64::from_str(v).unwrap()),
+            "MODES" => self.modes = true,
+            "MONITOR" => self.monitor = value.map(|v| i64::from_str(v).unwrap()),
+            "MSGREFTYPES" => {
+                self.message_ref_types =
+                    value.map(|v| v.split(',').map(ToOwned::to_owned).collect())
+            }
+            "NETWORK" => self.network = value.map(ToOwned::to_owned),
+            "NICKLEN" => self.nick_length = value.map(|v| i64::from_str(v).unwrap()),
+            "PREFIX" => {
+                self.prefix = value.map(|v| {
+                    v[1..]
+                        .split_once(')')
+                        .map(|(a, b)| a.chars().zip(b.chars()).collect())
+                        .unwrap()
+                });
+            }
+            "RPCHAN" => self.rp_channel = value.map(|v| v.chars().nth(0).unwrap()),
+            "RPUSER" => self.rp_user = value.map(|v| v.chars().nth(0).unwrap()),
+            "SAFELIST" => self.safe_list = true,
+            "SAFERATE" => self.safe_rate = true,
+            "STATUSMSG" => self.status_message = value.map(ToOwned::to_owned),
+            "TARGMAX" => {
+                self.target_max = value.map(|v| {
+                    v.split(',')
+                        .map(|ml| {
+                            ml.split_once(':')
+                                .map(|(a, b)| (a.to_owned(), i64::from_str(b).ok()))
+                                .unwrap()
+                        })
+                        .collect()
+                })
+            }
+            "TOPICLEN" => self.topic_length = value.map(|v| i64::from_str(v).unwrap()),
+            "UTF8MAPPING" => self.utf8_mapping = value.map(ToOwned::to_owned),
+            "UTF8ONLY" => self.utf8_only = true,
+            "VAPID" => self.vapid = value.map(ToOwned::to_owned),
+            "WHOX" => self.whox = true,
+            _ => unimplemented!("isupport: {key}, {value:?}"),
         };
     }
 }

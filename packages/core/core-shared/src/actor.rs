@@ -426,6 +426,12 @@ impl<C: IrcConnection> IrcActor<C> {
                 }))
                 .await
                 .map_err(|e| anyhow!("Failed to send server event {e:?}"))?,
+            Response::RPL_ISUPPORT => {
+                for option in &params[1..(params.len() - 1)] {
+                    let (key, value) = option.split_once('=').unzip();
+                    self.state.support.set(key.unwrap_or(option), value);
+                }
+            }
             Response::RPL_YOURHOST
             | Response::RPL_CREATED
             | Response::RPL_MYINFO
@@ -436,6 +442,7 @@ impl<C: IrcConnection> IrcActor<C> {
             | Response::RPL_LUSERME
             | Response::RPL_TOPICWHOTIME
             | Response::RPL_LOCALUSERS
+            | Response::RPL_UMODEIS
             | Response::RPL_GLOBALUSERS => (),
             _ => {
                 warn!("unhandled response");
