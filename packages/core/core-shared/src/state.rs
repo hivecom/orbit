@@ -531,6 +531,7 @@ pub struct React {
     pub target_message: String,
     pub user: String,
     pub text: String,
+    pub is_unreact: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

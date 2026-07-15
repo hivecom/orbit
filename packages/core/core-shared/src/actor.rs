@@ -19,7 +19,9 @@ use futures::{
     },
     stream::FusedStream,
 };
-use irc_proto::{CapSubCommand, Command::*, Message as IrcMessage, Response, message::Tag};
+use irc_proto::{
+    BatchSubCommand, CapSubCommand, Command::*, Message as IrcMessage, Response, message::Tag,
+};
 use ordermap::OrderMap;
 use time::{OffsetDateTime, format_description::well_known::Iso8601};
 use tracing::{debug, error, warn};
@@ -123,6 +125,23 @@ pub struct IrcActor<C: IrcConnection> {
     event_handlers: Vec<UnboundedSender<ServerEvent>>,
     error_handlers: Vec<UnboundedSender<ServerError>>,
     disconnect_handlers: Vec<UnboundedSender<String>>,
+
+    current_batch: Option<Batch>,
+}
+
+#[derive(Debug)]
+struct Batch {
+    id: String,
+    typ: BatchSubCommand,
+}
+
+impl Batch {
+    fn is_chathistory(&self) -> bool {
+        match self.typ {
+            BatchSubCommand::CUSTOM(ref c) if c.as_str() == "CHATHISTORY" => true,
+            _ => false,
+        }
+    }
 }
 
 impl<C: IrcConnection> IrcActor<C> {
@@ -145,6 +164,7 @@ impl<C: IrcConnection> IrcActor<C> {
             event_handlers: Vec::new(),
             error_handlers: Vec::new(),
             disconnect_handlers: Vec::new(),
+            current_batch: None,
         };
 
         let (tx, rx) = oneshot::channel();
@@ -200,20 +220,25 @@ impl<C: IrcConnection> IrcActor<C> {
             Response(rpl, params) => {
                 self.handle_response(rpl, params).await?;
             }
-            JOIN(channel_name, _, _) => {
-                let channel = Channel::new(channel_name.clone());
-                self.state
-                    .channels
-                    .insert(channel_name.clone(), channel.clone());
-                self.response_channels
-                    .reply(
-                        &CommandKey::Join(channel_name.clone()),
-                        CommandResponse::Join(channel_name),
-                    )
-                    .await
-                    .map_err(|e| anyhow!("Failed to reply to JOIN command {e:?}"))?;
+            JOIN(ref channel_name, _, _) => {
+                let source = message.source_nickname().unwrap();
 
-                self.on_event(ServerEvent::Joined(channel)).await?;
+                // FIXME: handle other cases
+                if source == self.state.me.as_ref().unwrap().nickname {
+                    let channel = Channel::new(channel_name.clone());
+                    self.state
+                        .channels
+                        .insert(channel_name.clone(), channel.clone());
+                    self.response_channels
+                        .reply(
+                            &CommandKey::Join(channel_name.clone()),
+                            CommandResponse::Join(channel_name.clone()),
+                        )
+                        .await
+                        .map_err(|e| anyhow!("Failed to reply to JOIN command {e:?}"))?;
+
+                    self.on_event(ServerEvent::Joined(channel)).await?;
+                }
             }
             PRIVMSG(ref target, ref text) => {
                 let mut msgid = None;
@@ -316,18 +341,42 @@ impl<C: IrcConnection> IrcActor<C> {
                     .or_insert_with(|| Channel::new(target.clone()));
                 channel.messages.insert(msgid, state_message.clone());
 
-                self.on_event(ServerEvent::Privmsg(state_message)).await?;
+                if self.current_batch.as_ref().map(|b| b.is_chathistory()) != Some(true) {
+                    self.on_event(ServerEvent::Privmsg(state_message)).await?;
+                }
+            }
+            BATCH(reference, typ, param) => {
+                if reference.starts_with('+') {
+                    self.current_batch = Some(Batch {
+                        id: reference[1..].to_string(),
+                        typ: typ.clone().unwrap(),
+                    });
+
+                    match typ {
+                        Some(BatchSubCommand::CUSTOM(c)) if &c == "METADATA" => (),
+                        _ => warn!(?typ, ?param, "unhandled BATCH type"),
+                    }
+                } else {
+                    assert_eq!(
+                        self.current_batch.as_ref().map(|s| s.id.as_str()),
+                        Some(&reference[1..])
+                    );
+
+                    self.current_batch = None;
+                }
             }
             Raw(ref cmd, ref mut target) if cmd == "TAGMSG" => {
                 let target = target.remove(0);
 
                 let mut react = None;
+                let mut unreact = None;
                 let mut reply = None;
                 if let Some(ref tags) = message.tags {
                     for Tag(key, value) in tags {
                         match key.as_str() {
                             "+draft/reply" | "+reply" => reply = value.clone(),
                             "+draft/react" => react = value.clone(),
+                            "+draft/unreact" => unreact = value.clone(),
                             _ => {
                                 warn!("unhandled tag: {key:?}: {value:?}");
                             }
@@ -341,29 +390,35 @@ impl<C: IrcConnection> IrcActor<C> {
                     .entry(target.clone())
                     .or_insert_with(|| Channel::new(target.clone()));
 
-                if let Some(react) = react
+                let is_unreact = unreact.is_some();
+                if let Some(react) = react.or(unreact)
                     && let Some(reply) = reply
                 {
                     let nickname = message.source_nickname().unwrap().to_string();
-                    let reactors = channel
-                        .messages
-                        .get_mut(&reply)
-                        .unwrap()
-                        .text
-                        .as_mut()
-                        .unwrap()
-                        .reactions
-                        .entry(react.clone())
-                        .or_insert_with(|| Vec::new());
+                    if let Some(message) = channel.messages.get_mut(&reply) {
+                        let reactors = message
+                            .text
+                            .as_mut()
+                            .unwrap()
+                            .reactions
+                            .entry(react.clone())
+                            .or_insert_with(|| Vec::new());
 
-                    reactors.push(nickname.clone());
+                        if is_unreact {
+                            reactors.push(nickname.clone());
+                        } else {
+                            reactors.retain(|v| *v != nickname);
+                        }
 
-                    self.on_event(ServerEvent::React(React {
-                        target_message: reply,
-                        user: nickname,
-                        text: react,
-                    }))
-                    .await?;
+                        // TODO: should it be sent if the message wasn't found?
+                        self.on_event(ServerEvent::React(React {
+                            target_message: reply,
+                            user: nickname,
+                            text: react,
+                            is_unreact,
+                        }))
+                        .await?;
+                    }
                 }
             }
             ERROR(msg) => self.on_error(ServerError::Generic(msg)).await?,
@@ -624,6 +679,7 @@ impl<C: IrcConnection> IrcActor<C> {
             "draft/account-registration",
             "draft/multiline",
             "server-time",
+            "batch",
         ])
         .await?;
 
