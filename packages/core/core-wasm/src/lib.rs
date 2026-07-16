@@ -403,7 +403,7 @@ impl SendCommand for OutgoingSink {
 }
 
 #[derive(Debug, Clone, Tsify)]
-#[wasm_bindgen(getter_with_clone)]
+#[wasm_bindgen(getter_with_clone, inspectable)]
 pub struct Server {
     pub id: i32,
     pub metadata: ServerMetadata,
@@ -461,7 +461,7 @@ impl From<state::Channel> for Channel {
 }
 
 #[derive(Debug, Clone, Tsify)]
-#[wasm_bindgen]
+#[wasm_bindgen(inspectable)]
 #[serde(untagged)]
 pub enum ServerEvent {
     Joined(Channel),
@@ -486,7 +486,7 @@ impl From<state::ServerEvent> for ServerEvent {
 }
 
 #[derive(Debug, Clone, Tsify)]
-#[wasm_bindgen(getter_with_clone)]
+#[wasm_bindgen(getter_with_clone, inspectable)]
 pub struct TextMessage {
     pub content: String,
     #[tsify(type = "Map<string, string[]>")]
@@ -516,7 +516,7 @@ impl From<state::TextMessage> for TextMessage {
 }
 
 #[derive(Debug, Clone, Tsify)]
-#[wasm_bindgen(getter_with_clone)]
+#[wasm_bindgen(getter_with_clone, inspectable)]
 pub struct Message {
     pub text: Option<TextMessage>,
     pub metadata: MessageMetadata,

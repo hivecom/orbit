@@ -44,7 +44,7 @@ impl Server {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "web", derive(Tsify))]
-#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone))]
+#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone, inspectable))]
 pub struct ServerMetadata {
     pub name: String,
     pub motd: Option<String>,
@@ -95,7 +95,7 @@ impl Channel {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "web", derive(Tsify))]
-#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone))]
+#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone, inspectable))]
 pub struct ChannelMetadata {
     pub name: String,
     pub display_name: Option<String>,
@@ -106,7 +106,7 @@ pub struct ChannelMetadata {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "web", derive(Tsify))]
-#[cfg_attr(feature = "web", wasm_bindgen)]
+#[cfg_attr(feature = "web", wasm_bindgen(inspectable))]
 pub struct Capabilities {
     // reacts / replies
     pub message_tags: Capability,
@@ -150,7 +150,7 @@ pub struct Capabilities {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "web", derive(Tsify))]
-#[cfg_attr(feature = "web", wasm_bindgen)]
+#[cfg_attr(feature = "web", wasm_bindgen(inspectable))]
 pub struct Capability {
     pub has: bool,
     pub enabled: bool,
@@ -430,7 +430,7 @@ impl Support {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "web", derive(Tsify))]
-#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone))]
+#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone, inspectable))]
 pub struct User {
     pub nickname: String,
     pub username: Option<String>,
@@ -470,7 +470,7 @@ impl PartialEq for Message {
 impl Eq for Message {}
 
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "web", wasm_bindgen)]
+#[cfg_attr(feature = "web", wasm_bindgen(inspectable))]
 pub enum MessageType {
     Privmsg,
     Notice,
@@ -492,7 +492,7 @@ pub struct TextMessage {
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "web", derive(Tsify))]
-#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone))]
+#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone, inspectable))]
 pub struct MessageMetadata {
     pub msgid: String,
     pub server_time: f64,
@@ -510,7 +510,7 @@ impl Eq for MessageMetadata {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "web", derive(Tsify))]
-#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone))]
+#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone, inspectable))]
 pub struct MessageReference {
     pub username: String,
     pub text: String,
@@ -528,7 +528,7 @@ pub enum ServerEvent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "web", derive(Tsify))]
-#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone))]
+#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone, inspectable))]
 pub struct React {
     pub target_message: String,
     pub user: String,
@@ -538,7 +538,7 @@ pub struct React {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "web", derive(Tsify))]
-#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone))]
+#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone, inspectable))]
 pub struct UserList {
     pub channel: String,
     pub users: Vec<String>,
@@ -546,7 +546,7 @@ pub struct UserList {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "web", derive(Tsify))]
-#[cfg_attr(feature = "web", wasm_bindgen)]
+#[cfg_attr(feature = "web", wasm_bindgen(inspectable))]
 #[cfg_attr(feature = "web", serde(untagged))]
 pub enum ServerError {
     Generic(String),
