@@ -100,6 +100,14 @@ pub trait SendCommand {
     ) -> impl std::future::Future<Output = Result<(), Self::Error>> {
         async { self.command(PRIVMSG(target, message)).await }
     }
+
+    fn whois(
+        &mut self,
+        server: Option<String>,
+        user: String,
+    ) -> impl std::future::Future<Output = Result<(), Self::Error>> {
+        async { self.command(WHOIS(server, user)).await }
+    }
 }
 
 impl SendCommand for UnboundedSender<IrcMessage> {

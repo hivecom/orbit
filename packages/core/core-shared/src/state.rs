@@ -74,7 +74,7 @@ impl ServerMetadata {
 pub struct Channel {
     pub metadata: ChannelMetadata,
     pub messages: OrderMap<String, Message>,
-    pub users: Vec<String>,
+    pub users: Vec<ChannelUser>,
 }
 
 impl Channel {
@@ -455,6 +455,38 @@ impl User {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "web", wasm_bindgen)]
+pub enum ChannelRole {
+    Owner,
+    Admin,
+    Operator,
+    HalfOperator,
+    Voice,
+    None,
+}
+
+impl From<char> for ChannelRole {
+    fn from(role: char) -> Self {
+        match role {
+            'q' => Self::Owner,
+            'a' => Self::Admin,
+            'o' => Self::Operator,
+            'h' => Self::HalfOperator,
+            'v' => Self::Voice,
+            _ => unimplemented!("unknown role {role}"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "web", derive(Tsify))]
+#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone, inspectable))]
+pub struct ChannelUser {
+    pub nickname: String,
+    pub role: ChannelRole,
+}
+
 #[derive(Debug, Clone)]
 pub struct Message {
     pub text: Option<TextMessage>,
@@ -470,7 +502,7 @@ impl PartialEq for Message {
 impl Eq for Message {}
 
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "web", wasm_bindgen(inspectable))]
+#[cfg_attr(feature = "web", wasm_bindgen)]
 pub enum MessageType {
     Privmsg,
     Notice,
@@ -541,12 +573,12 @@ pub struct React {
 #[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone, inspectable))]
 pub struct UserList {
     pub channel: String,
-    pub users: Vec<String>,
+    pub users: Vec<ChannelUser>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "web", derive(Tsify))]
-#[cfg_attr(feature = "web", wasm_bindgen(inspectable))]
+#[cfg_attr(feature = "web", wasm_bindgen)]
 #[cfg_attr(feature = "web", serde(untagged))]
 pub enum ServerError {
     Generic(String),

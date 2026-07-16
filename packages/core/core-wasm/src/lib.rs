@@ -5,7 +5,7 @@ use core_shared::{
     SendCommand,
     actor::{self, ActorCommand, ActorMessage, CommandResponse, IrcActor},
     state::{
-        self, Capabilities, ChannelMetadata, MessageMetadata, MessageReference, React,
+        self, Capabilities, ChannelMetadata, ChannelUser, MessageMetadata, MessageReference, React,
         ServerMetadata, User, UserList,
     },
 };
@@ -421,14 +421,14 @@ pub struct Server {
 
 impl From<state::Server> for Server {
     fn from(server: state::Server) -> Self {
-        let channels = js_sys::Map::new_typed();
+        let mut channels = js_sys::Map::new_typed();
         for (k, v) in server.channels {
-            channels.set(&JsString::from(k), &JsValue::from(Channel::from(v)));
+            channels = channels.set(&JsString::from(k), &JsValue::from(Channel::from(v)));
         }
 
-        let users = js_sys::Map::new_typed();
+        let mut users = js_sys::Map::new_typed();
         for (k, v) in server.users {
-            users.set(&JsString::from(k), &JsValue::from(v));
+            users = users.set(&JsString::from(k), &JsValue::from(v));
         }
 
         Self {
@@ -447,7 +447,7 @@ impl From<state::Server> for Server {
 pub struct Channel {
     pub metadata: ChannelMetadata,
     pub messages: Vec<Message>,
-    pub users: Vec<String>,
+    pub users: Vec<ChannelUser>,
 }
 
 impl From<state::Channel> for Channel {
@@ -461,7 +461,7 @@ impl From<state::Channel> for Channel {
 }
 
 #[derive(Debug, Clone, Tsify)]
-#[wasm_bindgen(inspectable)]
+#[wasm_bindgen]
 #[serde(untagged)]
 pub enum ServerEvent {
     Joined(Channel),
@@ -499,9 +499,9 @@ pub struct TextMessage {
 
 impl From<state::TextMessage> for TextMessage {
     fn from(message: state::TextMessage) -> Self {
-        let reactions = js_sys::Map::new_typed();
+        let mut reactions = js_sys::Map::new_typed();
         for (k, v) in message.reactions {
-            reactions.set(&JsString::from(k), &JsValue::from(v));
+            reactions = reactions.set(&JsString::from(k), &JsValue::from(v));
         }
 
         Self {

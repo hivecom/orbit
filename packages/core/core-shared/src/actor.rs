@@ -5,8 +5,8 @@ use crate::dbg;
 use crate::{
     SendCommand,
     state::{
-        Channel, Message, MessageMetadata, MessageReference, MessageType, React, Server,
-        ServerError, ServerEvent, TextMessage, User, UserList,
+        Channel, ChannelRole, ChannelUser, Message, MessageMetadata, MessageReference, MessageType,
+        React, Server, ServerError, ServerEvent, TextMessage, User, UserList,
     },
 };
 use anyhow::anyhow;
@@ -279,14 +279,6 @@ impl<C: IrcConnection> IrcActor<C> {
                 });
 
                 let nickname = message.source_nickname().unwrap();
-                let user = self
-                    .state
-                    .users
-                    .entry(nickname.to_string())
-                    .or_insert_with(|| User::new(nickname.to_string()));
-                if username.is_some() {
-                    user.username = username;
-                }
 
                 let reply = reply
                     .and_then(|r| {
@@ -540,14 +532,45 @@ impl<C: IrcConnection> IrcActor<C> {
             }
             Response::RPL_NAMREPLY => {
                 let channel_name = params[2].to_string();
-                let users: Vec<_> = params[3].split_whitespace().map(|u| u.to_owned()).collect();
+                let mut users: Vec<_> =
+                    params[3].split_whitespace().map(|u| u.to_owned()).collect();
+
+                let mut channel_users = Vec::new();
+                for mut user in users {
+                    if let Some(prefix) = &self.state.support.prefix
+                        && let Some((role, _)) =
+                            prefix.iter().find(|(_, p)| Some(*p) == user.chars().nth(0))
+                    {
+                        user.remove(0);
+                        let role = ChannelRole::from(*role);
+                        channel_users.push(ChannelUser {
+                            role,
+                            nickname: user.clone(),
+                        });
+                    } else {
+                        channel_users.push(ChannelUser {
+                            role: ChannelRole::None,
+                            nickname: user.clone(),
+                        });
+                    }
+
+                    self.state
+                        .users
+                        .entry(user.clone())
+                        .or_insert_with(|| User::new(user));
+                }
+
+                if channel_name.contains("fishstick") {
+                    dbg!(&channel_users);
+                }
+
                 let channel = self
                     .state
                     .channels
                     .entry(channel_name.clone())
                     .or_insert_with(|| Channel::new(channel_name));
 
-                channel.users = users;
+                channel.users = channel_users;
             }
             Response::RPL_ENDOFNAMES => self
                 .on_event(ServerEvent::UserList(UserList {
