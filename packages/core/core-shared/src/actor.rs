@@ -147,6 +147,7 @@ impl Batch {
 impl<C: IrcConnection> IrcActor<C> {
     #[tracing::instrument]
     pub async fn new(
+        id: i32,
         name: String,
         connection: C,
         spawn: fn(IrcActor<C>) -> (),
@@ -159,7 +160,7 @@ impl<C: IrcConnection> IrcActor<C> {
             cmd_rx,
             incoming,
             outgoing,
-            state: Server::new(name, address),
+            state: Server::new(id, name, address),
             response_channels: ResponseChannels::default(),
             event_handlers: Vec::new(),
             error_handlers: Vec::new(),

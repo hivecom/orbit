@@ -15,6 +15,7 @@ use futures::{
         mpsc::{self, UnboundedSender},
         oneshot,
     },
+    future::join_all,
     stream::{Fuse, LocalBoxStream, SplitSink},
 };
 use gloo_net::websocket::{self, WebSocketError, futures::WebSocket};
@@ -95,17 +96,18 @@ impl ServerList {
 
     #[wasm_bindgen]
     pub async fn connect(&mut self, name: String, url: String) -> Result<IrcConnection, JsError> {
-        for server in &mut self.servers {
-            // FIXME: don't request the entire state
-            if server.state().await.unwrap().metadata.name == name {
-                return Err(JsError::new("Server with that name already exists"));
-            }
-        }
-
-        let connection = IrcConnection::connect(name, url).await?;
+        let id = self.max_id().await? + 1;
+        let connection = IrcConnection::connect(id, name, url).await?;
         self.servers.push(connection.clone());
 
         Ok(connection)
+    }
+
+    async fn max_id(&mut self) -> Result<i32, JsError> {
+        join_all(self.servers.iter_mut().map(|s| s.id()))
+            .await
+            .into_iter()
+            .try_fold(-1, |acc, x| x.map(|v| std::cmp::max(acc, v)))
     }
 }
 
@@ -117,9 +119,9 @@ pub struct IrcConnection {
 
 #[wasm_bindgen]
 impl IrcConnection {
-    async fn connect(name: String, url: String) -> Result<Self, JsError> {
+    async fn connect(id: i32, name: String, url: String) -> Result<Self, JsError> {
         let connection = WsConnection::new(url)?;
-        let address = IrcActor::new(name, connection, |actor| {
+        let address = IrcActor::new(id, name, connection, |actor| {
             spawn_local(async { actor.run().await })
         })
         .await
@@ -144,6 +146,11 @@ impl IrcConnection {
         };
 
         Ok(server.into())
+    }
+
+    #[wasm_bindgen]
+    pub async fn id(&mut self) -> Result<i32, JsError> {
+        Ok(self.state().await?.id)
     }
 
     #[wasm_bindgen]
@@ -401,6 +408,7 @@ impl SendCommand for OutgoingSink {
 #[derive(Debug, Clone, Tsify)]
 #[wasm_bindgen(getter_with_clone)]
 pub struct Server {
+    pub id: i32,
     pub metadata: ServerMetadata,
 
     #[tsify(type = "Map<string, Channel>")]
@@ -427,6 +435,7 @@ impl From<state::Server> for Server {
         }
 
         Self {
+            id: server.id,
             metadata: server.metadata,
             channels,
             capabilities: server.capabilities,

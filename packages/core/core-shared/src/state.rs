@@ -11,6 +11,7 @@ use wasm_bindgen::prelude::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Server {
+    pub id: i32,
     pub metadata: ServerMetadata,
     pub channels: HashMap<String, Channel>,
     pub capabilities: Capabilities,
@@ -20,8 +21,9 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn new(name: String, address: String) -> Self {
+    pub fn new(id: i32, name: String, address: String) -> Self {
         Self {
+            id,
             metadata: ServerMetadata {
                 name,
                 motd: Default::default(),
