@@ -6,7 +6,7 @@ use crate::{
     SendCommand,
     state::{
         Channel, ChannelRole, ChannelUser, Message, MessageMetadata, MessageReference, MessageType,
-        React, Server, ServerError, ServerEvent, TextMessage, User, UserList,
+        React, Server, ServerError, ServerEvent, TextMessage, User,
     },
 };
 use anyhow::anyhow;
@@ -266,6 +266,17 @@ impl<C: IrcConnection> IrcActor<C> {
                     }
                 }
 
+                let nickname = message.source_nickname().unwrap();
+
+                if let Some(username) = username {
+                    let user = self
+                        .state
+                        .users
+                        .entry(nickname.to_string())
+                        .or_insert_with(|| User::new(nickname.to_string()));
+                    user.username = Some(username);
+                }
+
                 let server_time = server_time
                     .unwrap_or_else(|| OffsetDateTime::now_utc())
                     .unix_timestamp();
@@ -277,8 +288,6 @@ impl<C: IrcConnection> IrcActor<C> {
 
                     hasher.finalize().to_string()
                 });
-
-                let nickname = message.source_nickname().unwrap();
 
                 let reply = reply
                     .and_then(|r| {
@@ -335,7 +344,11 @@ impl<C: IrcConnection> IrcActor<C> {
                 channel.messages.insert(msgid, state_message.clone());
 
                 if self.current_batch.as_ref().map(|b| b.is_chathistory()) != Some(true) {
-                    self.on_event(ServerEvent::Privmsg(state_message)).await?;
+                    self.on_event(ServerEvent::Privmsg {
+                        channel: target.clone(),
+                        message: state_message,
+                    })
+                    .await?;
                 }
             }
             BATCH(reference, typ, param) => {
@@ -532,8 +545,7 @@ impl<C: IrcConnection> IrcActor<C> {
             }
             Response::RPL_NAMREPLY => {
                 let channel_name = params[2].to_string();
-                let mut users: Vec<_> =
-                    params[3].split_whitespace().map(|u| u.to_owned()).collect();
+                let users: Vec<_> = params[3].split_whitespace().map(|u| u.to_owned()).collect();
 
                 let mut channel_users = Vec::new();
                 for mut user in users {
@@ -560,10 +572,6 @@ impl<C: IrcConnection> IrcActor<C> {
                         .or_insert_with(|| User::new(user));
                 }
 
-                if channel_name.contains("fishstick") {
-                    dbg!(&channel_users);
-                }
-
                 let channel = self
                     .state
                     .channels
@@ -573,10 +581,10 @@ impl<C: IrcConnection> IrcActor<C> {
                 channel.users = channel_users;
             }
             Response::RPL_ENDOFNAMES => self
-                .on_event(ServerEvent::UserList(UserList {
+                .on_event(ServerEvent::UserList {
                     channel: params[1].to_string(),
                     users: self.state.channels.get(&params[1]).unwrap().users.clone(),
-                }))
+                })
                 .await
                 .map_err(|e| anyhow!("Failed to send server event {e:?}"))?,
             Response::RPL_ISUPPORT => {

@@ -6,7 +6,7 @@ use core_shared::{
     actor::{self, ActorCommand, ActorMessage, CommandResponse, IrcActor},
     state::{
         self, Capabilities, ChannelMetadata, ChannelUser, MessageMetadata, MessageReference, React,
-        ServerMetadata, User, UserList,
+        ServerMetadata, User,
     },
 };
 use futures::{
@@ -468,7 +468,7 @@ pub enum ServerEvent {
     ChannelUpdated(ChannelMetadata),
     ServerInfo(ServerMetadata),
     UserList(UserList),
-    Privmsg(Message),
+    Privmsg(ChannelMessage),
     React(React),
 }
 
@@ -478,11 +478,30 @@ impl From<state::ServerEvent> for ServerEvent {
             state::ServerEvent::Joined(c) => Self::Joined(c.into()),
             state::ServerEvent::ChannelUpdated(cm) => Self::ChannelUpdated(cm),
             state::ServerEvent::ServerInfo(sm) => Self::ServerInfo(sm),
-            state::ServerEvent::UserList(ul) => Self::UserList(ul),
-            state::ServerEvent::Privmsg(m) => Self::Privmsg(m.into()),
+            state::ServerEvent::UserList { channel, users } => {
+                Self::UserList(UserList { channel, users })
+            }
+            state::ServerEvent::Privmsg { channel, message } => Self::Privmsg(ChannelMessage {
+                channel,
+                message: message.into(),
+            }),
             state::ServerEvent::React(r) => Self::React(r),
         }
     }
+}
+
+#[derive(Debug, Clone, Tsify)]
+#[wasm_bindgen(getter_with_clone, inspectable)]
+pub struct ChannelMessage {
+    pub channel: String,
+    pub message: Message,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Tsify)]
+#[wasm_bindgen(getter_with_clone, inspectable)]
+pub struct UserList {
+    pub channel: String,
+    pub users: Vec<ChannelUser>,
 }
 
 #[derive(Debug, Clone, Tsify)]

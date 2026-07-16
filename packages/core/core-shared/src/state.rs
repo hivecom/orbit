@@ -553,8 +553,14 @@ pub enum ServerEvent {
     Joined(Channel),
     ChannelUpdated(ChannelMetadata),
     ServerInfo(ServerMetadata),
-    UserList(UserList),
-    Privmsg(Message),
+    UserList {
+        channel: String,
+        users: Vec<ChannelUser>,
+    },
+    Privmsg {
+        channel: String,
+        message: Message,
+    },
     React(React),
 }
 
@@ -566,14 +572,6 @@ pub struct React {
     pub user: String,
     pub text: String,
     pub is_unreact: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "web", derive(Tsify))]
-#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone, inspectable))]
-pub struct UserList {
-    pub channel: String,
-    pub users: Vec<ChannelUser>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
