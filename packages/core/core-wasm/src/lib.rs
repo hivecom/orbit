@@ -15,7 +15,6 @@ use futures::{
         mpsc::{self, UnboundedSender},
         oneshot,
     },
-    future::join_all,
     stream::{Fuse, LocalBoxStream, SplitSink},
 };
 use gloo_net::websocket::{self, WebSocketError, futures::WebSocket};
@@ -96,24 +95,22 @@ impl ServerList {
 
     #[wasm_bindgen]
     pub async fn connect(&mut self, name: String, url: String) -> Result<IrcConnection, JsError> {
-        let id = self.max_id().await? + 1;
+        let id = self.max_id().unwrap_or(-1) + 1;
         let connection = IrcConnection::connect(id, name, url).await?;
         self.servers.push(connection.clone());
 
         Ok(connection)
     }
 
-    async fn max_id(&mut self) -> Result<i32, JsError> {
-        join_all(self.servers.iter_mut().map(|s| s.id()))
-            .await
-            .into_iter()
-            .try_fold(-1, |acc, x| x.map(|v| std::cmp::max(acc, v)))
+    fn max_id(&mut self) -> Option<i32> {
+        self.servers.iter().map(|s| s.id()).max()
     }
 }
 
 #[derive(Clone)]
 #[wasm_bindgen]
 pub struct IrcConnection {
+    id: i32,
     address: UnboundedSender<ActorMessage>,
 }
 
@@ -127,7 +124,7 @@ impl IrcConnection {
         .await
         .map_err(|e| JsError::new(&e.to_string()))?;
 
-        Ok(Self { address })
+        Ok(Self { id, address })
     }
 
     #[wasm_bindgen]
@@ -149,8 +146,8 @@ impl IrcConnection {
     }
 
     #[wasm_bindgen]
-    pub async fn id(&mut self) -> Result<i32, JsError> {
-        Ok(self.state().await?.id)
+    pub fn id(&self) -> i32 {
+        self.id
     }
 
     #[wasm_bindgen]
