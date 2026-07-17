@@ -29,10 +29,8 @@ jobs:
       - name: install wasm-pack
         shell: "bash"
         run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://rsproxy.cn/rustup-init.sh | sh -s -- -y --default-toolchain nightly
           rustup target add wasm32-unknown-unknown
-          curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
-          cargo binstall wasm-pack -y --force
+          curl https://wasm-bindgen.github.io/wasm-pack/installer/init.sh -sSf | sh
 
       # pnpm version comes from the "packageManager" field in package.json
       - run: corepack enable
