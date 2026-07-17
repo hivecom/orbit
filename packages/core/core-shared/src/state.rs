@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 use std::str::FromStr;
+use std::sync::Arc;
 
 #[cfg(feature = "web")]
 use crate::dbg;
 use ordermap::OrderMap;
+use thiserror::Error;
 #[cfg(feature = "web")]
 use tsify::Tsify;
 #[cfg(feature = "web")]
@@ -21,11 +23,11 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn new(id: i32, name: String, address: String) -> Self {
+    pub fn new(id: i32, address: String) -> Self {
         Self {
             id,
             metadata: ServerMetadata {
-                name,
+                name: Default::default(),
                 motd: Default::default(),
                 address,
 
@@ -46,7 +48,7 @@ impl Server {
 #[cfg_attr(feature = "web", derive(Tsify))]
 #[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone, inspectable))]
 pub struct ServerMetadata {
-    pub name: String,
+    pub name: Option<String>,
     pub motd: Option<String>,
     pub address: String,
 
@@ -575,10 +577,24 @@ pub struct React {
     pub is_unreact: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "web", derive(Tsify))]
-#[cfg_attr(feature = "web", wasm_bindgen)]
-#[cfg_attr(feature = "web", serde(untagged))]
-pub enum ServerError {
+#[derive(Debug, Error, Clone)]
+pub enum OrbitError {
+    #[error("Nickname is already in use")]
+    NickTaken,
+
+    #[error("Invalid password")]
+    InvalidPassword,
+
+    #[error("{0}")]
     Generic(String),
+
+    #[error("Unknown error: {0}")]
+    // FIXME: remove the Arc somehow
+    Unknown(Arc<anyhow::Error>),
+}
+
+impl From<anyhow::Error> for OrbitError {
+    fn from(error: anyhow::Error) -> Self {
+        Self::Unknown(Arc::new(error))
+    }
 }
