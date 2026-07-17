@@ -17,6 +17,10 @@ impl IrcConnection for MockConn {
     type Incoming = UnboundedReceiver<anyhow::Result<IrcMessage>>;
     type Outgoing = UnboundedSender<IrcMessage>;
 
+    fn address(&self) -> &str {
+        "mock-conn"
+    }
+
     fn in_out(self) -> (Self::Incoming, Self::Outgoing) {
         let (outgoing_tx, mut outgoing_rx) = unbounded::<IrcMessage>();
         let (mut incoming_tx, incoming_rx) = unbounded::<anyhow::Result<IrcMessage>>();
@@ -53,9 +57,14 @@ impl IrcConnection for MockConn {
 
 #[tokio::test]
 async fn test_irc_register_flow() {
-    let addr = IrcActor::<MockConn>::new(MockConn::default(), |actor: IrcActor<MockConn>| {
-        tokio::spawn(actor.run());
-    })
+    let addr = IrcActor::<MockConn>::start(
+        0,
+        String::from("server-name"),
+        MockConn::default(),
+        |actor: IrcActor<MockConn>| {
+            tokio::spawn(actor.run());
+        },
+    )
     .await
     .unwrap();
 
@@ -81,14 +90,26 @@ async fn test_irc_register_flow() {
         .unwrap()
         .unwrap();
 
-    let CommandResponse::SignIn(server) = response else {
+    let CommandResponse::SignIn(_) = response else {
         panic!("Expected CommandResponse::SignIn but got: {:?}", response);
     };
 
-    let server = server.unwrap();
+    let (tx, rx) = oneshot::channel();
+    addr.unbounded_send(ActorMessage {
+        command: ActorCommand::GetState,
+        reply_tx: Some(tx),
+    })
+    .unwrap();
+    let response = tokio::time::timeout(Duration::from_secs(1), rx)
+        .await
+        .unwrap()
+        .unwrap();
+    let CommandResponse::GetState(state) = response else {
+        panic!("Expected CommandResponse::GetState but got: {:?}", response);
+    };
 
     assert_matches::assert_matches!(
-        server.capabilities,
+        state.capabilities,
         Capabilities {
             message_tags: Capability {
                 has: true,
@@ -119,7 +140,7 @@ async fn test_irc_register_flow() {
     );
 
     assert_matches::assert_matches!(
-        server.me,
+        state.me,
         Some(User {
             nickname: nick,
             username: user,

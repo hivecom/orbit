@@ -21,6 +21,7 @@
 
             cargo-tauri
             cargo-watch
+            clippy
             rust-analyzer
             wasm-pack
             bacon

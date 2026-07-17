@@ -118,7 +118,7 @@ pub struct IrcConnection {
 impl IrcConnection {
     async fn connect(id: i32, name: String, url: String) -> Result<Self, JsError> {
         let connection = WsConnection::new(url)?;
-        let address = IrcActor::new(id, name, connection, |actor| {
+        let address = IrcActor::start(id, name, connection, |actor| {
             spawn_local(async { actor.run().await })
         })
         .await
@@ -142,7 +142,7 @@ impl IrcConnection {
             unreachable!("expected state, got: {:?}", resp);
         };
 
-        Ok(server.into())
+        Ok((*server).into())
     }
 
     #[wasm_bindgen]
@@ -257,7 +257,7 @@ impl IrcConnection {
             unreachable!("expected sign in, got: {:?}", resp);
         };
 
-        Ok(result.map_err(|e| JsError::new(&e.to_string()))?)
+        result.map_err(|e| JsError::new(&e.to_string()))
     }
 
     #[wasm_bindgen]
@@ -284,7 +284,7 @@ impl IrcConnection {
             unreachable!("expected sign in, got: {:?}", resp);
         };
 
-        Ok(result.map_err(|e| JsError::new(&e.to_string()))?)
+        result.map_err(|e| JsError::new(&e.to_string()))
     }
 
     #[wasm_bindgen]
@@ -339,7 +339,7 @@ impl IrcChannel {
             unreachable!("expected join, got: {:?}", resp);
         };
 
-        Ok(message.into())
+        Ok((*message).into())
     }
 }
 

@@ -62,8 +62,8 @@ impl ServerMetadata {
     pub fn add_motd(&mut self, line: &str) {
         match self.motd {
             Some(ref mut motd) => {
-                motd.push_str("\n");
-                motd.push_str(&line);
+                motd.push('\n');
+                motd.push_str(line);
             }
             None => self.motd = Some(line.to_owned()),
         }
@@ -158,6 +158,7 @@ pub struct Capability {
 
 impl Capabilities {
     pub fn set_from_name(&mut self, cap: &str, enabled: Option<bool>) {
+        #[allow(clippy::option_map_unit_fn)]
         match cap {
             "message-tags" => {
                 self.message_tags.has = true;

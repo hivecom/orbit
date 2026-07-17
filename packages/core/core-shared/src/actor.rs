@@ -39,11 +39,11 @@ pub enum CommandKey {
 
 #[derive(Debug)]
 pub enum CommandResponse {
-    GetState(Server),
+    GetState(Box<Server>),
     Capabilities,
     SignIn(anyhow::Result<()>),
     Join(String),
-    Privmsg(Message),
+    Privmsg(Box<Message>),
 }
 
 impl ResponseChannels {
@@ -137,16 +137,13 @@ struct Batch {
 
 impl Batch {
     fn is_chathistory(&self) -> bool {
-        match self.typ {
-            BatchSubCommand::CUSTOM(ref c) if c.as_str() == "CHATHISTORY" => true,
-            _ => false,
-        }
+        matches!(self.typ, BatchSubCommand::CUSTOM(ref c) if c.as_str() == "CHATHISTORY")
     }
 }
 
 impl<C: IrcConnection> IrcActor<C> {
     #[tracing::instrument]
-    pub async fn new(
+    pub async fn start(
         id: i32,
         name: String,
         connection: C,
@@ -257,7 +254,7 @@ impl<C: IrcConnection> IrcActor<C> {
                             "time" => {
                                 server_time = value
                                     .as_ref()
-                                    .and_then(|v| OffsetDateTime::parse(&v, &Iso8601::DEFAULT).ok())
+                                    .and_then(|v| OffsetDateTime::parse(v, &Iso8601::DEFAULT).ok())
                             }
                             _ => {
                                 warn!("unhandled tag: {key:?}: {value:?}");
@@ -278,13 +275,13 @@ impl<C: IrcConnection> IrcActor<C> {
                 }
 
                 let server_time = server_time
-                    .unwrap_or_else(|| OffsetDateTime::now_utc())
+                    .unwrap_or_else(OffsetDateTime::now_utc)
                     .unix_timestamp();
                 let msgid = msgid.unwrap_or_else(|| {
                     let mut hasher = blake3::Hasher::new();
                     hasher.update(&server_time.to_ne_bytes());
-                    hasher.update(&target.as_bytes());
-                    hasher.update(&text.as_bytes());
+                    hasher.update(target.as_bytes());
+                    hasher.update(text.as_bytes());
 
                     hasher.finalize().to_string()
                 });
@@ -320,20 +317,19 @@ impl<C: IrcConnection> IrcActor<C> {
                     },
                 };
 
-                if nickname == self.state.me.as_ref().unwrap().nickname {
-                    if let Err(e) = self
+                if nickname == self.state.me.as_ref().unwrap().nickname
+                    && let Err(e) = self
                         .response_channels
                         .reply(
                             &CommandKey::Privmsg {
                                 target: target.clone(),
                                 text: text.clone(),
                             },
-                            CommandResponse::Privmsg(state_message.clone()),
+                            CommandResponse::Privmsg(Box::new(state_message.clone())),
                         )
                         .await
-                    {
-                        error!("Failed to reply to PRIVMSG command {e:?}");
-                    }
+                {
+                    error!("Failed to reply to PRIVMSG command {e:?}");
                 }
 
                 let channel = self
@@ -352,9 +348,9 @@ impl<C: IrcConnection> IrcActor<C> {
                 }
             }
             BATCH(reference, typ, param) => {
-                if reference.starts_with('+') {
+                if let Some(id) = reference.strip_prefix('+') {
                     self.current_batch = Some(Batch {
-                        id: reference[1..].to_string(),
+                        id: id.to_string(),
                         typ: typ.clone().unwrap(),
                     });
 
@@ -408,7 +404,7 @@ impl<C: IrcConnection> IrcActor<C> {
                             .unwrap()
                             .reactions
                             .entry(react.clone())
-                            .or_insert_with(|| Vec::new());
+                            .or_insert_with(Vec::new);
 
                         if is_unreact {
                             reactors.push(nickname.clone());
@@ -619,7 +615,7 @@ impl<C: IrcConnection> IrcActor<C> {
             ActorCommand::GetState => cmd
                 .reply_tx
                 .unwrap()
-                .send(CommandResponse::GetState(self.state.clone()))
+                .send(CommandResponse::GetState(Box::new(self.state.clone())))
                 .unwrap(),
             ActorCommand::SignIn {
                 nick,
