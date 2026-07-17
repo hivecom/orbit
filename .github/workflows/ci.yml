@@ -37,7 +37,7 @@ jobs:
         shell: "bash"
         run: |
           rustup target add wasm32-unknown-unknown
-          curl https://wasm-bindgen.github.io/wasm-pack/installer/init.sh -sSf | sh
+          curl https://wasm-bindgen.github.io/wasm-pack/installer/init.sh -sSf | VERSION="v0.15.0" sh
 
       - run: pnpm install --frozen-lockfile
 
