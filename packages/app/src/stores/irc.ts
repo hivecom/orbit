@@ -1,5 +1,5 @@
 import { defineStore } from "pinia"
-import type { IrcServer, ServerList } from "core-wasm"
+import type { IrcConnection, ServerList } from "core-wasm"
 import { shallowRef } from "vue"
 
 /**
@@ -7,7 +7,7 @@ import { shallowRef } from "vue"
  */
 export const useIrcStore = defineStore("irc", () => {
   const initialized = shallowRef(false)
-  const servers = shallowRef<IrcServer[]>([])
+  const servers = shallowRef<IrcConnection[]>([])
 
   let controller: ServerList = {} as ServerList
 
@@ -18,8 +18,7 @@ export const useIrcStore = defineStore("irc", () => {
    */
   async function init(_controller: ServerList) {
     controller = _controller
-    const rawServers = await controller.get_servers()
-    servers.value = rawServers
+    servers.value = controller.servers
     initialized.value = true
   }
 
