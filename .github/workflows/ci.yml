@@ -37,7 +37,7 @@ jobs:
 
       # The `ready` gate, split into steps for clearer failure attribution.
       - name: Check (format, lint, types)
-        run: pnpm exec vp check
+        run: pnpm exec vp run check
 
       - name: Test
         run: pnpm exec vp run -r test
