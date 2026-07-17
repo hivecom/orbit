@@ -717,18 +717,18 @@ impl<C: IrcConnection> IrcActor<C> {
     #[tracing::instrument(err, skip(self))]
     async fn sign_in_anonymous(
         &mut self,
-        nick: String,
-        user: String,
+        nickname: String,
+        username: String,
         realname: String,
     ) -> anyhow::Result<()> {
         self.end_caps().await?;
-        self.nick(nick.clone()).await?;
-        self.user(user.clone(), String::from("0"), realname.clone())
+        self.nick(nickname.clone()).await?;
+        self.user(username.clone(), String::from("0"), realname.clone())
             .await?;
 
         self.state.me = Some(User {
-            nickname: nick,
-            username: Some(user),
+            nickname,
+            username: Some(username),
             realname: Some(realname),
             display_name: None,
             description: None,
@@ -763,23 +763,24 @@ impl<C: IrcConnection> IrcActor<C> {
                 }
                 sending = rest;
             }
-        } else {
-            unimplemented!("sasl cap not enabled")
-        }
-        self.end_caps().await?;
-        self.nick(nickname.clone()).await?;
-        self.user(username.clone(), String::from("0"), realname.clone())
-            .await?;
+            self.end_caps().await?;
+            self.nick(nickname.clone()).await?;
+            self.user(username.clone(), String::from("0"), realname.clone())
+                .await?;
 
-        self.state.me = Some(User {
-            nickname,
-            username: Some(username),
-            realname: Some(realname),
-            display_name: None,
-            description: None,
-            profile_picture_url: None,
-            bot: false,
-        });
+            self.state.me = Some(User {
+                nickname,
+                username: Some(username),
+                realname: Some(realname),
+                display_name: None,
+                description: None,
+                profile_picture_url: None,
+                bot: false,
+            });
+        } else {
+            warn!("SASL capability not enabled, falling back to anonymous sign in");
+            self.sign_in_anonymous(nickname, username, realname).await?;
+        }
 
         Ok(())
     }
