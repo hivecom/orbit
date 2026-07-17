@@ -10,6 +10,8 @@ use std::time::Duration;
 use core_shared::actor::{ActorCommand, ActorMessage, IrcActor};
 use futures::channel::oneshot;
 
+const LONG_PASSWORD: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
 #[derive(Debug, Default)]
 struct MockConn;
 
@@ -31,20 +33,19 @@ impl IrcConnection for MockConn {
                 match msg.command {
                     Command::CAP(None, CapSubCommand::LS, ref version, None) => {
                         if *version == Some("302".into()) {
-                            incoming_tx.send(Ok(IrcMessage::from_str(":irc.hivecom.net CAP * LS * :account-notify account-tag away-notify batch cap-notify chghost draft/account-registration=before-connect,email-required draft/channel-rename draft/chathistory draft/event-playback draft/extended-isupport draft/languages=1,en draft/message-redaction draft/metadata-2=before-connect,max-subs=10,max-keys=10 draft/multiline=max-bytes=4096,max-lines=100 draft/no-implicit-names draft/persistence draft/pre-away draft/read-marker draft/relaymsg=/ draft/webpush echo-message".into()).unwrap())).await.unwrap();
-                            incoming_tx.send(Ok(IrcMessage::from_str(":irc.hivecom.net CAP * LS :ergo.chat/nope extended-join extended-monitor invite-notify labeled-response message-tags multi-prefix sasl=PLAIN,EXTERNAL server-time setname soju.im/webpush standard-replies userhost-in-names znc.in/playback znc.in/self-message".into()).unwrap())).await.unwrap();
+                            incoming_tx.send(Ok(IrcMessage::from_str(":irc.hivecom.net CAP * LS * :account-notify account-tag away-notify batch cap-notify chghost draft/account-registration=before-connect,email-required draft/channel-rename draft/chathistory draft/event-playback draft/extended-isupport draft/languages=1,en draft/message-redaction draft/metadata-2=before-connect,max-subs=10,max-keys=10 draft/multiline=max-bytes=4096,max-lines=100 draft/no-implicit-names draft/persistence draft/pre-away draft/read-marker draft/relaymsg=/ draft/webpush echo-message").unwrap())).await.unwrap();
+                            incoming_tx.send(Ok(IrcMessage::from_str(":irc.hivecom.net CAP * LS :ergo.chat/nope extended-join extended-monitor invite-notify labeled-response message-tags multi-prefix sasl=PLAIN,EXTERNAL server-time setname soju.im/webpush standard-replies userhost-in-names znc.in/playback znc.in/self-message").unwrap())).await.unwrap();
                         } else {
                             incoming_tx.send(Ok(msg)).await.unwrap();
                         }
                     }
                     Command::CAP(None, CapSubCommand::REQ, None, Some(_)) => {
-                        incoming_tx.send(Ok(IrcMessage::from_str("@time=2026-07-13T11:01:09.182Z :irc.hivecom.net CAP * ACK :echo-message message-tags sasl draft/message-redaction draft/metadata-2 draft/chathistory draft/event-playback draft/account-registration draft/multiline server-time".into()).unwrap())).await.unwrap();
+                        incoming_tx.send(Ok(IrcMessage::from_str("@time=2026-07-13T11:01:09.182Z :irc.hivecom.net CAP * ACK :echo-message message-tags sasl draft/message-redaction draft/metadata-2 draft/chathistory draft/event-playback draft/account-registration draft/multiline server-time").unwrap())).await.unwrap();
                     }
                     Command::USER(_, _, _) => {
                         incoming_tx.send(Ok(IrcMessage::from_str(":irc.hivecom.net 001 testnick :Welcome to the Hivecom IRC Network testnick").unwrap())).await.unwrap();
                     }
                     _ => {
-                        dbg!(&msg.to_string());
                         dbg!(&msg);
                     }
                 }
@@ -57,14 +58,9 @@ impl IrcConnection for MockConn {
 
 #[tokio::test]
 async fn test_irc_register_flow() {
-    let addr = IrcActor::<MockConn>::start(
-        0,
-        String::from("server-name"),
-        MockConn::default(),
-        |actor: IrcActor<MockConn>| {
-            tokio::spawn(actor.run());
-        },
-    )
+    let addr = IrcActor::<MockConn>::start(0, MockConn, |actor: IrcActor<MockConn>| {
+        tokio::spawn(actor.run());
+    })
     .await
     .unwrap();
 
@@ -75,10 +71,11 @@ async fn test_irc_register_flow() {
     let requested_realname = String::from("testreal");
 
     addr.unbounded_send(ActorMessage {
-        command: ActorCommand::SignInAnonymous {
+        command: ActorCommand::SignIn {
             nick: requested_nickname.clone(),
             user: requested_username.clone(),
             realname: requested_realname.clone(),
+            password: LONG_PASSWORD.to_string(),
         },
         reply_tx: Some(tx),
     })

@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::str::FromStr;
-use std::sync::Arc;
 
 #[cfg(feature = "web")]
 use crate::dbg;
 use ordermap::OrderMap;
 use thiserror::Error;
+use tracing::error;
 #[cfg(feature = "web")]
 use tsify::Tsify;
 #[cfg(feature = "web")]
@@ -577,24 +577,36 @@ pub struct React {
     pub is_unreact: bool,
 }
 
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "web", wasm_bindgen)]
+pub enum SignedIn {
+    User,
+    Guest,
+}
+
 #[derive(Debug, Error, Clone)]
 pub enum OrbitError {
     #[error("Nickname is already in use")]
     NickTaken,
 
-    #[error("Invalid password")]
-    InvalidPassword,
+    #[error("{0}")]
+    SaslFailed(String),
 
     #[error("{0}")]
     Generic(String),
 
     #[error("Unknown error: {0}")]
     // FIXME: remove the Arc somehow
-    Unknown(Arc<anyhow::Error>),
+    Unknown(String),
 }
 
 impl From<anyhow::Error> for OrbitError {
     fn from(error: anyhow::Error) -> Self {
-        Self::Unknown(Arc::new(error))
+        let err = error.chain().skip(1).fold(error.to_string(), |acc, cause| {
+            format!("{}: {}\n", acc, cause)
+        });
+        error!("Unexpected Orbit error: {}", err);
+
+        Self::Unknown(error.to_string())
     }
 }

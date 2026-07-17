@@ -6,7 +6,7 @@ use crate::{
     SendCommand,
     state::{
         Channel, ChannelRole, ChannelUser, Message, MessageMetadata, MessageReference, MessageType,
-        OrbitError, React, Server, ServerEvent, TextMessage, User,
+        OrbitError, React, Server, ServerEvent, SignedIn, TextMessage, User,
     },
 };
 use anyhow::{Context, anyhow};
@@ -41,7 +41,7 @@ pub enum CommandKey {
 pub enum CommandResponse {
     GetState(Box<Server>),
     Capabilities,
-    SignIn(Result<(), OrbitError>),
+    SignIn(Result<SignedIn, OrbitError>),
     Join(String),
     Privmsg(Box<Message>),
 }
@@ -115,7 +115,6 @@ pub trait IrcConnection: fmt::Debug {
     fn address(&self) -> &str;
 }
 
-#[derive(Debug)]
 pub struct IrcActor<C: IrcConnection> {
     cmd_rx: mpsc::UnboundedReceiver<ActorMessage>,
     incoming: C::Incoming,
@@ -127,6 +126,7 @@ pub struct IrcActor<C: IrcConnection> {
     disconnect_handlers: Vec<UnboundedSender<String>>,
 
     current_batch: Option<Batch>,
+    sasl_state: SaslState,
 }
 
 #[derive(Debug)]
@@ -139,6 +139,18 @@ impl Batch {
     fn is_chathistory(&self) -> bool {
         matches!(self.typ, BatchSubCommand::CUSTOM(ref c) if c.as_str() == "CHATHISTORY")
     }
+}
+
+#[derive(Default, Clone)]
+enum SaslState {
+    #[default]
+    Unauthed,
+    Requested {
+        nickname: String,
+        realname: String,
+        username: String,
+        password: String,
+    },
 }
 
 impl<C: IrcConnection> IrcActor<C> {
@@ -162,6 +174,7 @@ impl<C: IrcConnection> IrcActor<C> {
             error_handlers: Vec::new(),
             disconnect_handlers: Vec::new(),
             current_batch: None,
+            sasl_state: Default::default(),
         };
 
         let (tx, rx) = oneshot::channel();
@@ -425,8 +438,51 @@ impl<C: IrcConnection> IrcActor<C> {
                     }
                 }
             }
+            AUTHENTICATE(param) if param == "+" => {
+                if let SaslState::Requested {
+                    nickname,
+                    realname,
+                    username,
+                    password,
+                } = self.sasl_state.clone()
+                {
+                    let credentials =
+                        BASE64_STANDARD.encode(format!("\0{}\0{}", username, password).as_bytes());
+
+                    // Chunk overly long credentials
+                    let mut sending = credentials.as_str();
+                    while !sending.is_empty() {
+                        let (chunk, rest) = sending.split_at(400.min(sending.len()));
+                        self.sasl(chunk.to_string())
+                            .await
+                            .context("Failed to send SASL chunk")?;
+
+                        if rest.is_empty() && chunk.len() == 400 {
+                            self.sasl("+".to_string())
+                                .await
+                                .context("Failed to send SASL end")?;
+                        }
+                        sending = rest;
+                    }
+                    self.nick(nickname.clone())
+                        .await
+                        .context("Failed to send NICK")?;
+                    self.user(username.clone(), String::from("0"), realname.clone())
+                        .await
+                        .context("Failed to send USER")?;
+
+                    self.state.me = Some(User {
+                        nickname,
+                        username: Some(username),
+                        realname: Some(realname),
+                        display_name: None,
+                        description: None,
+                        profile_picture_url: None,
+                        bot: false,
+                    });
+                }
+            }
             ERROR(msg) => self.on_error(OrbitError::Generic(msg)).await?,
-            AUTHENTICATE(_) => (),
             _ => {
                 warn!("unhandled message, {message:?}");
             }
@@ -498,9 +554,23 @@ impl<C: IrcConnection> IrcActor<C> {
                 .on_event(ServerEvent::ServerInfo(self.state.metadata.clone()))
                 .await
                 .map_err(|e| anyhow!("Failed to send server event {e:?}"))?,
-            Response::RPL_SASLSUCCESS | Response::RPL_WELCOME => {
+            Response::RPL_SASLSUCCESS => {
                 self.response_channels
-                    .reply(&CommandKey::SignIn, CommandResponse::SignIn(Ok(())))
+                    .reply(
+                        &CommandKey::SignIn,
+                        CommandResponse::SignIn(Ok(SignedIn::User)),
+                    )
+                    .await
+                    .map_err(|e| anyhow!("Failed to reply to sign in command {e:?}"))?;
+
+                self.cap_end().await.context("Failed to send CAP END")?;
+            }
+            Response::RPL_WELCOME => {
+                self.response_channels
+                    .reply(
+                        &CommandKey::SignIn,
+                        CommandResponse::SignIn(Ok(SignedIn::Guest)),
+                    )
                     .await
                     .map_err(|e| anyhow!("Failed to reply to sign in command {e:?}"))?;
             }
@@ -511,7 +581,7 @@ impl<C: IrcConnection> IrcActor<C> {
                 self.response_channels
                     .reply(
                         &CommandKey::SignIn,
-                        CommandResponse::SignIn(Err(OrbitError::InvalidPassword)),
+                        CommandResponse::SignIn(Err(OrbitError::SaslFailed(params[1].to_string()))),
                     )
                     .await
                     .map_err(|e| anyhow!("Failed to reply to sign in command {e:?}"))?;
@@ -590,6 +660,7 @@ impl<C: IrcConnection> IrcActor<C> {
                     let (key, value) = option.split_once('=').unzip();
                     self.state.support.set(key.unwrap_or(option), value);
                 }
+                self.state.metadata.name = self.state.support.network.clone();
             }
             Response::RPL_YOURHOST
             | Response::RPL_CREATED
@@ -759,41 +830,12 @@ impl<C: IrcConnection> IrcActor<C> {
             self.sasl_plain()
                 .await
                 .context("Failed to send SASL PLAIN")?;
-            let credentials =
-                BASE64_STANDARD.encode(format!("\0{}\0{}", username, password).as_bytes());
-
-            // Chunk overly long credentials
-            let mut sending = credentials.as_str();
-            while !sending.is_empty() {
-                let (chunk, rest) = sending.split_at(400.min(credentials.len()));
-                self.sasl(chunk.to_string())
-                    .await
-                    .context("Failed to send SASL chunk")?;
-
-                if rest.is_empty() && chunk.len() == 400 {
-                    self.sasl("+".to_string())
-                        .await
-                        .context("Failed to send SASL end")?;
-                }
-                sending = rest;
-            }
-            self.cap_end().await.context("Failed to send CAP END")?;
-            self.nick(nickname.clone())
-                .await
-                .context("Failed to send NICK")?;
-            self.user(username.clone(), String::from("0"), realname.clone())
-                .await
-                .context("Failed to send USER")?;
-
-            self.state.me = Some(User {
+            self.sasl_state = SaslState::Requested {
                 nickname,
-                username: Some(username),
-                realname: Some(realname),
-                display_name: None,
-                description: None,
-                profile_picture_url: None,
-                bot: false,
-            });
+                realname,
+                username,
+                password,
+            };
         } else {
             warn!("SASL capability not enabled, falling back to anonymous sign in");
             self.sign_in_anonymous(nickname, username, realname).await?;

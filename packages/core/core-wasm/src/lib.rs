@@ -6,7 +6,7 @@ use core_shared::{
     actor::{self, ActorCommand, ActorMessage, CommandResponse, IrcActor},
     state::{
         self, Capabilities, ChannelMetadata, ChannelUser, MessageMetadata, MessageReference, React,
-        ServerMetadata, User,
+        ServerMetadata, SignedIn, User,
     },
 };
 use futures::{
@@ -238,7 +238,7 @@ impl IrcConnection {
         user: String,
         realname: String,
         password: String,
-    ) -> Result<(), OrbitError> {
+    ) -> Result<SignedIn, OrbitError> {
         let (tx, rx) = oneshot::channel();
         self.address
             .send(ActorMessage {
@@ -251,7 +251,7 @@ impl IrcConnection {
                 reply_tx: Some(tx),
             })
             .await
-            .expect("can send actor message");
+            .context("Failed to send ActorMessage")?;
 
         let resp = rx.await.context("Failed to await ActorMessage")?;
         let CommandResponse::SignIn(result) = resp else {
@@ -267,7 +267,7 @@ impl IrcConnection {
         nick: String,
         user: String,
         realname: String,
-    ) -> Result<(), OrbitError> {
+    ) -> Result<SignedIn, OrbitError> {
         let (tx, rx) = oneshot::channel();
         self.address
             .send(ActorMessage {
@@ -566,7 +566,7 @@ impl From<state::OrbitError> for OrbitError {
     fn from(error: state::OrbitError) -> Self {
         let kind = match error {
             state::OrbitError::NickTaken => OrbitErrorKind::NickTaken,
-            state::OrbitError::InvalidPassword => OrbitErrorKind::InvalidPassword,
+            state::OrbitError::SaslFailed(_) => OrbitErrorKind::SaslFailed,
             state::OrbitError::Generic(_) => OrbitErrorKind::Generic,
             state::OrbitError::Unknown(_) => OrbitErrorKind::Unknown,
         };
@@ -582,7 +582,7 @@ impl From<state::OrbitError> for OrbitError {
 #[wasm_bindgen]
 pub enum OrbitErrorKind {
     NickTaken,
-    InvalidPassword,
+    SaslFailed,
     Generic,
     Unknown,
 }
