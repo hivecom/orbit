@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { usePlatform } from "connector"
+import { usePlatform } from "platform"
 
 const platform = usePlatform()
 </script>
