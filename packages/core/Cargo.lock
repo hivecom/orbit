@@ -128,7 +128,7 @@ dependencies = [
  "futures",
  "gloo-console 0.4.0",
  "gloo-net 0.7.0",
- "indexed_db_futures",
+ "gloo-timers 0.4.0",
  "irc-proto",
  "ordermap",
  "thiserror 2.0.18",
@@ -137,6 +137,7 @@ dependencies = [
  "tracing",
  "tsify",
  "wasm-bindgen",
+ "web-time",
 ]
 
 [[package]]
@@ -354,7 +355,7 @@ dependencies = [
  "gloo-net 0.3.1",
  "gloo-render",
  "gloo-storage",
- "gloo-timers",
+ "gloo-timers 0.2.6",
  "gloo-utils 0.1.7",
  "gloo-worker",
 ]
@@ -506,6 +507,18 @@ version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b995a66bb87bebce9a0f4a95aed01daca4872c050bfcb21653361c03bc35e5c"
 dependencies = [
+ "js-sys",
+ "wasm-bindgen",
+]
+
+[[package]]
+name = "gloo-timers"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "482ce8a491a501da4cd806bd190275363d674f2845005c6ddbd5d3e1dd54495d"
+dependencies = [
+ "futures-channel",
+ "futures-core",
  "js-sys",
  "wasm-bindgen",
 ]

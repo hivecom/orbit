@@ -659,6 +659,19 @@ impl Tags {
         out
     }
 
+    #[cfg(feature = "web")]
+    pub fn server_time_with_fallback(&self) -> i64 {
+        self.server_time
+            .map(|t| t.unix_timestamp())
+            .unwrap_or_else(|| {
+                web_time::SystemTime::now()
+                    .duration_since(web_time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs() as i64
+            })
+    }
+
+    #[cfg(not(feature = "web"))]
     pub fn server_time_with_fallback(&self) -> i64 {
         self.server_time
             .unwrap_or_else(OffsetDateTime::now_utc)

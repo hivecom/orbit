@@ -1,4 +1,12 @@
-use std::fmt;
+#[cfg(feature = "default")]
+use std::pin::pin;
+use std::{fmt, time::Duration};
+
+use futures::FutureExt;
+#[cfg(not(feature = "web"))]
+use std::time::Instant;
+#[cfg(feature = "web")]
+use web_time::Instant;
 
 #[cfg(feature = "web")]
 use crate::dbg;
@@ -24,7 +32,7 @@ use ordermap::OrderMap;
 use tracing::{debug, error, warn};
 
 #[derive(Debug, Default)]
-pub struct ResponseChannels(Vec<(CommandKey, oneshot::Sender<CommandResponse>)>);
+pub struct ResponseChannels(Vec<(CommandKey, Instant, oneshot::Sender<CommandResponse>)>);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CommandKey {
@@ -47,23 +55,28 @@ pub enum CommandResponse {
 
 impl ResponseChannels {
     pub fn register(&mut self, key: CommandKey, os_tx: oneshot::Sender<CommandResponse>) {
-        self.0.push((key, os_tx));
+        self.0.push((key, Instant::now(), os_tx));
     }
 
     #[tracing::instrument]
-    pub async fn reply(
+    pub fn reply(
         &mut self,
         key: &CommandKey,
         response: CommandResponse,
     ) -> Result<(), CommandResponse> {
-        if let Some(idx) = self.0.iter().position(|(rk, _)| rk == key) {
-            let (_, ch) = self.0.remove(idx);
+        if let Some(idx) = self.0.iter().position(|(rk, _, _)| rk == key) {
+            let (_, _, ch) = self.0.remove(idx);
             ch.send(response)?;
         } else {
             // warn!("Failed to find response channel");
         }
 
         Ok(())
+    }
+
+    pub fn check_timeouts(&mut self) {
+        self.0
+            .retain(|(_, creation, _)| creation.elapsed() < Duration::from_secs(1));
     }
 }
 
@@ -198,6 +211,11 @@ impl<C: IrcConnection> IrcActor<C> {
     #[tracing::instrument(skip(self))]
     pub async fn run(mut self) {
         loop {
+            #[cfg(feature = "web")]
+            let mut timeout = gloo_timers::future::TimeoutFuture::new(1000).fuse();
+            #[cfg(not(feature = "web"))]
+            let mut timeout = pin!(tokio::time::sleep(Duration::from_secs(1)).fuse());
+
             futures::select! {
                 msg = self.incoming.next() => {
                         match msg {
@@ -218,6 +236,9 @@ impl<C: IrcConnection> IrcActor<C> {
                 }
                 cmd = self.cmd_rx.select_next_some() => {
                     self.handle_command(cmd).await.unwrap();
+                }
+                _ = timeout => {
+                    self.response_channels.check_timeouts();
                 }
             }
         }
@@ -277,7 +298,6 @@ impl<C: IrcConnection> IrcActor<C> {
                             &CommandKey::Join(channel_name.clone()),
                             CommandResponse::Join(channel_name.clone()),
                         )
-                        .await
                         .map_err(|e| anyhow!("Failed to reply to JOIN command {e:?}"))?;
 
                     self.on_event(ServerEvent::Joined(channel)).await?;
@@ -293,7 +313,6 @@ impl<C: IrcConnection> IrcActor<C> {
                     if self.current_batch.as_ref().map(|b| b.is_chathistory()) != Some(true) {
                         let channel = self.channel_mut(channel_name.clone()).await;
 
-                        dbg!(&message);
                         channel.users.push(ChannelUser {
                             nickname: source.to_string(),
                             role: ChannelRole::None,
@@ -443,16 +462,13 @@ impl<C: IrcConnection> IrcActor<C> {
                 channel.messages.insert(msgid, state_message.clone());
 
                 if source == self.state.me.as_ref().unwrap().nickname
-                    && let Err(e) = self
-                        .response_channels
-                        .reply(
-                            &CommandKey::Privmsg {
-                                target: target.clone(),
-                                text: text.clone(),
-                            },
-                            CommandResponse::Privmsg(Box::new(state_message.clone())),
-                        )
-                        .await
+                    && let Err(e) = self.response_channels.reply(
+                        &CommandKey::Privmsg {
+                            target: target.clone(),
+                            text: text.clone(),
+                        },
+                        CommandResponse::Privmsg(Box::new(state_message.clone())),
+                    )
                 {
                     error!("Failed to reply to PRIVMSG command {e:?}");
                 }
@@ -482,17 +498,16 @@ impl<C: IrcConnection> IrcActor<C> {
                         self.current_batch.as_ref().map(|s| s.id.as_str()),
                         Some(&reference[1..])
                     );
+
                     // FIXME: this will panic if a batch only contains QUITs
                     assert_eq!(
-                        self.current_batch
-                            .as_ref()
-                            .map(|b| b.is_chathistory() && b.channel.is_empty()),
+                        self.current_batch.as_ref().map(|b| b.is_chathistory()
+                            && !b.messages.is_empty()
+                            && b.messages.is_empty()),
                         Some(false)
                     );
 
-                    if let Some(batch) = self.current_batch.take()
-                        && !batch.messages.is_empty()
-                    {
+                    if let Some(batch) = self.current_batch.take() {
                         for message in &batch.messages {
                             let channel = self.channel_mut(batch.channel.clone()).await;
                             channel
@@ -512,7 +527,6 @@ impl<C: IrcConnection> IrcActor<C> {
                                 },
                                 CommandResponse::History(history.clone()),
                             )
-                            .await
                             .unwrap();
 
                         self.on_event(ServerEvent::History(history)).await?;
@@ -683,7 +697,6 @@ impl<C: IrcConnection> IrcActor<C> {
                 }
                 self.response_channels
                     .reply(&CommandKey::RequestCaps, CommandResponse::Capabilities)
-                    .await
                     .unwrap();
             }
             _ => {
@@ -717,7 +730,6 @@ impl<C: IrcConnection> IrcActor<C> {
                         &CommandKey::SignIn,
                         CommandResponse::SignIn(Ok(SignedIn::User)),
                     )
-                    .await
                     .map_err(|e| anyhow!("Failed to reply to sign in command {e:?}"))?;
 
                 self.cap_end().await.context("Failed to send CAP END")?;
@@ -728,7 +740,6 @@ impl<C: IrcConnection> IrcActor<C> {
                         &CommandKey::SignIn,
                         CommandResponse::SignIn(Ok(SignedIn::Guest)),
                     )
-                    .await
                     .map_err(|e| anyhow!("Failed to reply to sign in command {e:?}"))?;
             }
             Response::RPL_LOGGEDIN => {
@@ -740,7 +751,6 @@ impl<C: IrcConnection> IrcActor<C> {
                         &CommandKey::SignIn,
                         CommandResponse::SignIn(Err(OrbitError::SaslFailed(params[1].to_string()))),
                     )
-                    .await
                     .map_err(|e| anyhow!("Failed to reply to sign in command {e:?}"))?;
             }
             Response::ERR_NICKNAMEINUSE => {
@@ -749,7 +759,6 @@ impl<C: IrcConnection> IrcActor<C> {
                         &CommandKey::SignIn,
                         CommandResponse::SignIn(Err(OrbitError::NickTaken)),
                     )
-                    .await
                     .map_err(|e| anyhow!("Failed to reply to sign in command {e:?}"))?;
             }
             Response::RPL_TOPIC => {
@@ -885,10 +894,18 @@ impl<C: IrcConnection> IrcActor<C> {
             ActorCommand::RequestHistory {
                 channel,
                 before_msgid,
-            } => self
-                .history_before(channel, before_msgid, 50)
-                .await
-                .context("Failed to send history before")?,
+            } => {
+                self.response_channels.register(
+                    CommandKey::History {
+                        target: channel.clone(),
+                    },
+                    cmd.reply_tx.unwrap(),
+                );
+
+                self.history_before(channel, format!("msgid={before_msgid}"), 50)
+                    .await
+                    .context("Failed to send history before")?;
+            }
         }
 
         Ok(())
