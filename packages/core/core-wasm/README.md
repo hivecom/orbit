@@ -14,7 +14,7 @@ participant M as Actor (state)
 participant C as IrcConnection
 end
 
-rect rgb(191, 223, 255)
+rect rgb(0, 45, 89)
 note right of wasm: await server.join("#35;channel")
 wasm->>M: Send message: Join("#35;channel")
 
