@@ -315,6 +315,32 @@ impl IrcConnection {
             address: self.address.clone(),
         })
     }
+
+    #[wasm_bindgen]
+    pub async fn history_before(
+        &mut self,
+        channel: String,
+        before_msgid: String,
+    ) -> Result<History, OrbitError> {
+        let (tx, rx) = oneshot::channel();
+        self.address
+            .send(ActorMessage {
+                command: ActorCommand::RequestHistory {
+                    channel,
+                    before_msgid,
+                },
+                reply_tx: Some(tx),
+            })
+            .await
+            .context("Failed to send ActorMessage")?;
+
+        let resp = rx.await.context("Failed to await ActorMessage")?;
+        let CommandResponse::History(history) = resp else {
+            unreachable!("expected history, got: {:?}", resp);
+        };
+
+        Ok(history.into())
+    }
 }
 
 #[wasm_bindgen]
@@ -502,10 +528,7 @@ impl From<state::ServerEvent> for ServerEvent {
                 text,
                 is_unreact,
             }),
-            state::ServerEvent::History { channel, messages } => Self::History(History {
-                channel,
-                messages: messages.into_iter().map(|m| m.into()).collect(),
-            }),
+            state::ServerEvent::History(history) => Self::History(history.into()),
         }
     }
 }
@@ -625,4 +648,13 @@ pub struct React {
 pub struct History {
     pub channel: String,
     pub messages: Vec<Message>,
+}
+
+impl From<state::History> for History {
+    fn from(history: state::History) -> Self {
+        Self {
+            channel: history.channel,
+            messages: history.messages.into_iter().map(Into::into).collect(),
+        }
+    }
 }

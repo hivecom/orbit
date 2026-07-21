@@ -573,10 +573,13 @@ pub enum ServerEvent {
         text: String,
         is_unreact: bool,
     },
-    History {
-        channel: String,
-        messages: Vec<Message>,
-    },
+    History(History),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct History {
+    pub channel: String,
+    pub messages: Vec<Message>,
 }
 
 #[derive(Debug, Clone)]

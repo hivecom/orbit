@@ -5,8 +5,8 @@ use crate::dbg;
 use crate::{
     SendCommand,
     state::{
-        Channel, ChannelRole, ChannelUser, Message, MessageMetadata, MessageReference, MessageType,
-        OrbitError, Server, ServerEvent, SignedIn, Tags, TextMessage, User,
+        Channel, ChannelRole, ChannelUser, History, Message, MessageMetadata, MessageReference,
+        MessageType, OrbitError, Server, ServerEvent, SignedIn, Tags, TextMessage, User,
     },
 };
 use anyhow::{Context, anyhow};
@@ -32,6 +32,7 @@ pub enum CommandKey {
     SignIn,
     Join(String),
     Privmsg { target: String, text: String },
+    History { target: String },
 }
 
 #[derive(Debug)]
@@ -41,6 +42,7 @@ pub enum CommandResponse {
     SignIn(Result<SignedIn, OrbitError>),
     Join(String),
     Privmsg(Box<Message>),
+    History(History),
 }
 
 impl ResponseChannels {
@@ -101,6 +103,10 @@ pub enum ActorCommand {
     },
     AddDisconectHandler {
         handler: UnboundedSender<String>,
+    },
+    RequestHistory {
+        channel: String,
+        before_msgid: String,
     },
 }
 
@@ -492,11 +498,22 @@ impl<C: IrcConnection> IrcActor<C> {
                                 .insert(message.metadata.msgid.clone(), message.clone());
                         }
 
-                        self.on_event(ServerEvent::History {
-                            channel: batch.channel,
+                        let history = History {
+                            channel: batch.channel.clone(),
                             messages: batch.messages,
-                        })
-                        .await?;
+                        };
+
+                        self.response_channels
+                            .reply(
+                                &CommandKey::History {
+                                    target: batch.channel,
+                                },
+                                CommandResponse::History(history.clone()),
+                            )
+                            .await
+                            .unwrap();
+
+                        self.on_event(ServerEvent::History(history)).await?;
                     }
 
                     self.current_batch = None;
@@ -862,6 +879,13 @@ impl<C: IrcConnection> IrcActor<C> {
             ActorCommand::AddDisconectHandler { handler } => {
                 self.disconnect_handlers.push(handler);
             }
+            ActorCommand::RequestHistory {
+                channel,
+                before_msgid,
+            } => self
+                .history_before(channel, before_msgid, 50)
+                .await
+                .context("Failed to send history before")?,
         }
 
         Ok(())
