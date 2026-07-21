@@ -137,7 +137,7 @@ impl IrcConnection {
             .await
             .context("Failed to send ActorMessage")?;
 
-        let resp = rx.await.context("Failed to await ActorMessage")?;
+        let resp = rx.await.context("Failed to await actor state message")?;
         let CommandResponse::GetState(server) = resp else {
             unreachable!("expected state, got: {:?}", resp);
         };
@@ -253,7 +253,7 @@ impl IrcConnection {
             .await
             .context("Failed to send ActorMessage")?;
 
-        let resp = rx.await.context("Failed to await ActorMessage")?;
+        let resp = rx.await.context("Failed to await actor sign in message")?;
         let CommandResponse::SignIn(result) = resp else {
             unreachable!("expected sign in, got: {:?}", resp);
         };
@@ -281,7 +281,7 @@ impl IrcConnection {
             .await
             .context("Failed to send ActorMessage")?;
 
-        let resp = rx.await.context("Failed to await ActorMessage")?;
+        let resp = rx.await.context("Failed to await actor sign in message")?;
 
         let CommandResponse::SignIn(result) = resp else {
             unreachable!("expected sign in, got: {:?}", resp);
@@ -305,7 +305,7 @@ impl IrcConnection {
             .await
             .context("Failed to send ActorMessage")?;
 
-        let resp = rx.await.context("Failed to await ActorMessage")?;
+        let resp = rx.await.context("Failed to await actor join message")?;
         let CommandResponse::Join(name) = resp else {
             unreachable!("expected join, got: {:?}", resp);
         };
@@ -334,7 +334,7 @@ impl IrcConnection {
             .await
             .context("Failed to send ActorMessage")?;
 
-        let resp = rx.await.context("Failed to await ActorMessage")?;
+        let resp = rx.await.context("Failed to await actor history message")?;
         let CommandResponse::History(history) = resp else {
             unreachable!("expected history, got: {:?}", resp);
         };
@@ -365,9 +365,9 @@ impl IrcChannel {
             .await
             .context("Failed to send ActorMessage")?;
 
-        let resp = rx.await.context("Failed to await ActorMessage")?;
+        let resp = rx.await.context("Failed to await actor message message")?;
         let CommandResponse::Privmsg(message) = resp else {
-            unreachable!("expected join, got: {:?}", resp);
+            unreachable!("expected privmsg, got: {:?}", resp);
         };
 
         Ok((*message).into())

@@ -40,7 +40,7 @@ pub enum CommandKey {
     SignIn,
     Join(String),
     Privmsg { target: String, text: String },
-    History { target: String },
+    History,
 }
 
 #[derive(Debug)]
@@ -54,6 +54,7 @@ pub enum CommandResponse {
 }
 
 impl ResponseChannels {
+    #[tracing::instrument]
     pub fn register(&mut self, key: CommandKey, os_tx: oneshot::Sender<CommandResponse>) {
         self.0.push((key, Instant::now(), os_tx));
     }
@@ -305,7 +306,7 @@ impl<C: IrcConnection> IrcActor<C> {
                     if self.current_batch.as_ref().map(|b| b.is_chathistory()) != Some(true)
                         && self.state.capabilities.history.enabled
                     {
-                        self.history_latest(channel_name.clone(), None, 50)
+                        self.history_latest(channel_name.clone(), None, 5)
                             .await
                             .context("Failed to request latest history")?;
                     }
@@ -522,9 +523,7 @@ impl<C: IrcConnection> IrcActor<C> {
 
                         self.response_channels
                             .reply(
-                                &CommandKey::History {
-                                    target: batch.channel,
-                                },
+                                &CommandKey::History,
                                 CommandResponse::History(history.clone()),
                             )
                             .unwrap();
@@ -895,14 +894,10 @@ impl<C: IrcConnection> IrcActor<C> {
                 channel,
                 before_msgid,
             } => {
-                self.response_channels.register(
-                    CommandKey::History {
-                        target: channel.clone(),
-                    },
-                    cmd.reply_tx.unwrap(),
-                );
+                self.response_channels
+                    .register(CommandKey::History, cmd.reply_tx.unwrap());
 
-                self.history_before(channel, format!("msgid={before_msgid}"), 50)
+                self.history_before(channel, format!("msgid={before_msgid}"), 5)
                     .await
                     .context("Failed to send history before")?;
             }
