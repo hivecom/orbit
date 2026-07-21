@@ -36,11 +36,17 @@ export function createLogger(stackKey: number = getId()) {
 
 declare global {
   /**
-   * Logs the specific stack and if no key is provided, logs and dumps _all_ stacks.
+   * Logs the specific stack and if no key is provided, logs and dumps _all_
+   * stacks. Implemented on the globalThis object so it can be invoked from the
+   * browser console
    *
    * @param stackKey
    */
   function popLogs(stackKey?: number): void
+}
+
+function renderStack(index: string | number, stack: string[]) {
+  return `\n>>> Stack ${index} <<<\n${stack.join("\n")}\n`
 }
 
 if (import.meta.env.DEV) {
@@ -49,16 +55,12 @@ if (import.meta.env.DEV) {
     if (!stackKey) {
       Array.from(logStack.entries()).forEach(([index, messages]) => {
         if (!messages || messages.length === 0) return
-
-        str += `\n>>> Stack ${index} <<<\n`
-        str += `${messages.join("\n")}\n`
+        str += renderStack(index, messages)
       })
     } else {
       const stack = logStack.get(stackKey)
       if (!stack || stack.length === 0) return
-
-      str += `\n>>> Stack ${stackKey} <<<\n`
-      str += `${stack.join("\n")}`
+      str = renderStack(stackKey, stack)
     }
   }
 }

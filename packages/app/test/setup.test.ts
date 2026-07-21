@@ -6,9 +6,9 @@ import { mount } from "@vue/test-utils"
 import TestApp from "./fixtures/TestApp.vue"
 
 describe("Setup Orbit application", () => {
-  it("should create an app instance with a web platform adapter", () => {
+  it("should create an app instance with a web platform adapter", async () => {
     const platform = createWebPlatform()
-    const app = createOrbitApp(TestApp, platform)
+    const app = await createOrbitApp(TestApp, platform)
     expect(app._context.provides[PLATFORM_KEY]).toBe(platform)
   })
 

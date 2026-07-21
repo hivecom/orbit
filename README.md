@@ -1,22 +1,6 @@
 # Orbit
 
-Orbit is a modern communication platform built on IRC. Not an IRC client - a polished client layer, a voice/video service, and a file storage gateway, orchestrated into one cohesive product over infrastructure communities have trusted for thirty years.
-
-Everything your friend group needs from Discord, privately, on a $5 VPS. `docker compose up`.
-
-This repository is the **client monorepo**: the Vue 3 application that runs as a web app, desktop shell, and embeddable widget. The full system design lives in the [orbit-spec](https://github.com/hivecom/orbit-spec) repository.
-
-## Architecture
-
-Orbit owns only the parts where product value lives - the clients, Satellite (voice/video), and Depot (file access / permissions). The IRC server, identity provider, and storage backend are stock and adopted.
-
-| Component       | Role                                                                                |
-| --------------- | ----------------------------------------------------------------------------------- |
-| **Clients**     | Desktop + Mobile (Tauri), web app, embeddable widget - this repo.                   |
-| **Uplink**      | Any stock IRCv3 server (Ergo is the reference). Text, history, presence, signaling. |
-| **Satellite**   | Real-time voice, video, and screen sharing over LiveKit.                            |
-| **Depot**       | Thin storage gateway over S3-compatible backends or local disk.                     |
-| **Transponder** | Any OIDC provider (Keycloak, Authentik, Supabase). One login, verified everywhere.  |
+Orbit is a modern communication platform built on IRC. For more detailed summary and complete specification, check out [orbit-spec](https://github.com/hivecom/orbit-spec) repo.
 
 ## Development
 
