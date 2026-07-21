@@ -92,7 +92,7 @@ export const useIrcStore = defineStore("irc", () => {
       }
     })
 
-    // Laving server - clean up state
+    // Leaving server - clean up state
     handler.on_disconnect((reason) => {
       console.log("Disconnected", reason)
       serverHandlers.value.delete(key)
