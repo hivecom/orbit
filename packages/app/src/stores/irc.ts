@@ -16,13 +16,13 @@ export const useIrcStore = defineStore("irc", () => {
   const initialized = shallowRef(false)
 
   // Needs to be a ref, as deep properties will be dynamically updated
-  const serverState = ref<Map<string, Server>>(new Map())
+  const serverState = ref<Map<number, Server>>(new Map())
 
   // Is shallow, as it's only set once on connection or disconnect
-  const serverHandlers = shallowRef<Map<string, IrcConnection>>(new Map())
+  const serverHandlers = shallowRef<Map<number, IrcConnection>>(new Map())
 
   // Holds references to messages per server. This should be actually per `server:channel`
-  const serverMessages = shallowRef<Map<string, Message[]>>(new Map())
+  const serverMessages = shallowRef<Map<number, Message[]>>(new Map())
 
   let controller: ServerList = {} as ServerList
 
@@ -44,10 +44,10 @@ export const useIrcStore = defineStore("irc", () => {
     ).then((results) => {
       for (let i = 0; i < results.length; i++) {
         const result = results[i]
-        if (result.status === "fulfilled") {
-          const key = result.value.metadata.name
+        if (result && result.status === "fulfilled") {
+          const key = result.value.id
           serverState.value.set(key, result.value)
-          serverHandlers.value.set(key, controller.servers[i])
+          serverHandlers.value.set(key, controller.servers[i]!)
         }
       }
     })
@@ -58,21 +58,20 @@ export const useIrcStore = defineStore("irc", () => {
   /**
    * Connects to the server address
    */
-  async function serverConnect(name: string, url: string) {
-    const handler = await controller.connect(name, url).catch((e) => {
+  async function serverConnect(url: string) {
+    const handler = await controller.connect(url).catch((e) => {
       throw new Error(e)
     })
 
     const state = await handler.state()
     console.log("Received server state", state.toJSON())
-    const key = state.metadata.name
-    serverState.value.set(key, state)
-    serverHandlers.value.set(key, handler)
+    serverState.value.set(state.id, state)
+    serverHandlers.value.set(state.id, handler)
 
     await handler.sign_in_anonymous(user.me.displayName, user.me.accountName, user.me.accountName)
     console.log("Signed in")
 
-    registerServerEvents(key, handler)
+    registerServerEvents(state.id, handler)
 
     return {
       handler,
@@ -80,7 +79,7 @@ export const useIrcStore = defineStore("irc", () => {
     }
   }
 
-  function registerServerEvents(key: string, handler: IrcConnection) {
+  function registerServerEvents(key: number, handler: IrcConnection) {
     // Runs whenever some dataset on the server object changes
     handler.on_data((event) => {
       if (event instanceof Message) {
@@ -105,8 +104,8 @@ export const useIrcStore = defineStore("irc", () => {
     })
   }
 
-  function getServerState(address: string) {
-    return computed(() => serverState.value.get(address))
+  function getServerState(id: number) {
+    return computed(() => serverState.value.get(id))
   }
 
   return {

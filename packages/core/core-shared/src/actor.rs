@@ -6,10 +6,10 @@ use crate::{
     SendCommand,
     state::{
         Channel, ChannelRole, ChannelUser, Message, MessageMetadata, MessageReference, MessageType,
-        React, Server, ServerError, ServerEvent, TextMessage, User,
+        OrbitError, React, Server, ServerEvent, SignedIn, TextMessage, User,
     },
 };
-use anyhow::anyhow;
+use anyhow::{Context, anyhow};
 use base64::prelude::*;
 use futures::{
     SinkExt, StreamExt,
@@ -41,7 +41,7 @@ pub enum CommandKey {
 pub enum CommandResponse {
     GetState(Box<Server>),
     Capabilities,
-    SignIn(anyhow::Result<()>),
+    SignIn(Result<SignedIn, OrbitError>),
     Join(String),
     Privmsg(Box<Message>),
 }
@@ -61,7 +61,7 @@ impl ResponseChannels {
             let (_, ch) = self.0.remove(idx);
             ch.send(response)?;
         } else {
-            // trace!("Failed to find response channel");
+            // warn!("Failed to find response channel");
         }
 
         Ok(())
@@ -100,7 +100,7 @@ pub enum ActorCommand {
         handler: UnboundedSender<ServerEvent>,
     },
     AddErrorHandler {
-        handler: UnboundedSender<ServerError>,
+        handler: UnboundedSender<OrbitError>,
     },
     AddDisconectHandler {
         handler: UnboundedSender<String>,
@@ -115,7 +115,6 @@ pub trait IrcConnection: fmt::Debug {
     fn address(&self) -> &str;
 }
 
-#[derive(Debug)]
 pub struct IrcActor<C: IrcConnection> {
     cmd_rx: mpsc::UnboundedReceiver<ActorMessage>,
     incoming: C::Incoming,
@@ -123,10 +122,11 @@ pub struct IrcActor<C: IrcConnection> {
     state: Server,
     response_channels: ResponseChannels,
     event_handlers: Vec<UnboundedSender<ServerEvent>>,
-    error_handlers: Vec<UnboundedSender<ServerError>>,
+    error_handlers: Vec<UnboundedSender<OrbitError>>,
     disconnect_handlers: Vec<UnboundedSender<String>>,
 
     current_batch: Option<Batch>,
+    sasl_state: SaslState,
 }
 
 #[derive(Debug)]
@@ -141,14 +141,25 @@ impl Batch {
     }
 }
 
+#[derive(Default, Clone)]
+enum SaslState {
+    #[default]
+    Unauthed,
+    Requested {
+        nickname: String,
+        realname: String,
+        username: String,
+        password: String,
+    },
+}
+
 impl<C: IrcConnection> IrcActor<C> {
     #[tracing::instrument]
     pub async fn start(
         id: i32,
-        name: String,
         connection: C,
         spawn: fn(IrcActor<C>) -> (),
-    ) -> anyhow::Result<UnboundedSender<ActorMessage>> {
+    ) -> Result<UnboundedSender<ActorMessage>, OrbitError> {
         let address = connection.address().to_string();
         let (incoming, outgoing) = connection.in_out();
 
@@ -157,12 +168,13 @@ impl<C: IrcConnection> IrcActor<C> {
             cmd_rx,
             incoming,
             outgoing,
-            state: Server::new(id, name, address),
+            state: Server::new(id, address),
             response_channels: ResponseChannels::default(),
             event_handlers: Vec::new(),
             error_handlers: Vec::new(),
             disconnect_handlers: Vec::new(),
             current_batch: None,
+            sasl_state: Default::default(),
         };
 
         let (tx, rx) = oneshot::channel();
@@ -206,14 +218,17 @@ impl<C: IrcConnection> IrcActor<C> {
         }
     }
 
-    #[tracing::instrument(err, skip(self, message))]
-    pub async fn handle_incoming(&mut self, mut message: IrcMessage) -> anyhow::Result<()> {
+    #[tracing::instrument(err, skip(self))]
+    pub async fn handle_incoming(&mut self, mut message: IrcMessage) -> Result<(), OrbitError> {
         match message.command {
             CAP(_, sub, param, caps) => {
                 self.handle_caps(sub, param, caps).await?;
             }
             PING(server1, server2) => {
-                self.outgoing.pong(server1, server2).await?;
+                self.outgoing
+                    .pong(server1, server2)
+                    .await
+                    .context("Failed to send pong")?;
             }
             Response(rpl, params) => {
                 self.handle_response(rpl, params).await?;
@@ -423,8 +438,51 @@ impl<C: IrcConnection> IrcActor<C> {
                     }
                 }
             }
-            ERROR(msg) => self.on_error(ServerError::Generic(msg)).await?,
-            AUTHENTICATE(_) => (),
+            AUTHENTICATE(param) if param == "+" => {
+                if let SaslState::Requested {
+                    nickname,
+                    realname,
+                    username,
+                    password,
+                } = self.sasl_state.clone()
+                {
+                    let credentials =
+                        BASE64_STANDARD.encode(format!("\0{}\0{}", username, password).as_bytes());
+
+                    // Chunk overly long credentials
+                    let mut sending = credentials.as_str();
+                    while !sending.is_empty() {
+                        let (chunk, rest) = sending.split_at(400.min(sending.len()));
+                        self.sasl(chunk.to_string())
+                            .await
+                            .context("Failed to send SASL chunk")?;
+
+                        if rest.is_empty() && chunk.len() == 400 {
+                            self.sasl("+".to_string())
+                                .await
+                                .context("Failed to send SASL end")?;
+                        }
+                        sending = rest;
+                    }
+                    self.nick(nickname.clone())
+                        .await
+                        .context("Failed to send NICK")?;
+                    self.user(username.clone(), String::from("0"), realname.clone())
+                        .await
+                        .context("Failed to send USER")?;
+
+                    self.state.me = Some(User {
+                        nickname,
+                        username: Some(username),
+                        realname: Some(realname),
+                        display_name: None,
+                        description: None,
+                        profile_picture_url: None,
+                        bot: false,
+                    });
+                }
+            }
+            ERROR(msg) => self.on_error(OrbitError::Generic(msg)).await?,
             _ => {
                 warn!("unhandled message, {message:?}");
             }
@@ -439,7 +497,7 @@ impl<C: IrcConnection> IrcActor<C> {
         sub: CapSubCommand,
         param: Option<String>,
         caps: Option<String>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), OrbitError> {
         match sub {
             CapSubCommand::LS if let Some(caps) = caps => {
                 for cap in caps.split_whitespace() {
@@ -484,7 +542,7 @@ impl<C: IrcConnection> IrcActor<C> {
         &mut self,
         rpl: Response,
         params: Vec<String>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), OrbitError> {
         match rpl {
             Response::RPL_MOTDSTART => {
                 self.state.metadata.reset_motd();
@@ -496,9 +554,23 @@ impl<C: IrcConnection> IrcActor<C> {
                 .on_event(ServerEvent::ServerInfo(self.state.metadata.clone()))
                 .await
                 .map_err(|e| anyhow!("Failed to send server event {e:?}"))?,
-            Response::RPL_SASLSUCCESS | Response::RPL_WELCOME => {
+            Response::RPL_SASLSUCCESS => {
                 self.response_channels
-                    .reply(&CommandKey::SignIn, CommandResponse::SignIn(Ok(())))
+                    .reply(
+                        &CommandKey::SignIn,
+                        CommandResponse::SignIn(Ok(SignedIn::User)),
+                    )
+                    .await
+                    .map_err(|e| anyhow!("Failed to reply to sign in command {e:?}"))?;
+
+                self.cap_end().await.context("Failed to send CAP END")?;
+            }
+            Response::RPL_WELCOME => {
+                self.response_channels
+                    .reply(
+                        &CommandKey::SignIn,
+                        CommandResponse::SignIn(Ok(SignedIn::Guest)),
+                    )
                     .await
                     .map_err(|e| anyhow!("Failed to reply to sign in command {e:?}"))?;
             }
@@ -509,7 +581,7 @@ impl<C: IrcConnection> IrcActor<C> {
                 self.response_channels
                     .reply(
                         &CommandKey::SignIn,
-                        CommandResponse::SignIn(Err(anyhow!("{}", &params[1]))),
+                        CommandResponse::SignIn(Err(OrbitError::SaslFailed(params[1].to_string()))),
                     )
                     .await
                     .map_err(|e| anyhow!("Failed to reply to sign in command {e:?}"))?;
@@ -518,7 +590,7 @@ impl<C: IrcConnection> IrcActor<C> {
                 self.response_channels
                     .reply(
                         &CommandKey::SignIn,
-                        CommandResponse::SignIn(Err(anyhow!("{}", &params[2]))),
+                        CommandResponse::SignIn(Err(OrbitError::NickTaken)),
                     )
                     .await
                     .map_err(|e| anyhow!("Failed to reply to sign in command {e:?}"))?;
@@ -588,6 +660,7 @@ impl<C: IrcConnection> IrcActor<C> {
                     let (key, value) = option.split_once('=').unzip();
                     self.state.support.set(key.unwrap_or(option), value);
                 }
+                self.state.metadata.name = self.state.support.network.clone();
             }
             Response::RPL_YOURHOST
             | Response::RPL_CREATED
@@ -610,7 +683,7 @@ impl<C: IrcConnection> IrcActor<C> {
     }
 
     #[tracing::instrument(err, skip(self))]
-    pub async fn handle_command(&mut self, cmd: ActorMessage) -> anyhow::Result<()> {
+    pub async fn handle_command(&mut self, cmd: ActorMessage) -> Result<(), OrbitError> {
         match cmd.command {
             ActorCommand::GetState => cmd
                 .reply_tx
@@ -666,7 +739,7 @@ impl<C: IrcConnection> IrcActor<C> {
     }
 
     #[tracing::instrument(err, skip(self))]
-    pub async fn on_event(&mut self, event: ServerEvent) -> anyhow::Result<()> {
+    pub async fn on_event(&mut self, event: ServerEvent) -> Result<(), OrbitError> {
         for handler in &mut self.event_handlers {
             handler.send(event.clone()).await.unwrap();
         }
@@ -675,7 +748,7 @@ impl<C: IrcConnection> IrcActor<C> {
     }
 
     #[tracing::instrument(err, skip(self))]
-    pub async fn on_error(&mut self, error: ServerError) -> anyhow::Result<()> {
+    pub async fn on_error(&mut self, error: OrbitError) -> Result<(), OrbitError> {
         for handler in &mut self.error_handlers {
             handler.send(error.clone()).await.unwrap();
         }
@@ -684,7 +757,7 @@ impl<C: IrcConnection> IrcActor<C> {
     }
 
     #[tracing::instrument(err, skip(self))]
-    pub async fn on_disconnect(&mut self, reason: String) -> anyhow::Result<()> {
+    pub async fn on_disconnect(&mut self, reason: String) -> Result<(), OrbitError> {
         for handler in &mut self.disconnect_handlers {
             handler.send(reason.clone()).await.unwrap();
         }
@@ -693,10 +766,12 @@ impl<C: IrcConnection> IrcActor<C> {
     }
 
     #[tracing::instrument(err, skip(self))]
-    async fn request_caps(&mut self) -> anyhow::Result<()> {
+    async fn request_caps(&mut self) -> Result<(), OrbitError> {
         let irc_version = String::from("302");
-        self.ls_caps(irc_version).await?;
-        self.req_caps(&[
+        self.cap_ls(irc_version)
+            .await
+            .context("Failed to send CAPS LS")?;
+        self.cap_req(&[
             "echo-message",
             "message-tags",
             "sasl",
@@ -709,7 +784,8 @@ impl<C: IrcConnection> IrcActor<C> {
             "server-time",
             "batch",
         ])
-        .await?;
+        .await
+        .context("Failed to send CAP REQ")?;
 
         Ok(())
     }
@@ -717,18 +793,21 @@ impl<C: IrcConnection> IrcActor<C> {
     #[tracing::instrument(err, skip(self))]
     async fn sign_in_anonymous(
         &mut self,
-        nick: String,
-        user: String,
+        nickname: String,
+        username: String,
         realname: String,
-    ) -> anyhow::Result<()> {
-        self.end_caps().await?;
-        self.nick(nick.clone()).await?;
-        self.user(user.clone(), String::from("0"), realname.clone())
-            .await?;
+    ) -> Result<(), OrbitError> {
+        self.cap_end().await.context("Failed to send CAP END")?;
+        self.nick(nickname.clone())
+            .await
+            .context("Failed to send NICK")?;
+        self.user(username.clone(), String::from("0"), realname.clone())
+            .await
+            .context("Failed to send USER")?;
 
         self.state.me = Some(User {
-            nickname: nick,
-            username: Some(user),
+            nickname,
+            username: Some(username),
             realname: Some(realname),
             display_name: None,
             description: None,
@@ -746,40 +825,21 @@ impl<C: IrcConnection> IrcActor<C> {
         username: String,
         realname: String,
         password: String,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), OrbitError> {
         if self.state.capabilities.sasl.enabled {
-            self.sasl_plain().await?;
-            let credentials =
-                BASE64_STANDARD.encode(format!("\0{}\0{}", username, password).as_bytes());
-
-            // Chunk overly long credentials
-            let mut sending = credentials.as_str();
-            while !sending.is_empty() {
-                let (chunk, rest) = sending.split_at(400.min(credentials.len()));
-                self.sasl(chunk.to_string()).await?;
-
-                if rest.is_empty() && chunk.len() == 400 {
-                    self.sasl("+".to_string()).await?;
-                }
-                sending = rest;
-            }
+            self.sasl_plain()
+                .await
+                .context("Failed to send SASL PLAIN")?;
+            self.sasl_state = SaslState::Requested {
+                nickname,
+                realname,
+                username,
+                password,
+            };
         } else {
-            unimplemented!("sasl cap not enabled")
+            warn!("SASL capability not enabled, falling back to anonymous sign in");
+            self.sign_in_anonymous(nickname, username, realname).await?;
         }
-        self.end_caps().await?;
-        self.nick(nickname.clone()).await?;
-        self.user(username.clone(), String::from("0"), realname.clone())
-            .await?;
-
-        self.state.me = Some(User {
-            nickname,
-            username: Some(username),
-            realname: Some(realname),
-            display_name: None,
-            description: None,
-            profile_picture_url: None,
-            bot: false,
-        });
 
         Ok(())
     }

@@ -1,25 +1,26 @@
-import { describe, expect, it } from "vite-plus/test"
+import { beforeEach, describe, expect, it } from "vite-plus/test"
 import { deserializeState, deserializeWindow, getDefaultState, serializeState, serializeWindow, WindowChat, WindowEmpty, WindowState, WindowVoice } from "../../src/lib/windows.ts"
+import { createPinia, setActivePinia } from "pinia"
 
 // TODO: test the composable itself - requires jsdom context setup because it uses URL and localStorage
 
 const chatWindow: WindowChat = {
   type: "chat",
-  serverId: "asd-123",
+  serverId: 123,
   channelId: "xxx-12",
 }
 
 const voiceWindow: WindowVoice = {
   type: "voice",
-  channelId: "asd-123",
+  channelId: "123",
 }
 
 const emptyWindow: WindowEmpty = {
   type: "empty",
 }
 
-const chatWindowSerialized = "c:asd-123:xxx-12"
-const voiceWindowSerialized = "v:asd-123"
+const chatWindowSerialized = "c:123:xxx-12"
+const voiceWindowSerialized = "v:123"
 const emptyWindowSerialized = "e"
 
 const windowState: WindowState = {
@@ -28,9 +29,13 @@ const windowState: WindowState = {
   rb: emptyWindow,
 }
 
-const windowStateSerialized = "l:c:asd-123:xxx-12;rt:v:asd-123;rb:e"
+const windowStateSerialized = "l:c:123:xxx-12;rt:v:123;rb:e"
 
 describe("wm methods", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
   it("should serialize window object into URL string", () => {
     expect(serializeWindow(chatWindow)).toBe(chatWindowSerialized)
     expect(serializeWindow(voiceWindow)).toBe(voiceWindowSerialized)

@@ -1,12 +1,12 @@
 use std::{fmt, str::FromStr};
 
-use anyhow::bail;
+use anyhow::{Context, bail};
 use core_shared::{
     SendCommand,
     actor::{self, ActorCommand, ActorMessage, CommandResponse, IrcActor},
     state::{
         self, Capabilities, ChannelMetadata, ChannelUser, MessageMetadata, MessageReference, React,
-        ServerMetadata, User,
+        ServerMetadata, SignedIn, User,
     },
 };
 use futures::{
@@ -75,7 +75,7 @@ fn init() {
 }
 
 #[wasm_bindgen]
-pub async fn initialize_orbit() -> Result<ServerList, JsError> {
+pub async fn initialize_orbit() -> Result<ServerList, OrbitError> {
     ServerList::new().await
 }
 
@@ -87,16 +87,16 @@ pub struct ServerList {
 #[wasm_bindgen]
 impl ServerList {
     #[wasm_bindgen]
-    pub async fn new() -> Result<Self, JsError> {
+    pub async fn new() -> Result<Self, OrbitError> {
         Ok(Self {
             servers: Vec::new(),
         })
     }
 
     #[wasm_bindgen]
-    pub async fn connect(&mut self, name: String, url: String) -> Result<IrcConnection, JsError> {
+    pub async fn connect(&mut self, url: String) -> Result<IrcConnection, OrbitError> {
         let id = self.max_id().unwrap_or(-1) + 1;
-        let connection = IrcConnection::connect(id, name, url).await?;
+        let connection = IrcConnection::connect(id, url).await?;
         self.servers.push(connection.clone());
 
         Ok(connection)
@@ -116,28 +116,28 @@ pub struct IrcConnection {
 
 #[wasm_bindgen]
 impl IrcConnection {
-    async fn connect(id: i32, name: String, url: String) -> Result<Self, JsError> {
+    async fn connect(id: i32, url: String) -> Result<Self, OrbitError> {
         let connection = WsConnection::new(url)?;
-        let address = IrcActor::start(id, name, connection, |actor| {
+        let address = IrcActor::start(id, connection, |actor| {
             spawn_local(async { actor.run().await })
         })
-        .await
-        .map_err(|e| JsError::new(&e.to_string()))?;
+        .await?;
 
         Ok(Self { id, address })
     }
 
     #[wasm_bindgen]
-    pub async fn state(&mut self) -> Result<Server, JsError> {
+    pub async fn state(&mut self) -> Result<Server, OrbitError> {
         let (tx, rx) = oneshot::channel();
         self.address
             .send(ActorMessage {
                 command: ActorCommand::GetState,
                 reply_tx: Some(tx),
             })
-            .await?;
+            .await
+            .context("Failed to send ActorMessage")?;
 
-        let resp = rx.await?;
+        let resp = rx.await.context("Failed to await ActorMessage")?;
         let CommandResponse::GetState(server) = resp else {
             unreachable!("expected state, got: {:?}", resp);
         };
@@ -197,8 +197,8 @@ impl IrcConnection {
                 .expect("can send actor message");
 
             while let Ok(event) = handler_rx.recv().await {
-                if let Err(e) = f.call1(&JsValue::null(), &event.into()) {
-                    gloo_console::error!("Error during event callback: {}", e);
+                if let Err(e) = f.call1(&JsValue::null(), &OrbitError::from(event).into()) {
+                    gloo_console::error!("Error during error callback: {}", e);
                 }
             }
         });
@@ -238,7 +238,7 @@ impl IrcConnection {
         user: String,
         realname: String,
         password: String,
-    ) -> Result<(), JsError> {
+    ) -> Result<SignedIn, OrbitError> {
         let (tx, rx) = oneshot::channel();
         self.address
             .send(ActorMessage {
@@ -250,14 +250,15 @@ impl IrcConnection {
                 },
                 reply_tx: Some(tx),
             })
-            .await?;
+            .await
+            .context("Failed to send ActorMessage")?;
 
-        let resp = rx.await?;
+        let resp = rx.await.context("Failed to await ActorMessage")?;
         let CommandResponse::SignIn(result) = resp else {
             unreachable!("expected sign in, got: {:?}", resp);
         };
 
-        result.map_err(|e| JsError::new(&e.to_string()))
+        Ok(result?)
     }
 
     #[wasm_bindgen]
@@ -266,7 +267,7 @@ impl IrcConnection {
         nick: String,
         user: String,
         realname: String,
-    ) -> Result<(), JsError> {
+    ) -> Result<SignedIn, OrbitError> {
         let (tx, rx) = oneshot::channel();
         self.address
             .send(ActorMessage {
@@ -277,14 +278,16 @@ impl IrcConnection {
                 },
                 reply_tx: Some(tx),
             })
-            .await?;
+            .await
+            .context("Failed to send ActorMessage")?;
 
-        let resp = rx.await?;
+        let resp = rx.await.context("Failed to await ActorMessage")?;
+
         let CommandResponse::SignIn(result) = resp else {
             unreachable!("expected sign in, got: {:?}", resp);
         };
 
-        result.map_err(|e| JsError::new(&e.to_string()))
+        Ok(result?)
     }
 
     #[wasm_bindgen]
@@ -292,16 +295,17 @@ impl IrcConnection {
         &mut self,
         channel: String,
         password: Option<String>,
-    ) -> Result<IrcChannel, JsError> {
+    ) -> Result<IrcChannel, OrbitError> {
         let (tx, rx) = oneshot::channel();
         self.address
             .send(ActorMessage {
                 command: ActorCommand::Join { channel, password },
                 reply_tx: Some(tx),
             })
-            .await?;
+            .await
+            .context("Failed to send ActorMessage")?;
 
-        let resp = rx.await?;
+        let resp = rx.await.context("Failed to await ActorMessage")?;
         let CommandResponse::Join(name) = resp else {
             unreachable!("expected join, got: {:?}", resp);
         };
@@ -322,7 +326,7 @@ pub struct IrcChannel {
 #[wasm_bindgen]
 impl IrcChannel {
     #[wasm_bindgen]
-    pub async fn send_message(&mut self, text: String) -> Result<Message, JsError> {
+    pub async fn send_message(&mut self, text: String) -> Result<Message, OrbitError> {
         let (tx, rx) = oneshot::channel();
         self.address
             .send(ActorMessage {
@@ -332,9 +336,10 @@ impl IrcChannel {
                 },
                 reply_tx: Some(tx),
             })
-            .await?;
+            .await
+            .context("Failed to send ActorMessage")?;
 
-        let resp = rx.await?;
+        let resp = rx.await.context("Failed to await ActorMessage")?;
         let CommandResponse::Privmsg(message) = resp else {
             unreachable!("expected join, got: {:?}", resp);
         };
@@ -355,9 +360,9 @@ impl fmt::Debug for WsConnection {
 }
 
 impl WsConnection {
-    fn new(url: String) -> Result<Self, JsError> {
+    fn new(url: String) -> Result<Self, OrbitError> {
         Ok(WsConnection {
-            socket: WebSocket::open(&url)?,
+            socket: WebSocket::open(&url).context("Failed to open WebSocket")?,
             address: url,
         })
     }
@@ -546,6 +551,47 @@ impl From<state::Message> for Message {
         Self {
             text: message.text.map(Into::into),
             metadata: message.metadata,
+        }
+    }
+}
+
+#[derive(Debug, Tsify)]
+#[wasm_bindgen(getter_with_clone, inspectable)]
+pub struct OrbitError {
+    pub kind: OrbitErrorKind,
+    pub description: String,
+}
+
+impl From<state::OrbitError> for OrbitError {
+    fn from(error: state::OrbitError) -> Self {
+        let kind = match error {
+            state::OrbitError::NickTaken => OrbitErrorKind::NickTaken,
+            state::OrbitError::SaslFailed(_) => OrbitErrorKind::SaslFailed,
+            state::OrbitError::Generic(_) => OrbitErrorKind::Generic,
+            state::OrbitError::Unknown(_) => OrbitErrorKind::Unknown,
+        };
+
+        Self {
+            kind,
+            description: error.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+#[wasm_bindgen]
+pub enum OrbitErrorKind {
+    NickTaken,
+    SaslFailed,
+    Generic,
+    Unknown,
+}
+
+impl From<anyhow::Error> for OrbitError {
+    fn from(error: anyhow::Error) -> Self {
+        Self {
+            kind: OrbitErrorKind::Unknown,
+            description: error.to_string(),
         }
     }
 }

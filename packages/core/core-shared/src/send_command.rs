@@ -33,7 +33,7 @@ pub trait SendCommand {
         async { self.command(PONG(server1, server2)).await }
     }
 
-    fn ls_caps(
+    fn cap_ls(
         &mut self,
         version: String,
     ) -> impl std::future::Future<Output = Result<(), Self::Error>> {
@@ -43,7 +43,7 @@ pub trait SendCommand {
         }
     }
 
-    fn req_caps(
+    fn cap_req(
         &mut self,
         caps: &[&str],
     ) -> impl std::future::Future<Output = Result<(), Self::Error>> {
@@ -53,7 +53,7 @@ pub trait SendCommand {
         }
     }
 
-    fn end_caps(&mut self) -> impl std::future::Future<Output = Result<(), Self::Error>> {
+    fn cap_end(&mut self) -> impl std::future::Future<Output = Result<(), Self::Error>> {
         async {
             self.command(CAP(None, CapSubCommand::END, None, None))
                 .await

@@ -4,6 +4,8 @@ use std::str::FromStr;
 #[cfg(feature = "web")]
 use crate::dbg;
 use ordermap::OrderMap;
+use thiserror::Error;
+use tracing::error;
 #[cfg(feature = "web")]
 use tsify::Tsify;
 #[cfg(feature = "web")]
@@ -21,11 +23,11 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn new(id: i32, name: String, address: String) -> Self {
+    pub fn new(id: i32, address: String) -> Self {
         Self {
             id,
             metadata: ServerMetadata {
-                name,
+                name: Default::default(),
                 motd: Default::default(),
                 address,
 
@@ -46,7 +48,7 @@ impl Server {
 #[cfg_attr(feature = "web", derive(Tsify))]
 #[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone, inspectable))]
 pub struct ServerMetadata {
-    pub name: String,
+    pub name: Option<String>,
     pub motd: Option<String>,
     pub address: String,
 
@@ -575,10 +577,36 @@ pub struct React {
     pub is_unreact: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "web", derive(Tsify))]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "web", wasm_bindgen)]
-#[cfg_attr(feature = "web", serde(untagged))]
-pub enum ServerError {
+pub enum SignedIn {
+    User,
+    Guest,
+}
+
+#[derive(Debug, Error, Clone)]
+pub enum OrbitError {
+    #[error("Nickname is already in use")]
+    NickTaken,
+
+    #[error("{0}")]
+    SaslFailed(String),
+
+    #[error("{0}")]
     Generic(String),
+
+    #[error("Unknown error: {0}")]
+    // FIXME: remove the Arc somehow
+    Unknown(String),
+}
+
+impl From<anyhow::Error> for OrbitError {
+    fn from(error: anyhow::Error) -> Self {
+        let err = error.chain().skip(1).fold(error.to_string(), |acc, cause| {
+            format!("{}: {}\n", acc, cause)
+        });
+        error!("Unexpected Orbit error: {}", err);
+
+        Self::Unknown(error.to_string())
+    }
 }

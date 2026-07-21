@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vp run platform#wasm && vp dev",
+    "dev": "vp run core-wasm#build && vp dev",
     "dev:core": "./dev.sh",
-    "build": "vue-tsc -b && vp build && cargo build",
+    "build": "vue-tsc -b && vp build",
     "preview": "vp preview"
   },
   "dependencies": {

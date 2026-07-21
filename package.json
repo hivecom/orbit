@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "test": "vp run -r test",
-    "ready": "vp check && vp run -r test && vp run -r build",
+    "build:wasm": "vp run --filter core-wasm build",
+    "check": "vp run build:wasm && vp check",
+    "ready": "vp run check && vp run -r test && vp run -r build",
     "prepare": "vp config",
     "dev": "vp run web#dev",
     "dev:core": "vp run web#dev:core",

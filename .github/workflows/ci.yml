@@ -33,11 +33,17 @@ jobs:
           node-version: 24
           cache: pnpm
 
+      - name: install wasm-pack
+        shell: "bash"
+        run: |
+          rustup target add wasm32-unknown-unknown
+          curl https://wasm-bindgen.github.io/wasm-pack/installer/init.sh -sSf | VERSION="v0.15.0" sh
+
       - run: pnpm install --frozen-lockfile
 
       # The `ready` gate, split into steps for clearer failure attribution.
       - name: Check (format, lint, types)
-        run: pnpm exec vp check
+        run: pnpm exec vp run check
 
       - name: Test
         run: pnpm exec vp run -r test

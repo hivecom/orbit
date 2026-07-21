@@ -1,0 +1,24 @@
+{
+  "name": "core-wasm",
+  "version": "0.1.0",
+  "files": [
+    "pkg"
+  ],
+  "type": "module",
+  "sideEffects": [
+    "./pkg/snippets/*"
+  ],
+  "main": "./pkg/core_wasm.js",
+  "types": "./pkg/core_wasm.d.ts",
+  "exports": {
+    ".": {
+      "types": "./pkg/core_wasm.d.ts",
+      "import": "./pkg/core_wasm.js"
+    },
+    "./*": "./pkg/*"
+  },
+  "scripts": {
+    "build": "wasm-pack build . --target web",
+    "dev": "cargo watch -i pkg -s 'wasm-pack build . --target web'"
+  }
+}

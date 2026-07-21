@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Avatar, Divider, Flex, DropdownItem, Indicator, Sidebar, Card, Button, Tooltip } from "@dolanske/vui"
-import { IconMagniferLinear, IconSettingsLinear, IconSidebarMinimalisticLinear } from "@iconify-prerendered/vue-solar"
+import { Avatar, Divider, Flex, DropdownItem, Sidebar, Card, Button, Tooltip } from "@dolanske/vui"
+import { IconSettingsLinear, IconSidebarMinimalisticLinear } from "@iconify-prerendered/vue-solar"
 import { useStorage } from "@vueuse/core"
 import { useIrcStore } from "../../stores/irc"
 
@@ -33,7 +33,8 @@ const mini = useStorage("orbit-sidebar-state", true)
       <DropdownItem v-for="server in irc.serverData.values()" :key="server.metadata.name">
         <template #icon>
           <Avatar :size="mini ? 'm' : 's'">
-            {{ server.metadata.name.charAt(0) }}
+            <!-- FIXME: clean the fallback up and consider irc.<network>.<tld> cases -->
+            {{ (server.metadata.name?.charAt(0) ?? server.metadata.address.startsWith("wss://")) ? server.metadata.address.charAt(6) : server.metadata.address.charAt(0) }}
             <!-- <template #overlay>
               <Indicator variant="alert" size="s" position="top-right" />
             </template> -->
