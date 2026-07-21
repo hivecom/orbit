@@ -1,14 +1,30 @@
 <script setup lang="ts">
-import { Button, ButtonGroup, Divider, Dropdown, DropdownItem } from "@dolanske/vui"
+import { Button, Dropdown, DropdownItem } from "@dolanske/vui"
 import { useWindowManager } from "../../lib/windows"
 import { IconHamburgerMenuLinear } from "@iconify-prerendered/vue-solar"
+import { useIrcStore } from "../../stores/irc"
+import { onBeforeMount } from "vue"
+import { useRouter } from "vue-router"
+import WindowEmpty from "../../components/windows/WindowEmpty.vue"
+import WindowChat from "../../components/windows/WindowChat.vue"
 
-const { windows, split, close, swap, replace } = useWindowManager()
+const { windows, split, close, swap } = useWindowManager()
+
+const router = useRouter()
+const irc = useIrcStore()
+
+// Redirect back to main route (username / server setup) if no servers are available
+onBeforeMount(() => {
+  console.log("page mount", irc.serverData)
+  if (irc.serverData.size === 0) {
+    router.replace({ path: "/" })
+  }
+})
 </script>
 
 <template>
   <div class="o-wm">
-    <div v-for="(window, location, index) in windows" :class="[`wm-${location}`, 'wm-window']">
+    <div v-for="(window, location) in windows" :class="[`wm-${location}`, 'wm-window']">
       <div class="wm-window-actions">
         <Dropdown>
           <template #trigger="{ toggle }">
@@ -28,6 +44,9 @@ const { windows, split, close, swap, replace } = useWindowManager()
           </template>
         </Dropdown>
       </div>
+
+      <WindowChat v-if="window?.type === 'chat'" v-bind="window" />
+      <WindowEmpty v-else-if="window?.type === 'empty'" />
 
       <!-- <h1>{{ window?.type }} | {{ index }}</h1>
       <p v-if="window && window.type !== 'empty'">

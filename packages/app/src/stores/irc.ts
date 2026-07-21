@@ -1,13 +1,28 @@
 import { defineStore } from "pinia"
-import type { IrcServer, ServerList } from "core-wasm"
-import { shallowRef } from "vue"
+import { Message, React, type IrcConnection, type Server, type ServerList } from "core-wasm"
+import { computed, ref, shallowRef } from "vue"
+import { useUserStore } from "./user"
+import { useAppStateStore } from "./app-state"
+
+export const IRC_UNKNOWN = "<unknown>"
 
 /**
  * Global store handling all IRC data and hands it to the UI for consumption.
  */
 export const useIrcStore = defineStore("irc", () => {
+  const user = useUserStore()
+  const app = useAppStateStore()
+
   const initialized = shallowRef(false)
-  const servers = shallowRef<IrcServer[]>([])
+
+  // Needs to be a ref, as deep properties will be dynamically updated
+  const serverState = ref<Map<string, Server>>(new Map())
+
+  // Is shallow, as it's only set once on connection or disconnect
+  const serverHandlers = shallowRef<Map<string, IrcConnection>>(new Map())
+
+  // Holds references to messages per server. This should be actually per `server:channel`
+  const serverMessages = shallowRef<Map<string, Message[]>>(new Map())
 
   let controller: ServerList = {} as ServerList
 
@@ -18,15 +33,89 @@ export const useIrcStore = defineStore("irc", () => {
    */
   async function init(_controller: ServerList) {
     controller = _controller
-    const rawServers = await controller.get_servers()
-    servers.value = rawServers
+
+    console.log("Initial orbit servers", controller.servers.length)
+
+    // Get server state and save their data & controllers
+    await Promise.allSettled(
+      controller.servers.map((serv) => {
+        return serv.state()
+      }),
+    ).then((results) => {
+      for (let i = 0; i < results.length; i++) {
+        const result = results[i]
+        if (result.status === "fulfilled") {
+          const key = result.value.metadata.name
+          serverState.value.set(key, result.value)
+          serverHandlers.value.set(key, controller.servers[i])
+        }
+      }
+    })
+
     initialized.value = true
+  }
+
+  /**
+   * Connects to the server address
+   */
+  async function serverConnect(name: string, url: string) {
+    const handler = await controller.connect(name, url).catch((e) => {
+      throw new Error(e)
+    })
+
+    const state = await handler.state()
+    console.log("Received server state", state.toJSON())
+    const key = state.metadata.name
+    serverState.value.set(key, state)
+    serverHandlers.value.set(key, handler)
+
+    await handler.sign_in_anonymous(user.me.displayName, user.me.accountName, user.me.accountName)
+    console.log("Signed in")
+
+    registerServerEvents(key, handler)
+
+    return {
+      handler,
+      state,
+    }
+  }
+
+  function registerServerEvents(key: string, handler: IrcConnection) {
+    // Runs whenever some dataset on the server object changes
+    handler.on_data((event) => {
+      if (event instanceof Message) {
+        const existing = serverMessages.value.get(key) ?? []
+        existing.push(event)
+        serverMessages.value.set(key, existing)
+      } else if (event instanceof React) {
+        // TODO
+        console.log("Received reaction", event)
+      }
+    })
+
+    // Laving server - clean up state
+    handler.on_disconnect((reason) => {
+      console.log("Disconnected", reason)
+      serverHandlers.value.delete(key)
+      serverState.value.delete(key)
+    })
+
+    handler.on_error((error) => {
+      app.ircErrors.push(error)
+    })
+  }
+
+  function getServerState(address: string) {
+    return computed(() => serverState.value.get(address))
   }
 
   return {
     init,
+    serverConnect,
     initialized,
-    servers,
     controller,
+    serverData: serverState,
+    serverControllers: serverHandlers,
+    getServerState,
   }
 })

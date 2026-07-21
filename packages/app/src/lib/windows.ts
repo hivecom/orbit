@@ -1,5 +1,6 @@
 import { useUrlSearchParams } from "@vueuse/core"
-import { readonly, ref, unref, watch } from "vue"
+import { computed, readonly, ref, unref, watch } from "vue"
+import { IRC_UNKNOWN, useIrcStore } from "../stores/irc"
 
 type WindowLocation = "f" | "l" | "r" | "lt" | "lb" | "rt" | "rb"
 
@@ -34,7 +35,24 @@ const WIN_STORAGE_KEY = "o-wm-state"
 const WIN_URL_KEY = "w1" // Includes a number for versioning
 const WIN_LOCATIONS: WindowLocation[] = ["f", "l", "r", "lt", "lb", "rt", "rb"]
 
-export function getDefaultState() {
+export function getDefaultState(): WindowState {
+  const irc = useIrcStore()
+
+  // If we're getting default state, it means there is no previous manager state.
+  const firstServer = irc.serverData.values().next().value
+
+  if (firstServer) {
+    // const firstChannel = firstServer.channels.values().next().value
+
+    return {
+      f: {
+        type: "chat",
+        serverId: firstServer.id.toString(),
+        channelId: IRC_UNKNOWN,
+      },
+    }
+  }
+
   return {
     f: {
       type: "empty",
@@ -305,6 +323,7 @@ export function useWindowManager() {
 
   return {
     windows: readonly(state),
+    empty: computed(() => Object.values(state.value).filter((item) => item && item.type !== "empty").length === 0),
     close,
     split,
     swap,

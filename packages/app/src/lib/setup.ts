@@ -6,6 +6,7 @@ import { setColorTheme } from "@dolanske/vui"
 import init, { initialize_orbit } from "core-wasm"
 import { useIrcStore } from "../stores/irc"
 import { useAppStateStore } from "../stores/app-state"
+import { useUserStore } from "../stores/user"
 
 /**
  * Creates the Orbit application and initializes the UI & connectors.
@@ -14,7 +15,7 @@ import { useAppStateStore } from "../stores/app-state"
  * @param platform Platform adapter
  * @returns Vue application instance
  */
-export function createOrbitApp(root: Component<any, any, any, any, any>, platform: Platform) {
+export async function createOrbitApp(root: Component<any, any, any, any, any>, platform: Platform) {
   const app = createApp(root)
   const pinia = createPinia()
 
@@ -34,17 +35,23 @@ export function createOrbitApp(root: Component<any, any, any, any, any>, platfor
   //    2.2 Handle other server & channel state
 
   // non-blocking operation, app receives a loading spinner while this is happening
-  void init().then(() => {
-    void initialize_orbit()
+  await init().then(async () => {
+    return initialize_orbit()
       .then(async (controller) => {
+        const userStore = useUserStore()
+        userStore.init()
+
         const ircStore = useIrcStore(pinia)
         await ircStore.init(controller)
       })
-      .catch(() => {
+      .catch((e) => {
         const appState = useAppStateStore()
+        console.log("Failed to initialize orbit", e)
         appState.globalError = "Failed to initialize Orbit. Check console for errors."
       })
   })
+
+  console.log("WASM startup completed")
 
   return app
 }

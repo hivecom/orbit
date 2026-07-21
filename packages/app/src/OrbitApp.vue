@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { RouterView } from "vue-router"
 import "./style/index.css"
-import NavigationSidebar from "./components/navigation/NavigationSidebar.vue"
+import Sidebar from "./components/navigation/Sidebar.vue"
 import { Flex, Spinner } from "@dolanske/vui"
 import { useAppStateStore } from "./stores/app-state.ts"
 
@@ -19,8 +19,8 @@ const appState = useAppStateStore()
     <p>{{ appState.globalError }}</p>
   </Flex>
 
-  <div class="o-root vui-sidebar-layout" v-if="appState.initialized">
-    <NavigationSidebar />
+  <div class="o-root vui-sidebar-layout" v-else-if="!appState.initialized">
+    <Sidebar />
     <main class="h-100">
       <RouterView />
     </main>

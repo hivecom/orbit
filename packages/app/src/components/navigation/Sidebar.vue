@@ -1,15 +1,18 @@
 <script setup lang="ts">
-import { Avatar, Divider, Flex, DropdownItem, Indicator, Sidebar, Card, Button } from "@dolanske/vui"
+import { Avatar, Divider, Flex, DropdownItem, Indicator, Sidebar, Card, Button, Tooltip } from "@dolanske/vui"
 import { IconMagniferLinear, IconSettingsLinear, IconSidebarMinimalisticLinear } from "@iconify-prerendered/vue-solar"
 import { useStorage } from "@vueuse/core"
+import { useIrcStore } from "../../stores/irc"
 
-const miniBar = useStorage("orbit-sidebar-state", true)
+const irc = useIrcStore()
+
+const mini = useStorage("orbit-sidebar-state", true)
 </script>
 
 <template>
-  <Sidebar :mini="miniBar">
+  <Sidebar :mini="mini">
     <Flex column gap="xxs">
-      <DropdownItem @click="miniBar = !miniBar">
+      <DropdownItem @click="mini = !mini">
         <template #icon>
           <IconSidebarMinimalisticLinear />
         </template>
@@ -20,33 +23,39 @@ const miniBar = useStorage("orbit-sidebar-state", true)
     <Divider type="dashed" class="my-m" />
 
     <Flex column gap="xxs">
-      <DropdownItem>
+      <!-- <DropdownItem>
         <template #icon>
           <IconMagniferLinear />
         </template>
         Search
-      </DropdownItem>
+      </DropdownItem> -->
 
-      <DropdownItem>
+      <DropdownItem v-for="server in irc.serverData.values()" :key="server.metadata.name">
         <template #icon>
-          <Avatar :size="miniBar ? 'm' : 's'">
-            H
-            <template #overlay>
+          <Avatar :size="mini ? 'm' : 's'">
+            {{ server.metadata.name.charAt(0) }}
+            <!-- <template #overlay>
               <Indicator variant="alert" size="s" position="top-right" />
-            </template>
+            </template> -->
           </Avatar>
         </template>
-        Hivecom
+        {{ server.metadata.name }}
       </DropdownItem>
     </Flex>
 
     <template #footer>
       <!-- TODO: minified sidebar is _just_ the avatar -->
-      <Card class="o-sidebar-user">
+      <Flex v-if="mini" x-center expand>
+        <Avatar url="https://github.com/dolanske.png"></Avatar>
+      </Flex>
+
+      <Card class="o-sidebar-user" v-else>
         <Flex y-center gap="xs" expand>
           <Avatar url="https://github.com/dolanske.png"></Avatar>
           <Flex column gap="s" class="flex-1">
-            <strong v-show="!miniBar">dolanske</strong>
+            <Tooltip>
+              <strong>dolanske</strong>
+            </Tooltip>
           </Flex>
           <RouterLink to="/settings">
             <Button square plain>
@@ -63,5 +72,13 @@ const miniBar = useStorage("orbit-sidebar-state", true)
 .o-sidebar-user {
   --vui-card-padding-block: var(--space-s);
   --vui-card-padding-inline: var(--space-s);
+
+  strong {
+    display: block;
+    width: 100%;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+  }
 }
 </style>
