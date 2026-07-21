@@ -5,7 +5,7 @@ use core_shared::{
     SendCommand,
     actor::{self, ActorCommand, ActorMessage, CommandResponse, IrcActor},
     state::{
-        self, Capabilities, ChannelMetadata, ChannelUser, MessageMetadata, MessageReference, React,
+        self, Capabilities, ChannelMetadata, ChannelUser, MessageMetadata, MessageReference,
         ServerMetadata, SignedIn, User,
     },
 };
@@ -475,6 +475,7 @@ pub enum ServerEvent {
     UserList(UserList),
     Privmsg(ChannelMessage),
     React(React),
+    History(History),
 }
 
 impl From<state::ServerEvent> for ServerEvent {
@@ -490,7 +491,21 @@ impl From<state::ServerEvent> for ServerEvent {
                 channel,
                 message: message.into(),
             }),
-            state::ServerEvent::React(r) => Self::React(r),
+            state::ServerEvent::React {
+                target_message,
+                user,
+                text,
+                is_unreact,
+            } => Self::React(React {
+                target_message,
+                user,
+                text,
+                is_unreact,
+            }),
+            state::ServerEvent::History { channel, messages } => Self::History(History {
+                channel,
+                messages: messages.into_iter().map(|m| m.into()).collect(),
+            }),
         }
     }
 }
@@ -594,4 +609,20 @@ impl From<anyhow::Error> for OrbitError {
             description: error.to_string(),
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Tsify)]
+#[wasm_bindgen(getter_with_clone, inspectable)]
+pub struct React {
+    pub target_message: String,
+    pub user: String,
+    pub text: String,
+    pub is_unreact: bool,
+}
+
+#[derive(Debug, Clone, Tsify)]
+#[wasm_bindgen(getter_with_clone, inspectable)]
+pub struct History {
+    pub channel: String,
+    pub messages: Vec<Message>,
 }

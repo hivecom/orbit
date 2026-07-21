@@ -6,7 +6,7 @@ use crate::{
     SendCommand,
     state::{
         Channel, ChannelRole, ChannelUser, Message, MessageMetadata, MessageReference, MessageType,
-        OrbitError, React, Server, ServerEvent, SignedIn, TextMessage, User,
+        OrbitError, Server, ServerEvent, SignedIn, Tags, TextMessage, User,
     },
 };
 use anyhow::{Context, anyhow};
@@ -19,11 +19,8 @@ use futures::{
     },
     stream::FusedStream,
 };
-use irc_proto::{
-    BatchSubCommand, CapSubCommand, Command::*, Message as IrcMessage, Response, message::Tag,
-};
+use irc_proto::{BatchSubCommand, CapSubCommand, Command::*, Message as IrcMessage, Response};
 use ordermap::OrderMap;
-use time::{OffsetDateTime, format_description::well_known::Iso8601};
 use tracing::{debug, error, warn};
 
 #[derive(Debug, Default)]
@@ -115,24 +112,12 @@ pub trait IrcConnection: fmt::Debug {
     fn address(&self) -> &str;
 }
 
-pub struct IrcActor<C: IrcConnection> {
-    cmd_rx: mpsc::UnboundedReceiver<ActorMessage>,
-    incoming: C::Incoming,
-    outgoing: C::Outgoing,
-    state: Server,
-    response_channels: ResponseChannels,
-    event_handlers: Vec<UnboundedSender<ServerEvent>>,
-    error_handlers: Vec<UnboundedSender<OrbitError>>,
-    disconnect_handlers: Vec<UnboundedSender<String>>,
-
-    current_batch: Option<Batch>,
-    sasl_state: SaslState,
-}
-
 #[derive(Debug)]
 struct Batch {
     id: String,
     typ: BatchSubCommand,
+    channel: String,
+    messages: Vec<Message>,
 }
 
 impl Batch {
@@ -151,6 +136,20 @@ enum SaslState {
         username: String,
         password: String,
     },
+}
+
+pub struct IrcActor<C: IrcConnection> {
+    cmd_rx: mpsc::UnboundedReceiver<ActorMessage>,
+    incoming: C::Incoming,
+    outgoing: C::Outgoing,
+    state: Server,
+    response_channels: ResponseChannels,
+    event_handlers: Vec<UnboundedSender<ServerEvent>>,
+    error_handlers: Vec<UnboundedSender<OrbitError>>,
+    disconnect_handlers: Vec<UnboundedSender<String>>,
+
+    current_batch: Option<Batch>,
+    sasl_state: SaslState,
 }
 
 impl<C: IrcConnection> IrcActor<C> {
@@ -236,7 +235,32 @@ impl<C: IrcConnection> IrcActor<C> {
             JOIN(ref channel_name, _, _) => {
                 let source = message.source_nickname().unwrap();
 
-                // FIXME: handle other cases
+                let mut tags = Tags::default();
+                if let Some(ref t) = message.tags {
+                    tags = Tags::parse(t);
+                }
+
+                if self.current_batch.as_ref().map(|b| b.is_chathistory()) == Some(true) {
+                    assert!(tags.server_time.is_some());
+                }
+
+                let state_message = Message {
+                    text: None,
+                    metadata: MessageMetadata {
+                        msgid: tags.msgid_with_fallback(&[source]),
+                        server_time: tags.server_time_with_fallback() as f64,
+                        message_type: MessageType::Join,
+                        user: source.to_string(),
+                    },
+                };
+
+                if self
+                    .push_batch(channel_name.clone(), state_message.clone())
+                    .await
+                {
+                    return Ok(());
+                }
+
                 if source == self.state.me.as_ref().unwrap().nickname {
                     let channel = Channel::new(channel_name.clone());
                     self.state
@@ -251,88 +275,168 @@ impl<C: IrcConnection> IrcActor<C> {
                         .map_err(|e| anyhow!("Failed to reply to JOIN command {e:?}"))?;
 
                     self.on_event(ServerEvent::Joined(channel)).await?;
-                }
-            }
-            PRIVMSG(ref target, ref text) => {
-                let mut msgid = None;
-                let mut server_time = None;
-                let mut username = None;
-                let mut relayed_by = None;
-                let mut reply = None;
-                if let Some(ref tags) = message.tags {
-                    for Tag(key, value) in tags {
-                        match key.as_str() {
-                            "msgid" => msgid = value.clone(),
-                            "account" => username = value.clone(),
-                            "draft/relaymsg" => relayed_by = value.clone(),
-                            "+draft/reply" | "+reply" => reply = value.clone(),
-                            "time" => {
-                                server_time = value
-                                    .as_ref()
-                                    .and_then(|v| OffsetDateTime::parse(v, &Iso8601::DEFAULT).ok())
-                            }
-                            _ => {
-                                warn!("unhandled tag: {key:?}: {value:?}");
-                            }
-                        }
+
+                    if self.current_batch.as_ref().map(|b| b.is_chathistory()) != Some(true)
+                        && self.state.capabilities.history.enabled
+                    {
+                        self.history_latest(channel_name.clone(), None, 50)
+                            .await
+                            .context("Failed to request latest history")?;
+                    }
+                } else {
+                    if self.current_batch.as_ref().map(|b| b.is_chathistory()) != Some(true) {
+                        let channel = self.channel_mut(channel_name.clone()).await;
+
+                        dbg!(&message);
+                        channel.users.push(ChannelUser {
+                            nickname: source.to_string(),
+                            role: ChannelRole::None,
+                        });
                     }
                 }
 
-                let nickname = message.source_nickname().unwrap();
+                self.on_event(ServerEvent::Privmsg {
+                    channel: channel_name.to_string(),
+                    message: state_message,
+                })
+                .await?;
+            }
+            PART(ref channel_name, ref comment) => {
+                let mut tags = Tags::default();
+                if let Some(ref t) = message.tags {
+                    tags = Tags::parse(t);
+                }
+                let source = message.source_nickname().unwrap();
 
-                if let Some(username) = username {
-                    let user = self
-                        .state
-                        .users
-                        .entry(nickname.to_string())
-                        .or_insert_with(|| User::new(nickname.to_string()));
-                    user.username = Some(username);
+                let state_message = Message {
+                    text: None,
+                    metadata: MessageMetadata {
+                        msgid: tags.msgid_with_fallback(&[source]),
+                        server_time: tags.server_time_with_fallback() as f64,
+                        message_type: MessageType::Part,
+                        user: source.to_string(),
+                    },
+                };
+
+                if self
+                    .push_batch(channel_name.clone(), state_message.clone())
+                    .await
+                {
+                    return Ok(());
                 }
 
-                let server_time = server_time
-                    .unwrap_or_else(OffsetDateTime::now_utc)
-                    .unix_timestamp();
-                let msgid = msgid.unwrap_or_else(|| {
-                    let mut hasher = blake3::Hasher::new();
-                    hasher.update(&server_time.to_ne_bytes());
-                    hasher.update(target.as_bytes());
-                    hasher.update(text.as_bytes());
+                self.on_event(ServerEvent::Privmsg {
+                    channel: channel_name.to_string(),
+                    message: state_message,
+                })
+                .await?;
 
-                    hasher.finalize().to_string()
-                });
+                if self.current_batch.as_ref().map(|b| b.is_chathistory()) != Some(true) {
+                    let channel = self.channel_mut(channel_name.clone()).await;
 
-                let reply = reply
-                    .and_then(|r| {
+                    channel.users.retain(|u| u.nickname != source);
+                }
+            }
+            QUIT(ref comment) => {
+                let mut tags = Tags::default();
+                if let Some(ref t) = message.tags {
+                    tags = Tags::parse(t);
+                }
+                let source = message.source_nickname().unwrap();
+
+                let state_message = Message {
+                    text: None,
+                    metadata: MessageMetadata {
+                        msgid: tags.msgid_with_fallback(&[source]),
+                        server_time: tags.server_time_with_fallback() as f64,
+                        message_type: MessageType::Part,
+                        user: source.to_string(),
+                    },
+                };
+
+                if let Some(batch) = self.current_batch.as_mut()
+                    && batch.is_chathistory()
+                {
+                    batch.messages.push(state_message);
+                    return Ok(());
+                }
+
+                self.on_event(ServerEvent::Privmsg {
+                    channel: String::new(),
+                    message: state_message,
+                })
+                .await?;
+
+                if self.current_batch.as_ref().map(|b| b.is_chathistory()) != Some(true) {
+                    self.state.users.remove(source);
+                    for channel in self.state.channels.values_mut() {
+                        channel.users.retain(|u| u.nickname != source);
+                    }
+                }
+            }
+            PRIVMSG(ref target, ref text) => {
+                let mut tags = Tags::default();
+                if let Some(ref t) = message.tags {
+                    tags = Tags::parse(t);
+                }
+                assert_eq!(
+                    self.current_batch.as_ref().map(|s| s.id.as_str()),
+                    tags.batch.as_deref(),
+                );
+
+                let source = message.source_nickname().unwrap();
+
+                let msgid = tags.msgid_with_fallback(&[source, target, text]);
+
+                let reply = tags
+                    .reply
+                    .as_ref()
+                    .map(|r| {
                         self.state
                             .channels
                             .get(target)
-                            .and_then(|c| c.messages.get(&r))
+                            .and_then(|c| c.messages.get(r))
                     })
-                    .and_then(|m| {
-                        Some(MessageReference {
-                            text: m.text.clone().map(|t| t.content)?,
-                            username: m.metadata.user.clone(),
-                        })
+                    .map(|m| MessageReference {
+                        text: m
+                            .map(|m| m.text.clone().map(|t| t.content))
+                            .unwrap_or_else(|| Some(String::from("Unknown"))),
+
+                        username: m
+                            .map(|m| m.metadata.user.clone())
+                            .unwrap_or_else(|| String::from("Unknown")),
                     });
 
                 let state_message = Message {
+                    metadata: MessageMetadata {
+                        msgid: msgid.clone(),
+                        server_time: tags.server_time_with_fallback() as f64,
+                        message_type: MessageType::Privmsg,
+                        user: source.to_string(),
+                    },
                     text: Some(TextMessage {
                         content: text.clone(),
                         reactions: OrderMap::new(),
                         reply,
                         redacted: false,
                         edited: false,
-                        relayed_by,
+                        relayed_by: tags.relayed_by,
                     }),
-                    metadata: MessageMetadata {
-                        msgid: msgid.clone(),
-                        server_time: server_time as f64,
-                        message_type: MessageType::Privmsg,
-                        user: nickname.to_string(),
-                    },
                 };
 
-                if nickname == self.state.me.as_ref().unwrap().nickname
+                if self.push_batch(target.clone(), state_message.clone()).await {
+                    return Ok(());
+                }
+
+                if let Some(username) = tags.username.clone() {
+                    let user = self.user_mut(source.to_string()).await;
+                    user.username = Some(username);
+                }
+
+                let channel = self.channel_mut(target.clone()).await;
+                channel.messages.insert(msgid, state_message.clone());
+
+                if source == self.state.me.as_ref().unwrap().nickname
                     && let Err(e) = self
                         .response_channels
                         .reply(
@@ -347,30 +451,24 @@ impl<C: IrcConnection> IrcActor<C> {
                     error!("Failed to reply to PRIVMSG command {e:?}");
                 }
 
-                let channel = self
-                    .state
-                    .channels
-                    .entry(target.clone())
-                    .or_insert_with(|| Channel::new(target.clone()));
-                channel.messages.insert(msgid, state_message.clone());
-
-                if self.current_batch.as_ref().map(|b| b.is_chathistory()) != Some(true) {
-                    self.on_event(ServerEvent::Privmsg {
-                        channel: target.clone(),
-                        message: state_message,
-                    })
-                    .await?;
-                }
+                self.on_event(ServerEvent::Privmsg {
+                    channel: target.clone(),
+                    message: state_message,
+                })
+                .await?;
             }
             BATCH(reference, typ, param) => {
                 if let Some(id) = reference.strip_prefix('+') {
                     self.current_batch = Some(Batch {
                         id: id.to_string(),
                         typ: typ.clone().unwrap(),
+                        channel: String::new(),
+                        messages: Vec::new(),
                     });
 
                     match typ {
-                        Some(BatchSubCommand::CUSTOM(c)) if &c == "METADATA" => (),
+                        Some(BatchSubCommand::CUSTOM(c))
+                            if &c == "METADATA" || &c == "CHATHISTORY" => {}
                         _ => warn!(?typ, ?param, "unhandled BATCH type"),
                     }
                 } else {
@@ -378,39 +476,62 @@ impl<C: IrcConnection> IrcActor<C> {
                         self.current_batch.as_ref().map(|s| s.id.as_str()),
                         Some(&reference[1..])
                     );
+                    // FIXME: this will panic if a batch only contains QUITs
+                    assert_eq!(
+                        self.current_batch.as_ref().map(|b| b.channel.is_empty()),
+                        Some(false)
+                    );
+
+                    if let Some(batch) = self.current_batch.take()
+                        && !batch.messages.is_empty()
+                    {
+                        for message in &batch.messages {
+                            let channel = self.channel_mut(batch.channel.clone()).await;
+                            channel
+                                .messages
+                                .insert(message.metadata.msgid.clone(), message.clone());
+                        }
+
+                        self.on_event(ServerEvent::History {
+                            channel: batch.channel,
+                            messages: batch.messages,
+                        })
+                        .await?;
+                    }
 
                     self.current_batch = None;
+                }
+            }
+            ChannelMODE(ref channel_name, ref mode) => {
+                let target = message.response_target().unwrap();
+                let source = message.source_nickname().unwrap();
+
+                if self.current_batch.as_ref().map(|b| b.is_chathistory()) != Some(true) {
+                    dbg!(target, source, channel_name, mode);
+                }
+            }
+            TOPIC(ref channel_name, ref text) => {
+                let target = message.response_target().unwrap();
+                let source = message.source_nickname().unwrap();
+
+                if self.current_batch.as_ref().map(|b| b.is_chathistory()) != Some(true) {
+                    dbg!(target, source, channel_name, text);
                 }
             }
             Raw(ref cmd, ref mut target) if cmd == "TAGMSG" => {
                 let target = target.remove(0);
 
-                let mut react = None;
-                let mut unreact = None;
-                let mut reply = None;
-                if let Some(ref tags) = message.tags {
-                    for Tag(key, value) in tags {
-                        match key.as_str() {
-                            "+draft/reply" | "+reply" => reply = value.clone(),
-                            "+draft/react" => react = value.clone(),
-                            "+draft/unreact" => unreact = value.clone(),
-                            _ => {
-                                warn!("unhandled tag: {key:?}: {value:?}");
-                            }
-                        }
-                    }
+                let mut tags = Tags::default();
+                if let Some(ref t) = message.tags {
+                    tags = Tags::parse(t);
                 }
 
-                let channel = self
-                    .state
-                    .channels
-                    .entry(target.clone())
-                    .or_insert_with(|| Channel::new(target.clone()));
-
-                let is_unreact = unreact.is_some();
-                if let Some(react) = react.or(unreact)
-                    && let Some(reply) = reply
+                let is_unreact = tags.unreact.is_some();
+                if let Some(react) = tags.react.or(tags.unreact)
+                    && let Some(reply) = tags.reply
                 {
+                    let channel = self.channel_mut(target.clone()).await;
+
                     let nickname = message.source_nickname().unwrap().to_string();
                     if let Some(message) = channel.messages.get_mut(&reply) {
                         let reactors = message
@@ -428,12 +549,12 @@ impl<C: IrcConnection> IrcActor<C> {
                         }
 
                         // TODO: should it be sent if the message wasn't found?
-                        self.on_event(ServerEvent::React(React {
+                        self.on_event(ServerEvent::React {
                             target_message: reply,
                             user: nickname,
                             text: react,
                             is_unreact,
-                        }))
+                        })
                         .await?;
                     }
                 }
@@ -489,6 +610,22 @@ impl<C: IrcConnection> IrcActor<C> {
         }
 
         Ok(())
+    }
+
+    pub async fn push_batch(&mut self, target: String, state_message: Message) -> bool {
+        if let Some(batch) = self.current_batch.as_mut()
+            && batch.is_chathistory()
+        {
+            if batch.channel.is_empty() {
+                batch.channel = target.clone();
+            } else {
+                assert_eq!(batch.channel, target)
+            }
+            batch.messages.push(state_message);
+
+            return true;
+        }
+        return false;
     }
 
     #[tracing::instrument(err, skip(self))]
@@ -598,11 +735,7 @@ impl<C: IrcConnection> IrcActor<C> {
             Response::RPL_TOPIC => {
                 let channel_name = params[1].to_string();
                 let topic = params[2].to_string();
-                let channel = self
-                    .state
-                    .channels
-                    .entry(channel_name.clone())
-                    .or_insert_with(|| Channel::new(channel_name));
+                let channel = self.channel_mut(channel_name).await;
 
                 channel.metadata.topic = Some(topic);
 
@@ -640,11 +773,7 @@ impl<C: IrcConnection> IrcActor<C> {
                         .or_insert_with(|| User::new(user));
                 }
 
-                let channel = self
-                    .state
-                    .channels
-                    .entry(channel_name.clone())
-                    .or_insert_with(|| Channel::new(channel_name));
+                let channel = self.channel_mut(channel_name).await;
 
                 channel.users = channel_users;
             }
@@ -842,6 +971,20 @@ impl<C: IrcConnection> IrcActor<C> {
         }
 
         Ok(())
+    }
+
+    async fn channel_mut(&mut self, name: String) -> &mut Channel {
+        self.state
+            .channels
+            .entry(name.clone())
+            .or_insert_with(|| Channel::new(name))
+    }
+
+    async fn user_mut(&mut self, nickname: String) -> &mut User {
+        self.state
+            .users
+            .entry(nickname.clone())
+            .or_insert_with(|| User::new(nickname))
     }
 }
 

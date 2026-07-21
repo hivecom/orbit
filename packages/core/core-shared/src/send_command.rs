@@ -1,3 +1,5 @@
+use core::fmt;
+
 use futures::{
     SinkExt,
     channel::mpsc::{self, UnboundedSender},
@@ -108,6 +110,51 @@ pub trait SendCommand {
     ) -> impl std::future::Future<Output = Result<(), Self::Error>> {
         async { self.command(WHOIS(server, user)).await }
     }
+
+    fn history(
+        &mut self,
+        subcommand: ChatHistorySubCommand,
+        mut args: Vec<String>,
+    ) -> impl std::future::Future<Output = Result<(), Self::Error>> {
+        async move {
+            args.insert(0, subcommand.to_string());
+            self.command(Raw("CHATHISTORY".to_string(), args)).await
+        }
+    }
+
+    fn history_before(
+        &mut self,
+        target: String,
+        before: String,
+        limit: i32,
+    ) -> impl std::future::Future<Output = Result<(), Self::Error>> {
+        async move {
+            self.history(
+                ChatHistorySubCommand::Before,
+                vec![target, before, limit.to_string()],
+            )
+            .await
+        }
+    }
+
+    fn history_latest(
+        &mut self,
+        target: String,
+        since: Option<String>,
+        limit: i32,
+    ) -> impl std::future::Future<Output = Result<(), Self::Error>> {
+        async move {
+            self.history(
+                ChatHistorySubCommand::Latest,
+                vec![
+                    target,
+                    since.unwrap_or_else(|| String::from("*")),
+                    limit.to_string(),
+                ],
+            )
+            .await
+        }
+    }
 }
 
 impl SendCommand for UnboundedSender<IrcMessage> {
@@ -116,5 +163,27 @@ impl SendCommand for UnboundedSender<IrcMessage> {
         self.send(message).await?;
 
         Ok(())
+    }
+}
+
+pub enum ChatHistorySubCommand {
+    Before,
+    After,
+    Latest,
+    Around,
+    Between,
+    Targets,
+}
+
+impl fmt::Display for ChatHistorySubCommand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Before => write!(f, "BEFORE"),
+            Self::After => write!(f, "AFTER"),
+            Self::Latest => write!(f, "LATEST"),
+            Self::Around => write!(f, "AROUND"),
+            Self::Between => write!(f, "BETWEEN"),
+            Self::Targets => write!(f, "TARGETS"),
+        }
     }
 }
