@@ -44,10 +44,10 @@ export const useIrcStore = defineStore("irc", () => {
     ).then((results) => {
       for (let i = 0; i < results.length; i++) {
         const result = results[i]
-        if (result.status === "fulfilled") {
+        if (result && result.status === "fulfilled") {
           const key = result.value.id
           serverState.value.set(key, result.value)
-          serverHandlers.value.set(key, controller.servers[i])
+          serverHandlers.value.set(key, controller.servers[i]!)
         }
       }
     })

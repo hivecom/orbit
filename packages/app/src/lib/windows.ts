@@ -12,7 +12,7 @@ type WindowURLState = WindowChatURLState | WindowVoiceURLState | WindowEmptyURLS
 
 export interface WindowChat {
   type: "chat"
-  serverId: string
+  serverId: number
   channelId: string
 }
 
@@ -47,7 +47,7 @@ export function getDefaultState(): WindowState {
     return {
       f: {
         type: "chat",
-        serverId: firstServer.id.toString(),
+        serverId: firstServer.id,
         channelId: IRC_UNKNOWN,
       },
     }
@@ -90,15 +90,15 @@ export function deserializeWindow(encoded: string): Window | undefined {
       if (params.length !== 2) return
       return {
         type: "chat",
-        serverId: params[0],
-        channelId: params[1],
+        serverId: Number(params[0]),
+        channelId: params[1]!,
       }
 
     case "v":
       if (params.length !== 1) return
       return {
         type: "voice",
-        channelId: params[0],
+        channelId: params[0]!,
       }
 
     case "e":

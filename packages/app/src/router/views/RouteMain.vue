@@ -27,7 +27,7 @@ function redirectToChat(state: Server) {
     params: {
       f: serializeWindow({
         type: "chat",
-        serverId: state.id.toString(),
+        serverId: state.id,
         channelId: IRC_UNKNOWN,
       }),
     },
