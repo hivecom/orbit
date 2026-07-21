@@ -37,7 +37,7 @@ function submit() {
     loading.value = true
 
     try {
-      const { state } = await irc.serverConnect(form.name, form.url)
+      const { state } = await irc.serverConnect(form.url)
 
       emit("success", state)
       router.push({ name: "RouteWindowManager" })

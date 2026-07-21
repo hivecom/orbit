@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vite-plus/test"
+import { beforeEach, describe, expect, it } from "vite-plus/test"
 import { deserializeState, deserializeWindow, getDefaultState, serializeState, serializeWindow, WindowChat, WindowEmpty, WindowState, WindowVoice } from "../../src/lib/windows.ts"
+import { createPinia, setActivePinia } from "pinia"
 
 // TODO: test the composable itself - requires jsdom context setup because it uses URL and localStorage
 
@@ -31,6 +32,10 @@ const windowState: WindowState = {
 const windowStateSerialized = "l:c:asd-123:xxx-12;rt:v:asd-123;rb:e"
 
 describe("wm methods", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
   it("should serialize window object into URL string", () => {
     expect(serializeWindow(chatWindow)).toBe(chatWindowSerialized)
     expect(serializeWindow(voiceWindow)).toBe(voiceWindowSerialized)
