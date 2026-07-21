@@ -484,7 +484,9 @@ impl<C: IrcConnection> IrcActor<C> {
                     );
                     // FIXME: this will panic if a batch only contains QUITs
                     assert_eq!(
-                        self.current_batch.as_ref().map(|b| b.channel.is_empty()),
+                        self.current_batch
+                            .as_ref()
+                            .map(|b| b.is_chathistory() && b.channel.is_empty()),
                         Some(false)
                     );
 
@@ -642,7 +644,8 @@ impl<C: IrcConnection> IrcActor<C> {
 
             return true;
         }
-        return false;
+
+        false
     }
 
     #[tracing::instrument(err, skip(self))]
