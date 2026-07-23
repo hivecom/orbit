@@ -469,7 +469,7 @@ pub enum ChannelRole {
     Operator,
     HalfOperator,
     Voice,
-    None,
+    Regular,
 }
 
 impl From<char> for ChannelRole {

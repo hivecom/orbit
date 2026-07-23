@@ -362,7 +362,7 @@ impl<C: IrcConnection> IrcActor<C> {
 
                         channel.users.push(ChannelUser {
                             nickname: source.to_string(),
-                            role: ChannelRole::None,
+                            role: ChannelRole::Regular,
                         });
                     }
                 }
@@ -844,7 +844,7 @@ impl<C: IrcConnection> IrcActor<C> {
                         });
                     } else {
                         channel_users.push(ChannelUser {
-                            role: ChannelRole::None,
+                            role: ChannelRole::Regular,
                             nickname: user.clone(),
                         });
                     }
