@@ -3,6 +3,7 @@ use std::pin::pin;
 use std::{fmt, time::Duration};
 
 use futures::FutureExt;
+use rand::{SeedableRng, rngs::SmallRng, seq::IndexedRandom};
 #[cfg(not(feature = "web"))]
 use std::time::Instant;
 #[cfg(feature = "web")]
@@ -31,8 +32,11 @@ use irc_proto::{BatchSubCommand, CapSubCommand, Command::*, Message as IrcMessag
 use ordermap::OrderMap;
 use tracing::{debug, error, warn};
 
-#[derive(Debug, Default)]
-pub struct ResponseChannels(Vec<(CommandKey, Instant, oneshot::Sender<CommandResponse>)>);
+#[derive(Debug)]
+pub struct ResponseChannels {
+    channels: Vec<(CommandKey, Instant, oneshot::Sender<CommandResponse>)>,
+    rng: SmallRng,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CommandKey {
@@ -41,6 +45,7 @@ pub enum CommandKey {
     Join(String),
     Privmsg { target: String, text: String },
     History,
+    Label(String),
 }
 
 #[derive(Debug)]
@@ -53,10 +58,45 @@ pub enum CommandResponse {
     History(History),
 }
 
+const LABEL_CHARSET: &str = "abcdefghijklmnopqrstuvwxyz\
+                               ABCDEFGHIJKLMNOPQRSTUVWXYZ\
+                               1234567890";
+
 impl ResponseChannels {
     #[tracing::instrument]
+    pub fn new() -> Self {
+        Self {
+            channels: Vec::new(),
+            rng: SmallRng::from_seed([0; 32]),
+        }
+    }
+
+    #[tracing::instrument]
     pub fn register(&mut self, key: CommandKey, os_tx: oneshot::Sender<CommandResponse>) {
-        self.0.push((key, Instant::now(), os_tx));
+        self.channels.push((key, Instant::now(), os_tx));
+    }
+
+    #[tracing::instrument]
+    pub fn register_labeled(&mut self, os_tx: oneshot::Sender<CommandResponse>) -> String {
+        let char_vec = LABEL_CHARSET
+            .split("")
+            .filter(|c| !c.is_empty())
+            .collect::<Vec<&str>>();
+
+        let label = std::iter::repeat_with(|| {
+            char_vec
+                .choose(&mut self.rng)
+                .expect("CHARSET is not empty")
+        })
+        .take(10)
+        .copied()
+        .collect::<Vec<_>>()
+        .join("");
+
+        self.channels
+            .push((CommandKey::Label(label.clone()), Instant::now(), os_tx));
+
+        label
     }
 
     #[tracing::instrument]
@@ -64,19 +104,24 @@ impl ResponseChannels {
         &mut self,
         key: &CommandKey,
         response: CommandResponse,
-    ) -> Result<(), CommandResponse> {
-        if let Some(idx) = self.0.iter().position(|(rk, _, _)| rk == key) {
-            let (_, _, ch) = self.0.remove(idx);
-            ch.send(response)?;
-        } else {
-            // warn!("Failed to find response channel");
+    ) -> Result<bool, CommandResponse> {
+        if let CommandKey::Label(label) = key {
+            dbg!(label);
         }
 
-        Ok(())
+        if let Some(idx) = self.channels.iter().position(|(rk, _, _)| rk == key) {
+            let (_, _, ch) = self.channels.remove(idx);
+            ch.send(response)?;
+
+            Ok(true)
+        } else {
+            // warn!("Failed to find response channel");
+            Ok(false)
+        }
     }
 
     pub fn check_timeouts(&mut self) {
-        self.0
+        self.channels
             .retain(|(_, creation, _)| creation.elapsed() < Duration::from_secs(1));
     }
 }
@@ -136,6 +181,7 @@ pub trait IrcConnection: fmt::Debug {
 struct Batch {
     id: String,
     typ: BatchSubCommand,
+    label: Option<String>,
     channel: String,
     messages: Vec<Message>,
 }
@@ -188,7 +234,7 @@ impl<C: IrcConnection> IrcActor<C> {
             incoming,
             outgoing,
             state: Server::new(id, address),
-            response_channels: ResponseChannels::default(),
+            response_channels: ResponseChannels::new(),
             event_handlers: Vec::new(),
             error_handlers: Vec::new(),
             disconnect_handlers: Vec::new(),
@@ -306,7 +352,7 @@ impl<C: IrcConnection> IrcActor<C> {
                     if self.current_batch.as_ref().map(|b| b.is_chathistory()) != Some(true)
                         && self.state.capabilities.history.enabled
                     {
-                        self.history_latest(channel_name.clone(), None, 5)
+                        self.history_latest(channel_name.clone(), None, 5, None)
                             .await
                             .context("Failed to request latest history")?;
                     }
@@ -454,7 +500,7 @@ impl<C: IrcConnection> IrcActor<C> {
                     return Ok(());
                 }
 
-                if let Some(username) = tags.username.clone() {
+                if let Some(username) = tags.account.clone() {
                     let user = self.user_mut(source.to_string()).await;
                     user.username = Some(username);
                 }
@@ -482,9 +528,15 @@ impl<C: IrcConnection> IrcActor<C> {
             }
             BATCH(reference, typ, param) => {
                 if let Some(id) = reference.strip_prefix('+') {
+                    let mut tags = Tags::default();
+                    if let Some(ref t) = message.tags {
+                        tags = Tags::parse(t);
+                    }
+
                     self.current_batch = Some(Batch {
                         id: id.to_string(),
                         typ: typ.clone().unwrap(),
+                        label: tags.label,
                         channel: String::new(),
                         messages: Vec::new(),
                     });
@@ -521,13 +573,15 @@ impl<C: IrcConnection> IrcActor<C> {
                             messages: batch.messages,
                         };
 
-                        self.response_channels
-                            .reply(
-                                &CommandKey::History,
-                                CommandResponse::History(history.clone()),
-                            )
-                            .unwrap();
+                        let key = if let Some(label) = batch.label {
+                            CommandKey::Label(label)
+                        } else {
+                            CommandKey::History
+                        };
 
+                        self.response_channels
+                            .reply(&key, CommandResponse::History(history.clone()))
+                            .unwrap();
                         self.on_event(ServerEvent::History(history)).await?;
                     }
 
@@ -894,10 +948,19 @@ impl<C: IrcConnection> IrcActor<C> {
                 channel,
                 before_msgid,
             } => {
-                self.response_channels
-                    .register(CommandKey::History, cmd.reply_tx.unwrap());
+                let label = if self.state.capabilities.labeled_response.enabled {
+                    Some(
+                        self.response_channels
+                            .register_labeled(cmd.reply_tx.unwrap()),
+                    )
+                } else {
+                    self.response_channels
+                        .register(CommandKey::History, cmd.reply_tx.unwrap());
 
-                self.history_before(channel, format!("msgid={before_msgid}"), 5)
+                    None
+                };
+
+                self.history_before(channel, format!("msgid={before_msgid}"), 5, label)
                     .await
                     .context("Failed to send history before")?;
             }
@@ -941,6 +1004,7 @@ impl<C: IrcConnection> IrcActor<C> {
             .context("Failed to send CAPS LS")?;
         self.cap_req(&[
             "echo-message",
+            "labeled-response",
             "message-tags",
             "sasl",
             "draft/message-redaction",

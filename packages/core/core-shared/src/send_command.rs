@@ -4,7 +4,7 @@ use futures::{
     SinkExt,
     channel::mpsc::{self, UnboundedSender},
 };
-use irc_proto::{CapSubCommand, Command::*, Message as IrcMessage};
+use irc_proto::{CapSubCommand, Command::*, Message as IrcMessage, message::Tag};
 
 pub trait SendCommand {
     type Error: std::error::Error + Send + Sync + 'static;
@@ -14,10 +14,11 @@ pub trait SendCommand {
     fn command(
         &mut self,
         command: irc_proto::Command,
+        label: Option<String>,
     ) -> impl Future<Output = Result<(), Self::Error>> {
         async {
             self.message(IrcMessage {
-                tags: None,
+                tags: label.map(|l| vec![Tag(String::from("label"), Some(l))]),
                 prefix: None,
                 command,
             })
@@ -32,7 +33,7 @@ pub trait SendCommand {
         server1: String,
         server2: Option<String>,
     ) -> impl std::future::Future<Output = Result<(), Self::Error>> {
-        async { self.command(PONG(server1, server2)).await }
+        async { self.command(PONG(server1, server2), None).await }
     }
 
     fn cap_ls(
@@ -40,7 +41,7 @@ pub trait SendCommand {
         version: String,
     ) -> impl std::future::Future<Output = Result<(), Self::Error>> {
         async {
-            self.command(CAP(None, CapSubCommand::LS, Some(version), None))
+            self.command(CAP(None, CapSubCommand::LS, Some(version), None), None)
                 .await
         }
     }
@@ -50,24 +51,27 @@ pub trait SendCommand {
         caps: &[&str],
     ) -> impl std::future::Future<Output = Result<(), Self::Error>> {
         async {
-            self.command(CAP(None, CapSubCommand::REQ, None, Some(caps.join(" "))))
-                .await
+            self.command(
+                CAP(None, CapSubCommand::REQ, None, Some(caps.join(" "))),
+                None,
+            )
+            .await
         }
     }
 
     fn cap_end(&mut self) -> impl std::future::Future<Output = Result<(), Self::Error>> {
         async {
-            self.command(CAP(None, CapSubCommand::END, None, None))
+            self.command(CAP(None, CapSubCommand::END, None, None), None)
                 .await
         }
     }
 
     fn nick(&mut self, nick: String) -> impl std::future::Future<Output = Result<(), Self::Error>> {
-        async { self.command(NICK(nick)).await }
+        async { self.command(NICK(nick), None).await }
     }
 
     fn sasl(&mut self, req: String) -> impl std::future::Future<Output = Result<(), Self::Error>> {
-        async { self.command(AUTHENTICATE(req)).await }
+        async { self.command(AUTHENTICATE(req), None).await }
     }
 
     fn sasl_plain(&mut self) -> impl std::future::Future<Output = Result<(), Self::Error>> {
@@ -84,7 +88,7 @@ pub trait SendCommand {
         mode: String,
         realname: String,
     ) -> impl std::future::Future<Output = Result<(), Self::Error>> {
-        async { self.command(USER(user, mode, realname)).await }
+        async { self.command(USER(user, mode, realname), None).await }
     }
 
     fn join(
@@ -92,7 +96,7 @@ pub trait SendCommand {
         channel: String,
         password: Option<String>,
     ) -> impl std::future::Future<Output = Result<(), Self::Error>> {
-        async { self.command(JOIN(channel, password, None)).await }
+        async { self.command(JOIN(channel, password, None), None).await }
     }
 
     fn privmsg(
@@ -100,7 +104,7 @@ pub trait SendCommand {
         target: String,
         message: String,
     ) -> impl std::future::Future<Output = Result<(), Self::Error>> {
-        async { self.command(PRIVMSG(target, message)).await }
+        async { self.command(PRIVMSG(target, message), None).await }
     }
 
     fn whois(
@@ -108,17 +112,19 @@ pub trait SendCommand {
         server: Option<String>,
         user: String,
     ) -> impl std::future::Future<Output = Result<(), Self::Error>> {
-        async { self.command(WHOIS(server, user)).await }
+        async { self.command(WHOIS(server, user), None).await }
     }
 
     fn history(
         &mut self,
         subcommand: ChatHistorySubCommand,
         mut args: Vec<String>,
+        label: Option<String>,
     ) -> impl std::future::Future<Output = Result<(), Self::Error>> {
         async move {
             args.insert(0, subcommand.to_string());
-            self.command(Raw("CHATHISTORY".to_string(), args)).await
+            self.command(Raw("CHATHISTORY".to_string(), args), label)
+                .await
         }
     }
 
@@ -127,11 +133,13 @@ pub trait SendCommand {
         target: String,
         before: String,
         limit: i32,
+        label: Option<String>,
     ) -> impl std::future::Future<Output = Result<(), Self::Error>> {
         async move {
             self.history(
                 ChatHistorySubCommand::Before,
                 vec![target, before, limit.to_string()],
+                label,
             )
             .await
         }
@@ -142,6 +150,7 @@ pub trait SendCommand {
         target: String,
         since: Option<String>,
         limit: i32,
+        label: Option<String>,
     ) -> impl std::future::Future<Output = Result<(), Self::Error>> {
         async move {
             self.history(
@@ -151,6 +160,7 @@ pub trait SendCommand {
                     since.unwrap_or_else(|| String::from("*")),
                     limit.to_string(),
                 ],
+                label,
             )
             .await
         }

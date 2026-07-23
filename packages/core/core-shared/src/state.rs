@@ -618,16 +618,17 @@ impl From<anyhow::Error> for OrbitError {
 
 #[derive(Debug, Default)]
 pub struct Tags {
-    pub msgid: Option<String>,
     pub server_time: Option<OffsetDateTime>,
-    pub username: Option<String>,
+    pub msgid: Option<String>,
+    pub account: Option<String>,
     pub relayed_by: Option<String>,
+    pub batch: Option<String>,
+    pub bot: Option<String>,
+    pub label: Option<String>,
     pub reply: Option<String>,
     pub react: Option<String>,
     pub unreact: Option<String>,
-    pub batch: Option<String>,
     pub typing: Option<String>,
-    pub bot: Option<String>,
 }
 
 impl Tags {
@@ -636,16 +637,17 @@ impl Tags {
 
         for Tag(key, value) in tags {
             match key.as_str() {
-                "msgid" => out.msgid = value.clone(),
-                "account" => out.username = value.clone(),
-                "draft/relaymsg" => out.relayed_by = value.clone(),
-                "batch" => out.batch = value.clone(),
-                "bot" => out.bot = value.clone(),
                 "time" => {
                     out.server_time = value
                         .as_ref()
                         .and_then(|v| OffsetDateTime::parse(v, &Iso8601::DEFAULT).ok())
                 }
+                "msgid" => out.msgid = value.clone(),
+                "account" => out.account = value.clone(),
+                "draft/relaymsg" => out.relayed_by = value.clone(),
+                "batch" => out.batch = value.clone(),
+                "bot" => out.bot = value.clone(),
+                "label" => out.label = dbg!(value.clone()),
                 "+draft/reply" | "+reply" => out.reply = value.clone(),
                 "+draft/react" => out.react = value.clone(),
                 "+draft/unreact" => out.unreact = value.clone(),

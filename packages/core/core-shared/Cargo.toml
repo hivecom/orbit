@@ -22,6 +22,7 @@ gloo-console = { version = "0.4.0", optional = true }
 gloo-net = { version = "0.7.0", optional = true }
 tokio = { version = "1.52.3", features = ["macros", "rt", "time", "sync"], optional = true }
 gloo-timers = { version = "0.4.0", features = ["futures"], optional = true }
+rand = { version = "0.10.2", default-features = false }
 
 [features]
 web = ["dep:gloo-net", "dep:wasm-bindgen", "dep:gloo-console", "dep:tsify", "dep:web-time", "dep:gloo-timers"]
