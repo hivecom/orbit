@@ -32,12 +32,6 @@ use irc_proto::{BatchSubCommand, CapSubCommand, Command::*, Message as IrcMessag
 use ordermap::OrderMap;
 use tracing::{debug, error, warn};
 
-#[derive(Debug)]
-pub struct ResponseChannels {
-    channels: Vec<(CommandKey, Instant, oneshot::Sender<CommandResponse>)>,
-    rng: SmallRng,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CommandKey {
     RequestCaps,
@@ -62,15 +56,36 @@ const LABEL_CHARSET: &str = "abcdefghijklmnopqrstuvwxyz\
                                ABCDEFGHIJKLMNOPQRSTUVWXYZ\
                                1234567890";
 
-impl ResponseChannels {
+fn generate_label(rng: &mut SmallRng) -> String {
+    let char_vec = LABEL_CHARSET
+        .split("")
+        .filter(|c| !c.is_empty())
+        .collect::<Vec<&str>>();
+
+    std::iter::repeat_with(|| char_vec.choose(rng).expect("CHARSET is not empty"))
+        .take(10)
+        .copied()
+        .collect::<Vec<_>>()
+        .join("")
+}
+
+#[derive(Debug)]
+pub struct ResponseChannels {
+    channels: Vec<(CommandKey, Instant, oneshot::Sender<CommandResponse>)>,
+    rng: SmallRng,
+}
+
+impl Default for ResponseChannels {
     #[tracing::instrument]
-    pub fn new() -> Self {
+    fn default() -> Self {
         Self {
             channels: Vec::new(),
             rng: SmallRng::from_seed([0; 32]),
         }
     }
+}
 
+impl ResponseChannels {
     #[tracing::instrument]
     pub fn register(&mut self, key: CommandKey, os_tx: oneshot::Sender<CommandResponse>) {
         self.channels.push((key, Instant::now(), os_tx));
@@ -78,20 +93,7 @@ impl ResponseChannels {
 
     #[tracing::instrument]
     pub fn register_labeled(&mut self, os_tx: oneshot::Sender<CommandResponse>) -> String {
-        let char_vec = LABEL_CHARSET
-            .split("")
-            .filter(|c| !c.is_empty())
-            .collect::<Vec<&str>>();
-
-        let label = std::iter::repeat_with(|| {
-            char_vec
-                .choose(&mut self.rng)
-                .expect("CHARSET is not empty")
-        })
-        .take(10)
-        .copied()
-        .collect::<Vec<_>>()
-        .join("");
+        let label = generate_label(&mut self.rng);
 
         self.channels
             .push((CommandKey::Label(label.clone()), Instant::now(), os_tx));
@@ -177,8 +179,13 @@ pub trait IrcConnection: fmt::Debug {
     fn address(&self) -> &str;
 }
 
+struct RequestedHistory {
+    channel: String,
+    label: Option<String>,
+}
+
 #[derive(Debug)]
-struct Batch {
+struct CurrentBatch {
     id: String,
     typ: BatchSubCommand,
     label: Option<String>,
@@ -186,9 +193,9 @@ struct Batch {
     messages: Vec<Message>,
 }
 
-impl Batch {
+impl CurrentBatch {
     fn is_chathistory(&self) -> bool {
-        matches!(self.typ, BatchSubCommand::CUSTOM(ref c) if c.as_str() == "CHATHISTORY")
+        matches!(self.typ,  BatchSubCommand::CUSTOM(ref c) if c.as_str() == "CHATHISTORY")
     }
 }
 
@@ -214,8 +221,10 @@ pub struct IrcActor<C: IrcConnection> {
     error_handlers: Vec<UnboundedSender<OrbitError>>,
     disconnect_handlers: Vec<UnboundedSender<String>>,
 
-    current_batch: Option<Batch>,
+    current_batch: Option<CurrentBatch>,
+    requested_batches: Vec<RequestedHistory>,
     sasl_state: SaslState,
+    rng: SmallRng,
 }
 
 impl<C: IrcConnection> IrcActor<C> {
@@ -234,12 +243,14 @@ impl<C: IrcConnection> IrcActor<C> {
             incoming,
             outgoing,
             state: Server::new(id, address),
-            response_channels: ResponseChannels::new(),
-            event_handlers: Vec::new(),
-            error_handlers: Vec::new(),
-            disconnect_handlers: Vec::new(),
-            current_batch: None,
+            response_channels: ResponseChannels::default(),
+            event_handlers: Default::default(),
+            error_handlers: Default::default(),
+            disconnect_handlers: Default::default(),
+            current_batch: Default::default(),
+            requested_batches: Default::default(),
             sasl_state: Default::default(),
+            rng: SmallRng::from_seed([1; 32]),
         };
 
         let (tx, rx) = oneshot::channel();
@@ -352,7 +363,17 @@ impl<C: IrcConnection> IrcActor<C> {
                     if self.current_batch.as_ref().map(|b| b.is_chathistory()) != Some(true)
                         && self.state.capabilities.history.enabled
                     {
-                        self.history_latest(channel_name.clone(), None, 5, None)
+                        let label = if self.state.capabilities.labeled_response.enabled {
+                            Some(generate_label(&mut self.rng))
+                        } else {
+                            None
+                        };
+
+                        self.requested_batches.push(RequestedHistory {
+                            channel: channel_name.clone(),
+                            label: label.clone(),
+                        });
+                        self.history_latest(channel_name.clone(), None, 5, label)
                             .await
                             .context("Failed to request latest history")?;
                     }
@@ -533,11 +554,21 @@ impl<C: IrcConnection> IrcActor<C> {
                         tags = Tags::parse(t);
                     }
 
-                    self.current_batch = Some(Batch {
+                    let Some(idx) = self
+                        .requested_batches
+                        .iter()
+                        .position(|b| b.label == tags.label)
+                    else {
+                        // TODO: handlee unrequested batches
+                        return Ok(());
+                    };
+                    let channel = self.requested_batches.remove(idx).channel;
+
+                    self.current_batch = Some(CurrentBatch {
                         id: id.to_string(),
                         typ: typ.clone().unwrap(),
                         label: tags.label,
-                        channel: String::new(),
+                        channel,
                         messages: Vec::new(),
                     });
 
@@ -547,17 +578,13 @@ impl<C: IrcConnection> IrcActor<C> {
                         _ => warn!(?typ, ?param, "unhandled BATCH type"),
                     }
                 } else {
+                    if self.current_batch.as_ref().map(|b| b.is_chathistory()) != Some(true) {
+                        // TODO: handle other types of batches
+                        return Ok(());
+                    }
                     assert_eq!(
-                        self.current_batch.as_ref().map(|s| s.id.as_str()),
+                        self.current_batch.as_ref().map(|b| b.id.as_str()),
                         Some(&reference[1..])
-                    );
-
-                    // FIXME: this will panic if a batch only contains QUITs
-                    assert_eq!(
-                        self.current_batch.as_ref().map(|b| b.is_chathistory()
-                            && !b.messages.is_empty()
-                            && b.messages.is_empty()),
-                        Some(false)
                     );
 
                     if let Some(batch) = self.current_batch.take() {
@@ -960,6 +987,10 @@ impl<C: IrcConnection> IrcActor<C> {
                     None
                 };
 
+                self.requested_batches.push(RequestedHistory {
+                    channel: channel.clone(),
+                    label: label.clone(),
+                });
                 self.history_before(channel, format!("msgid={before_msgid}"), 5, label)
                     .await
                     .context("Failed to send history before")?;
