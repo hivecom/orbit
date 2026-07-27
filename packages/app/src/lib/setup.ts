@@ -34,7 +34,6 @@ export async function createOrbitApp(root: Component<any, any, any, any, any>, p
   //    2.1 Handle server capabilities
   //    2.2 Handle other server & channel state
 
-  // non-blocking operation, app receives a loading spinner while this is happening
   await init().then(async () => {
     return initialize_orbit()
       .then(async (controller) => {

@@ -44,6 +44,7 @@
   }
 }
 
+.vui-card,
 .vui-dropdown-item,
 .vui-button {
   --border-radius-s: var(--border-radius-m);

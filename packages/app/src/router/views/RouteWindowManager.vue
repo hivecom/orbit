@@ -24,7 +24,7 @@ onBeforeMount(() => {
 
 <template>
   <div class="o-wm">
-    <div v-for="(window, location) in windows" :class="[`wm-${location}`, 'wm-window']">
+    <div v-for="(window, location) in windows" :class="[`wm-${location}`, `wm-${window?.type}`, 'wm-window']">
       <div class="wm-window-actions">
         <Dropdown>
           <template #trigger="{ toggle }">
@@ -110,6 +110,7 @@ onBeforeMount(() => {
     width: 100%;
     height: 100%;
     border-radius: var(--border-radius-m);
+    border: 1px solid var(--color-border-weak);
     background-color: var(--color-bg-medium);
     position: relative;
 
@@ -127,6 +128,10 @@ onBeforeMount(() => {
       position: absolute;
       right: 8px;
       top: 8px;
+    }
+
+    &.wm-chat {
+      justify-content: flex-end;
     }
   }
 }

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { Avatar, Divider, Flex, DropdownItem, Sidebar, Card, Button, Tooltip } from "@dolanske/vui"
+import { Avatar, Divider, Flex, DropdownItem, Sidebar, Card, Button, Tooltip, PopoutHover } from "@dolanske/vui"
 import { IconSettingsLinear, IconSidebarMinimalisticLinear } from "@iconify-prerendered/vue-solar"
 import { useStorage } from "@vueuse/core"
 import { useIrcStore } from "../../stores/irc"
+import ListCapabilities from "../shared/server/ListCapabilities.vue"
 
 const irc = useIrcStore()
 
@@ -16,6 +17,7 @@ const mini = useStorage("orbit-sidebar-state", true)
         <template #icon>
           <IconSidebarMinimalisticLinear />
         </template>
+        <!-- TODO: replace "Collapse sidebar" with a search bar instead -->
         Collapse sidebar
       </DropdownItem>
     </Flex>
@@ -30,18 +32,27 @@ const mini = useStorage("orbit-sidebar-state", true)
         Search
       </DropdownItem> -->
 
-      <DropdownItem v-for="server in irc.serverData.values()" :key="server.metadata.name">
-        <template #icon>
-          <Avatar :size="mini ? 'm' : 's'">
-            <!-- FIXME: clean the fallback up and consider irc.<network>.<tld> cases -->
-            {{ (server.metadata.name?.charAt(0) ?? server.metadata.address.startsWith("wss://")) ? server.metadata.address.charAt(6) : server.metadata.address.charAt(0) }}
-            <!-- <template #overlay>
+      <template v-for="server in irc.serverData.values()" :key="server.metadata.name">
+        <PopoutHover :enter-delay="1000">
+          <template #trigger>
+            <DropdownItem>
+              <template #icon>
+                <Avatar :size="mini ? 'm' : 's'">
+                  <!-- FIXME: clean the fallback up and consider irc.<network>.<tld> cases -->
+                  {{ (server.metadata.name?.charAt(0) ?? server.metadata.address.startsWith("wss://")) ? server.metadata.address.charAt(6).toUpperCase() : server.metadata.address.charAt(0) }}
+                  <!-- <template #overlay>
               <Indicator variant="alert" size="s" position="top-right" />
             </template> -->
-          </Avatar>
-        </template>
-        {{ server.metadata.name }}
-      </DropdownItem>
+                </Avatar>
+              </template>
+              <span class="text-overflow-1">
+                {{ server.metadata.name ?? server.metadata.address }}
+              </span>
+            </DropdownItem>
+          </template>
+          <ListCapabilities :capabilities="server.capabilities" />
+        </PopoutHover>
+      </template>
     </Flex>
 
     <template #footer>

@@ -1,7 +1,7 @@
-export function toJSON(obj: object): object | null {
+export function toJSON<Expected>(obj: object, defaultValue = null): Expected | null {
   try {
     return JSON.parse(JSON.stringify(obj))
   } catch {
-    return null
+    return defaultValue
   }
 }
