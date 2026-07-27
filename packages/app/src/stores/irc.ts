@@ -1,5 +1,5 @@
 import { defineStore } from "pinia"
-import { ChannelMessage, Message, React, type IrcConnection, type Server, type ServerList, History, OrbitError, IrcChannel } from "core-wasm"
+import { ChannelMessage, Message, React, type IrcConnection, type Server, type ServerList, OrbitError, IrcChannel } from "core-wasm"
 import { computed, reactive, ref, shallowRef } from "vue"
 import { useUserStore } from "./user"
 import { useAppStateStore } from "./app-state"
@@ -96,17 +96,6 @@ export const useIrcStore = defineStore("irc", () => {
       } else if (event instanceof React) {
         // TODO
         console.log("Received reaction", event)
-      } else if (event instanceof History) {
-        const existingServer = serverMessages.get(key) ?? new Map()
-        const existingChannel = existingServer.get(event.channel) ?? []
-
-        for (const message of event.messages) {
-          existingChannel.push(message)
-        }
-        existingChannel.sort((a: Message, b: Message) => a.metadata.server_time - b.metadata.server_time)
-
-        existingServer.set(event.channel, existingChannel)
-        serverMessages.set(key, existingServer)
       }
     })
 
@@ -122,6 +111,7 @@ export const useIrcStore = defineStore("irc", () => {
     })
   }
 
+  // TODO: these should be cached not to create a separate computed value on each call
   function getServerState(id: number) {
     return computed(() => serverState.value.get(id))
   }
@@ -130,21 +120,20 @@ export const useIrcStore = defineStore("irc", () => {
     return computed(() => serverMessages.get(id)?.get(channel))
   }
 
+  // TODO: will be called automatically by a scroll listener to append new messages as user's nearing the top of the window
   async function requestScrollback(id: number, channel: string) {
     try {
       const history = await serverHandlers.value.get(id)?.history_before(channel, serverMessages.get(id)?.get(channel)?.at(0)?.metadata.msgid ?? "")
 
-      if (!!!history) {
+      if (!history) {
         return
       }
 
-      const existingServer = serverMessages.get(id) ?? new Map()
+      const existingServer = serverMessages.get(id) ?? new Map<string, Message[]>()
       const existingChannel = existingServer.get(history.channel) ?? []
 
-      for (const message of history.messages) {
-        existingChannel.push(message)
-      }
-      existingChannel.sort((a: Message, b: Message) => a.metadata.server_time - b.metadata.server_time)
+      existingChannel.push(...history.messages)
+      existingChannel.sort((a, b) => a.metadata.server_time - b.metadata.server_time)
 
       existingServer.set(history.channel, existingChannel)
       serverMessages.set(id, existingServer)

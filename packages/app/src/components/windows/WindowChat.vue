@@ -4,16 +4,12 @@ import type { WindowChat } from "../../lib/windows"
 import { useIrcStore } from "../../stores/irc"
 import { ref } from "vue"
 
-// TODO: if no chat is active, list available chats for a server. We know that
-// because channelId will be "__unspecified"
-
 const props = defineProps<WindowChat>()
 
 const editmsg = ref("")
 
 const irc = useIrcStore()
 const messages = irc.getChannelMessages(props.serverId, "#orbit/testing")
-// const channel = irc.get
 
 async function sendMessage() {
   if (editmsg.value === "") {
