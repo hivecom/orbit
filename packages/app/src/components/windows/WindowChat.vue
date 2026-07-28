@@ -111,7 +111,9 @@ useEventListener(scrollContainer, "scroll", debouncedScrollCheck)
     .o-table-scroll-container {
       overflow-anchor: none;
       position: absolute;
-      inset: 0;
+      bottom: 0;
+      left: 0;
+      right: 0;
       padding-bottom: var(--space-s);
       overflow-y: auto;
 
