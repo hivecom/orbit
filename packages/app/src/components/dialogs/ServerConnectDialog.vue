@@ -58,7 +58,7 @@ function submit() {
       <slot name="stepper"></slot>
     </Flex>
     <form @submit.prevent="submit">
-      <Flex column>
+      <Flex column gap="l">
         <Input expand v-model="form.url" required :errors="errors.url.messages" placeholder="Enter server URL..." label="Address" />
         <Input expand v-model="form.name" required :errors="errors.name.messages" placeholder="Enter server name" label="Name" />
       </Flex>

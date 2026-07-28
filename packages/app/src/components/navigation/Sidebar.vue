@@ -1,41 +1,59 @@
 <script setup lang="ts">
-import { Avatar, Divider, Flex, DropdownItem, Sidebar, Card, Button, Tooltip, PopoutHover } from "@dolanske/vui"
-import { IconSettingsLinear, IconSidebarMinimalisticLinear } from "@iconify-prerendered/vue-solar"
+import { Avatar, Divider, Flex, DropdownItem, Sidebar, Card, Button, PopoutHover, Input, searchString } from "@dolanske/vui"
+import { IconAddCircleLinear, IconMagniferLinear, IconSettingsLinear, IconSidebarMinimalisticLinear } from "@iconify-prerendered/vue-solar"
 import { useStorage } from "@vueuse/core"
 import { useIrcStore } from "../../stores/irc"
 import ListCapabilities from "../shared/server/ListCapabilities.vue"
+import { truncate } from "../../lib/format.ts"
+import { computed, ref } from "vue"
 
 const irc = useIrcStore()
 
 const mini = useStorage("orbit-sidebar-state", true)
+
+// Search through servers
+// TODO: mini-sidebar search
+const search = ref("")
+const serversRaw = computed(() => Array.from(irc.serverData.values()))
+const filteredServers = computed(() => serversRaw.value.filter((server) => searchString([server.metadata.name, server.metadata.address], search.value)))
 </script>
 
 <template>
   <Sidebar :mini="mini">
     <Flex column gap="xxs">
-      <DropdownItem @click="mini = !mini">
-        <template #icon>
-          <IconSidebarMinimalisticLinear />
-        </template>
-        <!-- TODO: replace "Collapse sidebar" with a search bar instead -->
-        Collapse sidebar
-      </DropdownItem>
+      <!-- Minified -->
+      <template v-if="mini">
+        <DropdownItem @click="mini = !mini" aria-label="Expand sidebar">
+          <template #icon>
+            <IconSidebarMinimalisticLinear />
+          </template>
+        </DropdownItem>
+        <DropdownItem aria-label="Search servers">
+          <template #icon>
+            <IconMagniferLinear />
+          </template>
+        </DropdownItem>
+      </template>
+
+      <!-- Expanded -->
+      <template v-else>
+        <Flex gap="xs" class="p-xxxs">
+          <Button square @click="mini = !mini" aria-label="Collapse sidebar">
+            <IconSidebarMinimalisticLinear />
+          </Button>
+          <Input aria-label="Search servers" v-model="search" placeholder="Search" style="--vui-input-width: auto" />
+        </Flex>
+      </template>
     </Flex>
 
+    <div style="height: 1px" />
     <Divider type="dashed" class="my-m" />
 
     <Flex column gap="xxs">
-      <!-- <DropdownItem>
-        <template #icon>
-          <IconMagniferLinear />
-        </template>
-        Search
-      </DropdownItem> -->
-
-      <template v-for="server in irc.serverData.values()" :key="server.metadata.name">
-        <PopoutHover :enter-delay="1000">
+      <template v-for="server in filteredServers" :key="server.metadata.name">
+        <PopoutHover :enter-delay="1000" class="o-server-info">
           <template #trigger>
-            <DropdownItem>
+            <DropdownItem class="o-sidebar-server-item">
               <template #icon>
                 <Avatar :size="mini ? 'm' : 's'">
                   <!-- FIXME: clean the fallback up and consider irc.<network>.<tld> cases -->
@@ -45,30 +63,34 @@ const mini = useStorage("orbit-sidebar-state", true)
             </template> -->
                 </Avatar>
               </template>
-              <span class="text-overflow-1">
-                {{ server.metadata.name ?? server.metadata.address }}
-              </span>
+              {{ truncate(server.metadata.name ?? server.metadata.address, 20, "..") }}
             </DropdownItem>
           </template>
           <ListCapabilities :capabilities="server.capabilities" />
         </PopoutHover>
       </template>
+
+      <DropdownItem>
+        <template #icon>
+          <IconAddCircleLinear />
+        </template>
+        Connect
+      </DropdownItem>
     </Flex>
 
     <template #footer>
-      <!-- TODO: minified sidebar is _just_ the avatar -->
-      <Flex v-if="mini" x-center expand>
-        <Avatar url="https://github.com/dolanske.png"></Avatar>
-      </Flex>
+      <!-- Minified -->
+      <DropdownItem v-if="mini" x-center expand>
+        <template #icon>
+          <Avatar url="https://github.com/dolanske.png" size="m"></Avatar>
+        </template>
+      </DropdownItem>
 
+      <!-- Expanded -->
       <Card class="o-sidebar-user" v-else>
         <Flex y-center gap="xs" expand>
           <Avatar url="https://github.com/dolanske.png"></Avatar>
-          <Flex column gap="s" class="flex-1">
-            <Tooltip>
-              <strong>dolanske</strong>
-            </Tooltip>
-          </Flex>
+          <strong class="flex-1">dolanske</strong>
           <RouterLink to="/settings">
             <Button square plain>
               <IconSettingsLinear />
@@ -92,5 +114,13 @@ const mini = useStorage("orbit-sidebar-state", true)
     text-overflow: ellipsis;
     overflow: hidden;
   }
+}
+
+.o-sidebar-server-item {
+  overflow: hidden;
+}
+
+.o-server-info {
+  width: 256px;
 }
 </style>

@@ -65,13 +65,13 @@ export const useIrcStore = defineStore("irc", () => {
     })
 
     const state = await handler.state()
-    console.log("Received server state", state.toJSON())
+    // console.log("Received server state", state.toJSON())
     serverState.value.set(state.id, state)
     serverHandlers.value.set(state.id, handler)
 
     await handler.sign_in_anonymous(user.me.displayName, user.me.accountName, user.me.accountName)
     serverChannel.value = await handler.join_channel("#orbit/testing")
-    console.log("Signed in")
+    // console.log("Signed in")
 
     registerServerEvents(state.id, handler)
 

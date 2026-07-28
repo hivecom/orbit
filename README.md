@@ -17,6 +17,10 @@ vp run build            # build the apps/web application
 
 Use `vp test` inside an individual package when you want that package's local Vite/Vitest config, for example `packages/app` or `packages/platform`. From the workspace root, use `vp run -r test` so each package runs under its own test setup.
 
+### UI conventions
+
+We use Solar icons for ui iconography, specifically the `linear` icon set.
+
 ## License
 
 [AGPL-3.0](LICENSE).

@@ -5,20 +5,46 @@ import { useIrcStore } from "../../stores/irc"
 import Composer from "../shared/composer/Composer.vue"
 import { Flex, PopoutHover } from "@dolanske/vui"
 import { IconInfoCircleLinear } from "@iconify-prerendered/vue-solar"
+import { nextTick, ref, useTemplateRef } from "vue"
+import { useEventListener, useThrottleFn } from "@vueuse/core"
 
 // TODO: Figure out connecting to specific channels and showing the one that's open (and replacing url state)
 
 const props = defineProps<WindowChat>()
-
 const irc = useIrcStore()
-const messages = irc.getChannelMessages(props.serverId, "#orbit/testing")
 
+const messages = irc.getChannelMessages(props.serverId, "#orbit/testing")
 const state = irc.getServerState(props.serverId)
 
 function sendMessage(message: string) {
   console.log(message)
   irc.serverChannel?.send_message(message)
 }
+
+// Automatic message fetching on scroll
+const scrollLoading = ref(false)
+const scrollContainer = useTemplateRef("chatScrollContainer")
+const SCROLL_THRESHOLD = 200
+
+const debouncedScrollCheck = useThrottleFn(async (event: Event) => {
+  const target = event.target as HTMLElement
+  if (target.scrollTop <= SCROLL_THRESHOLD && !scrollLoading.value) {
+    scrollLoading.value = true
+
+    const prevHeight = target.scrollHeight
+
+    await irc.requestScrollback(props.serverId, "#orbit/testing")
+    await nextTick()
+
+    // Adjust scroll position, otherwise we'll be triggering the fetch constantly
+    const newHeight = target.scrollHeight
+    target.scrollTop += newHeight - prevHeight
+
+    scrollLoading.value = false
+  }
+}, 100)
+
+useEventListener(scrollContainer, "scroll", debouncedScrollCheck)
 </script>
 
 <template>
@@ -37,16 +63,8 @@ function sendMessage(message: string) {
         </pre>
       </PopoutHover>
     </div>
-    <!-- <pre>
-      {{ props }}
-    </pre>
-    <pre>
-      {{ state }}
-    </pre>
-    <br /> -->
-    <!-- <button @click="irc.requestScrollback(props.serverId, '#orbit/testing')">Get more</button> -->
-    <div class="o-table-wrap-outer">
-      <div class="o-table-wrap-inner">
+    <div class="o-table-wrap">
+      <div class="o-table-scroll-container" ref="chatScrollContainer">
         <table class="o-message-table">
           <tr v-for="message in messages" :key="message.metadata.msgid">
             <td class="message-username">{{ message.metadata.user }}</td>
@@ -58,11 +76,9 @@ function sendMessage(message: string) {
             </td>
           </tr>
         </table>
-
         <div id="scroll-anchor"></div>
       </div>
     </div>
-
     <div class="o-window-composer">
       <Composer @send="sendMessage" />
     </div>
@@ -88,20 +104,16 @@ function sendMessage(message: string) {
     bottom: 0;
   }
 
-  .o-table-wrap-outer {
+  .o-table-wrap {
     flex: 1;
-    padding-bottom: 52px;
     position: relative;
 
-    .o-table-wrap-inner {
+    .o-table-scroll-container {
       overflow-anchor: none;
       position: absolute;
       inset: 0;
-      display: flex;
-      flex-direction: column;
-      justify-content: flex-end;
-      overflow-y: auto;
       padding-bottom: var(--space-s);
+      overflow-y: auto;
 
       #scroll-anchor {
         overflow-anchor: auto;
@@ -110,10 +122,6 @@ function sendMessage(message: string) {
 
       .o-message-table {
         table-layout: auto;
-
-        /* tr:last-child td {
-          border-bottom: none;
-        } */
 
         td {
           font-family: var(--font-mono);
