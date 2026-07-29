@@ -10,7 +10,20 @@ export interface NotificationPort {
 }
 
 export interface TrayPort {
+  /**
+   * Sets the red badge count on the favicon/app icon. Setting 0 removes the badge.
+   */
   setBadgeCount: (count: number) => Promise<void>
+  /**
+   * Sets the document title or application tray on-hover title
+   */
+  setTitle: (title: string) => Promise<void>
+}
+
+export interface FaviconData {
+  element: HTMLLinkElement
+  cleanBitmap: ImageBitmap
+  url: string
 }
 
 export interface AudioDevice {
