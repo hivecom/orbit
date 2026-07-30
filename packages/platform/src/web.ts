@@ -9,10 +9,13 @@ function createNotificationPort(): NotificationPort {
       const result = await Notification.requestPermission()
       return result === "granted"
     },
-    async notify({ title, body, icon }) {
-      if (!("Notification" in globalThis) || Notification.permission !== "granted") return
-      // eslint-disable-next-line no-new -- the Notification side effect is the point
-      new Notification(title, { body, icon })
+    notify({ title, body, icon }) {
+      if (!("Notification" in globalThis) || Notification.permission !== "granted") {
+        return null
+      }
+
+      // Return notification object. Useful if we want to manually clear them
+      return new Notification(title, { body, icon })
     },
   }
 }

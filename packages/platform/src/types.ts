@@ -6,7 +6,7 @@ export interface NotificationOptions {
 
 export interface NotificationPort {
   requestPermission: () => Promise<boolean>
-  notify: (options: NotificationOptions) => Promise<void>
+  notify: (options: NotificationOptions) => Notification | null
 }
 
 export interface TrayPort {

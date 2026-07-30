@@ -4,8 +4,6 @@ import "./style/index.css"
 import Sidebar from "./components/navigation/Sidebar.vue"
 import { Flex, Spinner } from "@dolanske/vui"
 import { useAppStateStore } from "./stores/app-state.ts"
-import { usePlatform } from "platform"
-import { onMounted } from "vue"
 
 // The main App entrypoint for orbit. It replaces the usual `App.vue` with an
 // exportable component consumed by target applications (desktop/mobile/web).
@@ -13,14 +11,6 @@ import { onMounted } from "vue"
 // Treat this as a global layout. Navigation, header or other globally available
 // components should live here.
 const appState = useAppStateStore()
-const platform = usePlatform()
-
-onMounted(async () => {
-  if (platform.tray) {
-    platform.tray.setTitle("Hello from title")
-    platform.tray.addBadgeAlert()
-  }
-})
 </script>
 
 <template>
