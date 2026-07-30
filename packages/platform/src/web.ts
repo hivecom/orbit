@@ -92,12 +92,11 @@ function createTrayPort(): TrayPort {
     }
   }
 
-  function draw(count: number) {
+  // Draws a badge with a count on top of favicon
+  function drawBadgeCount(count: number) {
     if (!ctx) return
 
-    // Draw empty favicon
-    ctx.clearRect(0, 0, size, size)
-    ctx.drawImage(favicon.cleanBitmap, 0, 0, size, size)
+    resetFavicon()
 
     if (count > 0) {
       const badgeSize = size * BADGE_SIZE
@@ -124,41 +123,85 @@ function createTrayPort(): TrayPort {
     favicon.element.setAttribute("href", canvas.toDataURL())
   }
 
+  // Draws a red circle badge on top of a favicon
+  function drawBadgeAlert() {
+    if (!ctx) return
+
+    resetFavicon()
+
+    const arcSize = size * 0.22
+    const x = size - arcSize + 1
+    const y = arcSize
+
+    ctx.beginPath()
+    ctx.arc(x, y, arcSize, 0, 2 * Math.PI)
+    ctx.fillStyle = BADGE_BG_COLOR
+    ctx.fill()
+
+    favicon.element.setAttribute("href", canvas.toDataURL())
+  }
+
+  // Resets favicon back to the original state
+  function resetFavicon(apply?: boolean) {
+    if (!ctx) return
+
+    ctx.clearRect(0, 0, size, size)
+    ctx.drawImage(favicon.cleanBitmap, 0, 0, size, size)
+
+    // If true, reset is immediately applied
+    if (apply) {
+      favicon.element.setAttribute("href", canvas.toDataURL())
+    }
+  }
+
+  // Initialize the canvas. Fetch the clean favicon and store it
+  async function initializeCanvas() {
+    if (!favicon) {
+      const res = await getCurrentFavicon()
+
+      if (!res) {
+        throw new TypeError("Could not initialize favicon")
+      }
+
+      favicon = res
+      const img = document.createElement("img")
+      img.src = favicon.url
+
+      // Get the natural size. We don't expect to encounter errors at this
+      // stage, because if we get here, a successful load of the favicon file
+      // has already occurred
+      size = await new Promise<number>((resolve) => {
+        img.onload = (event) => {
+          resolve((event.target as HTMLImageElement).naturalWidth)
+        }
+      })
+
+      canvas.width = size
+      canvas.height = size
+    }
+  }
+
   // Methods are async, because tauri might perform actual file oprations,
   // however on web these are just snake oil. Promise resolves immediately
   return {
-    async setTitle(title: string) {
+    async setTitle(title) {
       document.title = title
-      return Promise.resolve()
     },
-    async setBadgeCount(count: number) {
-      if (!favicon) {
-        const res = await getCurrentFavicon()
-
-        if (!res) {
-          throw new TypeError("Could not initialize favicon")
-        }
-
-        favicon = res
-
-        const img = document.createElement("img")
-        img.src = favicon.url
-
-        // Get the natural size. We don't expect to encounter errors at this
-        // stage, because if we get here, a successful load of the favicon file
-        // has already occurred
-        size = await new Promise<number>((resolve) => {
-          img.onload = (event) => {
-            resolve((event.target as HTMLImageElement).naturalWidth)
-          }
-        })
-
-        canvas.width = size
-        canvas.height = size
+    async setBadgeCount(count) {
+      if (count > 0) {
+        await initializeCanvas()
+        drawBadgeCount(count)
       }
+    },
+    async addBadgeAlert() {
+      await initializeCanvas()
+      drawBadgeAlert()
+    },
+    async removeBadge() {
+      // Ignore if favicon is not initialized = badge hasn't been used
+      if (!favicon) return
 
-      draw(count)
-      return Promise.resolve()
+      resetFavicon(true)
     },
   }
 }

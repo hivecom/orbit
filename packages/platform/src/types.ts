@@ -11,11 +11,23 @@ export interface NotificationPort {
 
 export interface TrayPort {
   /**
-   * Sets the red badge count on the favicon/app icon. Setting 0 removes the badge.
+   * Sets the red badge count on the favicon/app icon. Count must be grater than 0
    */
   setBadgeCount: (count: number) => Promise<void>
   /**
-   * Sets the document title or application tray on-hover title
+   * Add/Remove an alert circle from the document/tray icon.
+   */
+  addBadgeAlert: () => Promise<void>
+  /**
+   * Remove any active badge from the icon
+   */
+  removeBadge: () => Promise<void>
+  /**
+   * Sets the application title.
+   *
+   * - on web it's the document.title
+   * - on native it's the title of the tooltip which appears on hover over the app icon
+   * - on mobile this is a noop
    */
   setTitle: (title: string) => Promise<void>
 }
@@ -63,10 +75,10 @@ export interface DnsPort {
 
 export interface Platform {
   readonly target: "web" | "desktop" | "mobile"
-  readonly notifications: NotificationPort | null
-  readonly tray: TrayPort | null
-  readonly audioDevices: AudioDevicePort | null
+  readonly notifications: NotificationPort
+  readonly tray: TrayPort
+  readonly audioDevices: AudioDevicePort
   readonly deepLinks: DeepLinkPort | null
-  readonly fileTransfer: FileTransferPort | null
+  readonly fileTransfer: FileTransferPort
   readonly dns: DnsPort | null
 }
