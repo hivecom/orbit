@@ -45,5 +45,6 @@ export function createMockPlatform(target: Platform["target"]): Platform {
       },
     },
     dns: null,
+    historyCache: null,
   }
 }

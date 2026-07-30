@@ -209,6 +209,11 @@ function createTrayPort(): TrayPort {
   }
 }
 
+// TODO: Implement
+function createIndexedDbCachePort() {
+  return null
+}
+
 // Browser platform adapter. Capabilities that require a native shell - the
 // system tray, orbit:// deep links, and DNS SRV resolution - are null
 export function createWebPlatform(): Platform {
@@ -220,5 +225,6 @@ export function createWebPlatform(): Platform {
     deepLinks: null,
     fileTransfer: createFileTransferPort(),
     dns: null,
+    historyCache: createIndexedDbCachePort(),
   }
 }
