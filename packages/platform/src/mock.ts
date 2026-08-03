@@ -36,7 +36,15 @@ export function createMockPlatform(target: Platform["target"]): Platform {
         return () => void null
       },
     },
-    deepLinks: null,
+    deepLinks:
+      target === "web"
+        ? null
+        : {
+            onOpen(listener) {
+              void listener
+              return () => void null
+            },
+          },
     fileTransfer: {
       download({ url, filename }) {
         void url
@@ -44,7 +52,52 @@ export function createMockPlatform(target: Platform["target"]): Platform {
         return Promise.resolve()
       },
     },
-    dns: null,
-    historyCache: null,
+    dns:
+      target === "web"
+        ? null
+        : {
+            resolveSrv(server) {
+              void server
+              return Promise.resolve([])
+            },
+          },
+    historyCache: {
+      seed(target: string, limit: number) {
+        void target
+        void limit
+        return Promise.resolve([])
+      },
+      pageBefore(target, beforeMsgid, limit) {
+        void target
+        void beforeMsgid
+        void limit
+        return Promise.resolve([])
+      },
+      pageAfter(target, afterMsgid, limit) {
+        void target
+        void afterMsgid
+        void limit
+        return Promise.resolve([])
+      },
+      upsert(messages) {
+        void messages
+        return Promise.resolve()
+      },
+      markRedacted(msgid) {
+        void msgid
+        return Promise.resolve()
+      },
+      bufferStats: () => Promise.resolve([]),
+      prune(target, keepCount) {
+        void target
+        void keepCount
+        return Promise.resolve()
+      },
+      export(target) {
+        void target
+        return Promise.resolve([])
+      },
+      clear: () => Promise.resolve(),
+    },
   }
 }

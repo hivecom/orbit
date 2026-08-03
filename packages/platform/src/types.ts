@@ -92,8 +92,7 @@ export interface HistoryCachePort {
   pageAfter(target: string, afterMsgid: string, limit: number): Promise<CachedMessage[]>
   upsert(messages: CachedMessage[]): Promise<void> // batched, dedupes by msgid
   markRedacted(msgid: string): Promise<void> // tombstone overlay
-  // Storage management surface
-  bufferStats(): Promise<BufferStats[]>
+  bufferStats(): Promise<BufferStats[]> // Storage management surface
   prune(target: string, keepCount: number): Promise<void>
   export(target: string): Promise<CachedMessage[]>
   clear(): Promise<void> // wipe this account's cache
@@ -109,11 +108,32 @@ export interface BufferStats {
 
 export interface Platform {
   readonly target: "web" | "desktop" | "mobile"
+  /**
+   * @targets Web, Desktop, Mobile
+   */
   readonly notifications: NotificationPort
+  /**
+   * @targets Web, Desktop, Mobile
+   */
   readonly tray: TrayPort
+  /**
+   * @targets Web, Desktop, Mobile
+   */
   readonly audioDevices: AudioDevicePort
+  /**
+   * @targets Desktop, Mobile
+   */
   readonly deepLinks: DeepLinkPort | null
+  /**
+   * @targets Web, Desktop, Mobile
+   */
   readonly fileTransfer: FileTransferPort
+  /**
+   * @targets Desktop, Mobile
+   */
   readonly dns: DnsPort | null
-  readonly historyCache: HistoryCachePort | null
+  /**
+   * @targets Web, Desktop, Mobile
+   */
+  readonly historyCache: HistoryCachePort
 }
