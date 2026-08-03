@@ -1,3 +1,4 @@
+import { createMockPlatform } from "./mock"
 import type { AudioDevice, AudioDevicePort, FaviconData, FileTransferPort, NotificationPort, Platform, TrayPort } from "./types"
 
 function createNotificationPort(): NotificationPort {
@@ -211,7 +212,7 @@ function createTrayPort(): TrayPort {
 
 // TODO: Implement
 function createIndexedDbCachePort() {
-  return null
+  return createMockPlatform("web").historyCache
 }
 
 // Browser platform adapter. Capabilities that require a native shell - the
