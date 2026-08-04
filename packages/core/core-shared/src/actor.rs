@@ -278,9 +278,9 @@ impl<C: IrcConnection> IrcActor<C> {
     pub async fn run(mut self) {
         fn create_timeout() -> impl FusedFuture {
             #[cfg(feature = "web")]
-            let mut timeout = gloo_timers::future::TimeoutFuture::new(1000).fuse();
+            let timeout = gloo_timers::future::TimeoutFuture::new(1000).fuse();
             #[cfg(not(feature = "web"))]
-            let mut timeout = pin!(tokio::time::sleep(Duration::from_secs(1)).fuse());
+            let timeout = pin!(tokio::time::sleep(Duration::from_secs(1)).fuse());
 
             timeout
         }

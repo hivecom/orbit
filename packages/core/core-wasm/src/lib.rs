@@ -520,7 +520,6 @@ pub enum ServerEvent {
     UserList(UserList),
     Privmsg(ChannelMessage),
     React(React),
-    History(History),
 }
 
 impl From<state::ServerEvent> for ServerEvent {
@@ -547,7 +546,6 @@ impl From<state::ServerEvent> for ServerEvent {
                 text,
                 is_unreact,
             }),
-            state::ServerEvent::History(history) => Self::History(history.into()),
         }
     }
 }

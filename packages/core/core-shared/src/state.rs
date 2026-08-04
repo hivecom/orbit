@@ -575,7 +575,6 @@ pub enum ServerEvent {
         text: String,
         is_unreact: bool,
     },
-    History(History),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
