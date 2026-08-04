@@ -2,7 +2,7 @@
 use std::pin::pin;
 use std::{fmt, time::Duration};
 
-use futures::FutureExt;
+use futures::{FutureExt, future::FusedFuture};
 use rand::{SeedableRng, rngs::SmallRng, seq::IndexedRandom};
 #[cfg(not(feature = "web"))]
 use std::time::Instant;
@@ -277,12 +277,18 @@ impl<C: IrcConnection> IrcActor<C> {
 
     #[tracing::instrument(skip(self))]
     pub async fn run(mut self) {
-        loop {
+        fn create_timeout() -> impl FusedFuture {
             #[cfg(feature = "web")]
             let mut timeout = gloo_timers::future::TimeoutFuture::new(1000).fuse();
             #[cfg(not(feature = "web"))]
             let mut timeout = pin!(tokio::time::sleep(Duration::from_secs(1)).fuse());
 
+            timeout
+        }
+
+        let mut timeout = create_timeout();
+
+        loop {
             futures::select! {
                 msg = self.incoming.next() => {
                         match msg {
@@ -306,6 +312,8 @@ impl<C: IrcConnection> IrcActor<C> {
                 }
                 _ = timeout => {
                     self.response_channels.check_timeouts();
+
+                    timeout = create_timeout();
                 }
             }
         }
