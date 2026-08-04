@@ -108,16 +108,15 @@ impl ResponseChannels {
         key: &CommandKey,
         response: CommandResponse,
     ) -> Result<bool, CommandResponse> {
-        if let CommandKey::Label(label) = key {
-            dbg!(label);
-        }
-
         if let Some(idx) = self.channels.iter().position(|(rk, _, _)| rk == key) {
             let (_, _, ch) = self.channels.remove(idx);
             ch.send(response)?;
 
             Ok(true)
         } else {
+            if let CommandKey::Label(label) = key {
+                warn!("Failed to find response channel for label {label:?}");
+            }
             // warn!("Failed to find response channel");
             Ok(false)
         }

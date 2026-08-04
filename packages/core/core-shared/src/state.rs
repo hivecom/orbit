@@ -649,7 +649,7 @@ impl Tags {
                 "draft/relaymsg" => out.relayed_by = value.clone(),
                 "batch" => out.batch = value.clone(),
                 "bot" => out.bot = value.clone(),
-                "label" => out.label = dbg!(value.clone()),
+                "label" => out.label = value.clone(),
                 "+draft/reply" | "+reply" => out.reply = value.clone(),
                 "+draft/react" => out.react = value.clone(),
                 "+draft/unreact" => out.unreact = value.clone(),
