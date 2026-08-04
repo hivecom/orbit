@@ -1,4 +1,4 @@
-#[cfg(feature = "default")]
+#[cfg(not(feature = "web"))]
 use std::pin::pin;
 use std::{fmt, time::Duration};
 
