@@ -503,13 +503,8 @@ impl<C: IrcConnection> IrcActor<C> {
                             .and_then(|c| c.messages.get(r))
                     })
                     .map(|m| MessageReference {
-                        text: m
-                            .map(|m| m.text.clone().map(|t| t.content))
-                            .unwrap_or_else(|| Some(String::from("Unknown"))),
-
-                        username: m
-                            .map(|m| m.metadata.user.clone())
-                            .unwrap_or_else(|| String::from("Unknown")),
+                        text: m.and_then(|m| m.text.clone().map(|t| t.content)),
+                        username: m.map(|m| m.metadata.user.clone()),
                     });
 
                 let state_message = Message {

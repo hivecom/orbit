@@ -550,8 +550,10 @@ impl Eq for MessageMetadata {}
 #[cfg_attr(feature = "web", derive(Tsify))]
 #[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone, inspectable))]
 pub struct MessageReference {
+    /// Empty if message wasn't found or if reply wasn't to a text message
     pub text: Option<String>,
-    pub username: String,
+    /// Empty if message wasn't found
+    pub username: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
