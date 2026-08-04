@@ -1,8 +1,8 @@
-#[cfg(feature = "default")]
+#[cfg(not(feature = "web"))]
 use std::pin::pin;
 use std::{fmt, time::Duration};
 
-use futures::FutureExt;
+use futures::{FutureExt, future::FusedFuture};
 use rand::{SeedableRng, rngs::SmallRng, seq::IndexedRandom};
 #[cfg(not(feature = "web"))]
 use std::time::Instant;
@@ -45,6 +45,7 @@ pub enum CommandKey {
 #[derive(Debug)]
 pub enum CommandResponse {
     GetState(Box<Server>),
+    GetChannelState(Box<Option<Channel>>),
     Capabilities,
     SignIn(Result<SignedIn, OrbitError>),
     Join(String),
@@ -107,16 +108,15 @@ impl ResponseChannels {
         key: &CommandKey,
         response: CommandResponse,
     ) -> Result<bool, CommandResponse> {
-        if let CommandKey::Label(label) = key {
-            dbg!(label);
-        }
-
         if let Some(idx) = self.channels.iter().position(|(rk, _, _)| rk == key) {
             let (_, _, ch) = self.channels.remove(idx);
             ch.send(response)?;
 
             Ok(true)
         } else {
+            if let CommandKey::Label(label) = key {
+                warn!("Failed to find response channel for label {label:?}");
+            }
             // warn!("Failed to find response channel");
             Ok(false)
         }
@@ -137,6 +137,7 @@ pub struct ActorMessage {
 #[derive(Debug)]
 pub enum ActorCommand {
     GetState,
+    GetChannelState(String),
     SignIn {
         nick: String,
         user: String,
@@ -187,15 +188,22 @@ struct RequestedHistory {
 #[derive(Debug)]
 struct CurrentBatch {
     id: String,
-    typ: BatchSubCommand,
-    label: Option<String>,
-    channel: String,
-    messages: Vec<Message>,
+    data: BatchData,
+}
+
+#[derive(Debug)]
+enum BatchData {
+    History {
+        label: Option<String>,
+        channel: String,
+        messages: Vec<Message>,
+    },
+    Unhandled,
 }
 
 impl CurrentBatch {
     fn is_chathistory(&self) -> bool {
-        matches!(self.typ,  BatchSubCommand::CUSTOM(ref c) if c.as_str() == "CHATHISTORY")
+        matches!(self.data, BatchData::History { .. })
     }
 }
 
@@ -222,7 +230,7 @@ pub struct IrcActor<C: IrcConnection> {
     disconnect_handlers: Vec<UnboundedSender<String>>,
 
     current_batch: Option<CurrentBatch>,
-    requested_batches: Vec<RequestedHistory>,
+    requested_history_batches: Vec<RequestedHistory>,
     sasl_state: SaslState,
     rng: SmallRng,
 }
@@ -248,7 +256,7 @@ impl<C: IrcConnection> IrcActor<C> {
             error_handlers: Default::default(),
             disconnect_handlers: Default::default(),
             current_batch: Default::default(),
-            requested_batches: Default::default(),
+            requested_history_batches: Default::default(),
             sasl_state: Default::default(),
             rng: SmallRng::from_seed([1; 32]),
         };
@@ -268,12 +276,18 @@ impl<C: IrcConnection> IrcActor<C> {
 
     #[tracing::instrument(skip(self))]
     pub async fn run(mut self) {
-        loop {
+        fn create_timeout() -> impl FusedFuture {
             #[cfg(feature = "web")]
-            let mut timeout = gloo_timers::future::TimeoutFuture::new(1000).fuse();
+            let timeout = gloo_timers::future::TimeoutFuture::new(1000).fuse();
             #[cfg(not(feature = "web"))]
-            let mut timeout = pin!(tokio::time::sleep(Duration::from_secs(1)).fuse());
+            let timeout = pin!(tokio::time::sleep(Duration::from_secs(1)).fuse());
 
+            timeout
+        }
+
+        let mut timeout = create_timeout();
+
+        loop {
             futures::select! {
                 msg = self.incoming.next() => {
                         match msg {
@@ -297,6 +311,8 @@ impl<C: IrcConnection> IrcActor<C> {
                 }
                 _ = timeout => {
                     self.response_channels.check_timeouts();
+
+                    timeout = create_timeout();
                 }
             }
         }
@@ -332,7 +348,7 @@ impl<C: IrcConnection> IrcActor<C> {
                 let state_message = Message {
                     text: None,
                     metadata: MessageMetadata {
-                        msgid: tags.msgid_with_fallback(&[source]),
+                        msgid: tags.msgid_with_fallback(&["JOIN", source]),
                         server_time: tags.server_time_with_fallback() as f64,
                         message_type: MessageType::Join,
                         user: source.to_string(),
@@ -351,25 +367,26 @@ impl<C: IrcConnection> IrcActor<C> {
                     self.state
                         .channels
                         .insert(channel_name.clone(), channel.clone());
-                    self.response_channels
-                        .reply(
-                            &CommandKey::Join(channel_name.clone()),
-                            CommandResponse::Join(channel_name.clone()),
-                        )
-                        .map_err(|e| anyhow!("Failed to reply to JOIN command {e:?}"))?;
+
+                    if !self.state.capabilities.history.enabled {
+                        self.response_channels
+                            .reply(
+                                &CommandKey::Join(channel_name.clone()),
+                                CommandResponse::Join(channel_name.clone()),
+                            )
+                            .map_err(|e| anyhow!("Failed to reply to JOIN command {e:?}"))?;
+                    }
 
                     self.on_event(ServerEvent::Joined(channel)).await?;
 
-                    if self.current_batch.as_ref().map(|b| b.is_chathistory()) != Some(true)
-                        && self.state.capabilities.history.enabled
-                    {
+                    if self.state.capabilities.history.enabled {
                         let label = if self.state.capabilities.labeled_response.enabled {
                             Some(generate_label(&mut self.rng))
                         } else {
                             None
                         };
 
-                        self.requested_batches.push(RequestedHistory {
+                        self.requested_history_batches.push(RequestedHistory {
                             channel: channel_name.clone(),
                             label: label.clone(),
                         });
@@ -378,14 +395,12 @@ impl<C: IrcConnection> IrcActor<C> {
                             .context("Failed to request latest history")?;
                     }
                 } else {
-                    if self.current_batch.as_ref().map(|b| b.is_chathistory()) != Some(true) {
-                        let channel = self.channel_mut(channel_name.clone()).await;
+                    let channel = self.channel_mut(channel_name.clone()).await;
 
-                        channel.users.push(ChannelUser {
-                            nickname: source.to_string(),
-                            role: ChannelRole::Regular,
-                        });
-                    }
+                    channel.users.push(ChannelUser {
+                        nickname: source.to_string(),
+                        role: ChannelRole::Regular,
+                    });
                 }
 
                 self.on_event(ServerEvent::Privmsg {
@@ -404,7 +419,7 @@ impl<C: IrcConnection> IrcActor<C> {
                 let state_message = Message {
                     text: None,
                     metadata: MessageMetadata {
-                        msgid: tags.msgid_with_fallback(&[source]),
+                        msgid: tags.msgid_with_fallback(&["PART", source]),
                         server_time: tags.server_time_with_fallback() as f64,
                         message_type: MessageType::Part,
                         user: source.to_string(),
@@ -424,11 +439,9 @@ impl<C: IrcConnection> IrcActor<C> {
                 })
                 .await?;
 
-                if self.current_batch.as_ref().map(|b| b.is_chathistory()) != Some(true) {
-                    let channel = self.channel_mut(channel_name.clone()).await;
+                let channel = self.channel_mut(channel_name.clone()).await;
 
-                    channel.users.retain(|u| u.nickname != source);
-                }
+                channel.users.retain(|u| u.nickname != source);
             }
             QUIT(ref comment) => {
                 let mut tags = Tags::default();
@@ -440,17 +453,17 @@ impl<C: IrcConnection> IrcActor<C> {
                 let state_message = Message {
                     text: None,
                     metadata: MessageMetadata {
-                        msgid: tags.msgid_with_fallback(&[source]),
+                        msgid: tags.msgid_with_fallback(&["QUIT", source]),
                         server_time: tags.server_time_with_fallback() as f64,
-                        message_type: MessageType::Part,
+                        message_type: MessageType::Quit,
                         user: source.to_string(),
                     },
                 };
 
                 if let Some(batch) = self.current_batch.as_mut()
-                    && batch.is_chathistory()
+                    && let BatchData::History { messages, .. } = &mut batch.data
                 {
-                    batch.messages.push(state_message);
+                    messages.push(state_message);
                     return Ok(());
                 }
 
@@ -460,11 +473,9 @@ impl<C: IrcConnection> IrcActor<C> {
                 })
                 .await?;
 
-                if self.current_batch.as_ref().map(|b| b.is_chathistory()) != Some(true) {
-                    self.state.users.remove(source);
-                    for channel in self.state.channels.values_mut() {
-                        channel.users.retain(|u| u.nickname != source);
-                    }
+                self.state.users.remove(source);
+                for channel in self.state.channels.values_mut() {
+                    channel.users.retain(|u| u.nickname != source);
                 }
             }
             PRIVMSG(ref target, ref text) => {
@@ -479,7 +490,7 @@ impl<C: IrcConnection> IrcActor<C> {
 
                 let source = message.source_nickname().unwrap();
 
-                let msgid = tags.msgid_with_fallback(&[source, target, text]);
+                let msgid = tags.msgid_with_fallback(&["PRIVMSG", source, target, text]);
 
                 let reply = tags
                     .reply
@@ -491,13 +502,8 @@ impl<C: IrcConnection> IrcActor<C> {
                             .and_then(|c| c.messages.get(r))
                     })
                     .map(|m| MessageReference {
-                        text: m
-                            .map(|m| m.text.clone().map(|t| t.content))
-                            .unwrap_or_else(|| Some(String::from("Unknown"))),
-
-                        username: m
-                            .map(|m| m.metadata.user.clone())
-                            .unwrap_or_else(|| String::from("Unknown")),
+                        text: m.and_then(|m| m.text.clone().map(|t| t.content)),
+                        username: m.map(|m| m.metadata.user.clone()),
                     });
 
                 let state_message = Message {
@@ -554,62 +560,73 @@ impl<C: IrcConnection> IrcActor<C> {
                         tags = Tags::parse(t);
                     }
 
-                    let Some(idx) = self
-                        .requested_batches
-                        .iter()
-                        .position(|b| b.label == tags.label)
-                    else {
-                        // TODO: handlee unrequested batches
-                        return Ok(());
-                    };
-                    let channel = self.requested_batches.remove(idx).channel;
-
-                    self.current_batch = Some(CurrentBatch {
-                        id: id.to_string(),
-                        typ: typ.clone().unwrap(),
-                        label: tags.label,
-                        channel,
-                        messages: Vec::new(),
-                    });
-
                     match typ {
-                        Some(BatchSubCommand::CUSTOM(c))
-                            if &c == "METADATA" || &c == "CHATHISTORY" => {}
-                        _ => warn!(?typ, ?param, "unhandled BATCH type"),
+                        Some(BatchSubCommand::CUSTOM(c)) if &c == "CHATHISTORY" => {
+                            let idx = self
+                                .requested_history_batches
+                                .iter()
+                                .position(|b| b.label == tags.label)
+                                .expect("Chat history was requested");
+                            let channel = self.requested_history_batches.remove(idx).channel;
+
+                            self.current_batch = Some(CurrentBatch {
+                                id: id.to_string(),
+                                data: BatchData::History {
+                                    label: tags.label,
+                                    channel,
+                                    messages: Vec::new(),
+                                },
+                            });
+                        }
+                        _ => {
+                            self.current_batch = Some(CurrentBatch {
+                                id: id.to_string(),
+                                data: BatchData::Unhandled,
+                            });
+                            warn!(?typ, ?param, "unhandled BATCH type");
+                        }
                     }
                 } else {
-                    if self.current_batch.as_ref().map(|b| b.is_chathistory()) != Some(true) {
-                        // TODO: handle other types of batches
-                        return Ok(());
-                    }
                     assert_eq!(
                         self.current_batch.as_ref().map(|b| b.id.as_str()),
                         Some(&reference[1..])
                     );
 
-                    if let Some(batch) = self.current_batch.take() {
-                        for message in &batch.messages {
-                            let channel = self.channel_mut(batch.channel.clone()).await;
+                    if let Some(batch) = self.current_batch.take()
+                        && let BatchData::History {
+                            label,
+                            channel: channel_name,
+                            messages,
+                        } = batch.data
+                    {
+                        let channel = self.channel_mut(channel_name.clone()).await;
+                        for message in &messages {
                             channel
                                 .messages
                                 .insert(message.metadata.msgid.clone(), message.clone());
                         }
 
                         let history = History {
-                            channel: batch.channel.clone(),
-                            messages: batch.messages,
+                            channel: channel_name.clone(),
+                            messages,
                         };
 
-                        let key = if let Some(label) = batch.label {
+                        let key = if let Some(label) = label {
                             CommandKey::Label(label)
                         } else {
                             CommandKey::History
                         };
 
                         self.response_channels
+                            .reply(
+                                &CommandKey::Join(channel_name.clone()),
+                                CommandResponse::Join(channel_name.clone()),
+                            )
+                            .map_err(|e| anyhow!("Failed to reply to JOIN command {e:?}"))?;
+
+                        self.response_channels
                             .reply(&key, CommandResponse::History(history.clone()))
                             .unwrap();
-                        self.on_event(ServerEvent::History(history)).await?;
                     }
 
                     self.current_batch = None;
@@ -656,9 +673,9 @@ impl<C: IrcConnection> IrcActor<C> {
                             .or_insert_with(Vec::new);
 
                         if is_unreact {
-                            reactors.push(nickname.clone());
-                        } else {
                             reactors.retain(|v| *v != nickname);
+                        } else {
+                            reactors.push(nickname.clone());
                         }
 
                         // TODO: should it be sent if the message wasn't found?
@@ -727,14 +744,16 @@ impl<C: IrcConnection> IrcActor<C> {
 
     pub async fn push_batch(&mut self, target: String, state_message: Message) -> bool {
         if let Some(batch) = self.current_batch.as_mut()
-            && batch.is_chathistory()
+            && let BatchData::History {
+                channel, messages, ..
+            } = &mut batch.data
         {
-            if batch.channel.is_empty() {
-                batch.channel = target.clone();
+            if channel.is_empty() {
+                *channel = target.clone();
             } else {
-                assert_eq!(batch.channel, target)
+                assert_eq!(*channel, target)
             }
-            batch.messages.push(state_message);
+            messages.push(state_message);
 
             return true;
         }
@@ -928,6 +947,13 @@ impl<C: IrcConnection> IrcActor<C> {
                 .unwrap()
                 .send(CommandResponse::GetState(Box::new(self.state.clone())))
                 .unwrap(),
+            ActorCommand::GetChannelState(channel_name) => cmd
+                .reply_tx
+                .unwrap()
+                .send(CommandResponse::GetChannelState(Box::new(
+                    self.state.channels.get(&channel_name).cloned(),
+                )))
+                .unwrap(),
             ActorCommand::SignIn {
                 nick,
                 user,
@@ -987,7 +1013,7 @@ impl<C: IrcConnection> IrcActor<C> {
                     None
                 };
 
-                self.requested_batches.push(RequestedHistory {
+                self.requested_history_batches.push(RequestedHistory {
                     channel: channel.clone(),
                     label: label.clone(),
                 });
