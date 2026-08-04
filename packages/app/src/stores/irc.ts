@@ -135,9 +135,11 @@ export const useIrcStore = defineStore("irc", () => {
   async function requestScrollback(id: number, channel: string) {
     try {
       const oldestId = serverMessages.get(id)?.get(channel)?.at(0)?.metadata.msgid
+
       if (!oldestId) {
         return
       }
+
       const history = await serverHandlers.value.get(id)?.history_before(channel, oldestId)
 
       if (!history) {
