@@ -6,8 +6,14 @@ import { useIrcStore } from "../../stores/irc"
 import ListCapabilities from "../shared/server/ListCapabilities.vue"
 import { truncate } from "../../lib/format.ts"
 import { computed, ref } from "vue"
+import { useConfigStore } from "../../stores/config.ts"
 
 const irc = useIrcStore()
+const config = useConfigStore()
+
+config.onShortcut("global:navigation-toggle", () => {
+  mini.value = !mini.value
+})
 
 const mini = useStorage("orbit-sidebar-state", true)
 

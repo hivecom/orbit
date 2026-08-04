@@ -1,9 +1,15 @@
 <script setup lang="ts">
-import { Button, Divider, Input, Switch } from "@dolanske/vui"
+import { Button, Divider, Flex, Input, Kbd, KbdGroup, Switch } from "@dolanske/vui"
 import { IconArrowLeftLinear } from "@iconify-prerendered/vue-solar"
-import { useConfigStore } from "../../stores/config"
+import { shortcutMeta, useConfigStore } from "../../stores/config"
+import { computed } from "vue"
 
 const config = useConfigStore()
+
+const windowWidthSafeguard = computed({
+  get: () => config.options.appearance_chat_width,
+  set: (value) => (config.options.appearance_chat_width = Math.min(100, Math.max(value, 25))),
+})
 </script>
 
 <template>
@@ -15,18 +21,41 @@ const config = useConfigStore()
       </Button>
     </div>
 
-    <Divider class="my-xl" />
+    <Divider class="mt-s mb-xl" />
 
-    <section>
+    <section class="settings-section">
       <h3>Appearance</h3>
       <h4>Global</h4>
-      <Switch reversed accent label="Zen mode" hint="Greatly simplifies the UI, removing distractions. Can be toggled on/off using the command palette." />
+      <Switch disabled reversed accent label="Zen mode" hint="Greatly simplifies the UI, removing distractions. Can be toggled on/off using the command palette." v-model="config.options.appearance_global_zen_enabled" />
       <h4>Chat</h4>
-      <Switch reversed accent label="Colored usernames" hint="Generate a random username color using the username as a seed" />
-      <Flex> </Flex>
-      <Flex>
-        <Switch reversed accent label="Show timestamps" hint="Display timestampts in chat view" />
-        <Input label="Timestamp format" v-model="config.options.appearance_chat_timestamps_format" :disabled="!config.options.appearance_chat_timestamps_enabled" />
+      <Switch reversed accent label="Colored usernames" hint="Generate a random username color using the username as a seed" v-model="config.options.appearance_chat_colored_usernames" />
+      <Switch reversed accent label="Show timestamps" hint="Display timestampts in chat view" v-model="config.options.appearance_chat_timestamps_enabled" />
+      <Input label="Timestamp format" v-model="config.options.appearance_chat_timestamps_format" :disabled="!config.options.appearance_chat_timestamps_enabled" />
+      <h4>Layout</h4>
+      <Flex column :gap="0">
+        <label for="chat-width-input" class="vui-label">Chat width</label>
+        <p class="vui-hint">Percentual width of the chat compared to its window. On small devices, the width might be automatically adjusted.</p>
+        <Input id="chat-width-input" :min="25" :max="100" type="number" v-model.number.lazy="windowWidthSafeguard" />
+      </Flex>
+      <Switch reversed accent label="Center chat" hint="If width is other than 100%, the chat will be in the center of the chat window." v-model="config.options.appearance_chat_center_chat" />
+      <div class="settings-chat-indicator">
+        <div class="width-indicator">
+          <div class="width-indicator chat" :class="{ center: config.options.appearance_chat_center_chat }" :style="{ width: config.options.appearance_chat_width + '%' }">
+            <span>Chat window</span>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="settings-section">
+      <h3>Shortcuts</h3>
+      <Flex v-for="(value, key) in config.keymap" expand x-between y-center>
+        <div>
+          <span class="vui-label">{{ shortcutMeta[key].title }}</span>
+          <p class="vui-hint">{{ shortcutMeta[key].description }}</p>
+        </div>
+        <Flex gap="xxs">
+          <Kbd v-for="key in value.split('+')" :key :keys="key" />
+        </Flex>
       </Flex>
     </section>
   </div>
@@ -38,8 +67,13 @@ const config = useConfigStore()
   padding-inline: 64px;
   margin: unset;
 
+  :deep(.vui-input) {
+    margin-bottom: var(--space-l);
+  }
+
   :deep(.vui-switch) {
     margin-bottom: var(--space-l);
+
     .vui-hint {
       display: block;
       max-width: 480px;
@@ -47,8 +81,73 @@ const config = useConfigStore()
   }
 }
 
+.settings-section {
+  margin-bottom: 96px;
+  padding-bottom: 96px;
+  border-bottom: 1px solid var(--color-border-weak);
+}
+
+.settings-chat-indicator {
+  display: flex;
+  align-items: center;
+  background-color: var(--color-bg-medium);
+  border-radius: var(--border-radius-l);
+  height: 40px;
+  padding-inline: var(--space-l);
+  corner-shape: squircle;
+
+  .width-indicator {
+    width: 100%;
+    position: relative;
+    border-bottom: 1px solid var(--color-border-strong);
+    z-index: 1;
+    min-width: 150px;
+
+    span {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      padding: 2px var(--space-m);
+      background-color: var(--color-bg-medium);
+      white-space: nowrap;
+      font-size: var(--font-size-xs);
+    }
+
+    &.chat {
+      border-color: var(--color-accent);
+      z-index: 2;
+
+      &.center {
+        margin-inline: auto;
+      }
+
+      &:before,
+      &:after {
+        background-color: var(--color-accent);
+      }
+    }
+
+    &:before,
+    &:after {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: -8px;
+      bottom: -8px;
+      width: 1px;
+      background-color: var(--color-border-strong);
+    }
+
+    &:after {
+      left: 100%;
+    }
+  }
+}
+
 .settings-title {
   position: relative;
+  padding-bottom: 3px;
 
   .settings-close-button {
     position: absolute;
@@ -65,8 +164,8 @@ h3 {
 
 h4 {
   font-size: var(--font-size-l);
-  margin-bottom: var(--space-l);
-  margin-top: var(--space-xl);
+  margin-bottom: var(--space-m);
+  margin-top: var(--space-xxl);
 }
 
 h3,

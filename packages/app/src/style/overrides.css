@@ -61,8 +61,10 @@
     outline: 2px solid transparent;
   }
 
-  &:hover .vui-switch-icon {
-    outline-color: var(--color-border-strong);
+  &:not(&.disabled) {
+    &:hover .vui-switch-icon {
+      outline-color: var(--color-border-strong);
+    }
   }
 
   .vui-hint {
