@@ -380,9 +380,7 @@ impl<C: IrcConnection> IrcActor<C> {
 
                     self.on_event(ServerEvent::Joined(channel)).await?;
 
-                    if self.current_batch.as_ref().map(|b| b.is_chathistory()) != Some(true)
-                        && self.state.capabilities.history.enabled
-                    {
+                    if self.state.capabilities.history.enabled {
                         let label = if self.state.capabilities.labeled_response.enabled {
                             Some(generate_label(&mut self.rng))
                         } else {
@@ -398,14 +396,12 @@ impl<C: IrcConnection> IrcActor<C> {
                             .context("Failed to request latest history")?;
                     }
                 } else {
-                    if self.current_batch.as_ref().map(|b| b.is_chathistory()) != Some(true) {
-                        let channel = self.channel_mut(channel_name.clone()).await;
+                    let channel = self.channel_mut(channel_name.clone()).await;
 
-                        channel.users.push(ChannelUser {
-                            nickname: source.to_string(),
-                            role: ChannelRole::Regular,
-                        });
-                    }
+                    channel.users.push(ChannelUser {
+                        nickname: source.to_string(),
+                        role: ChannelRole::Regular,
+                    });
                 }
 
                 self.on_event(ServerEvent::Privmsg {
@@ -444,11 +440,9 @@ impl<C: IrcConnection> IrcActor<C> {
                 })
                 .await?;
 
-                if self.current_batch.as_ref().map(|b| b.is_chathistory()) != Some(true) {
-                    let channel = self.channel_mut(channel_name.clone()).await;
+                let channel = self.channel_mut(channel_name.clone()).await;
 
-                    channel.users.retain(|u| u.nickname != source);
-                }
+                channel.users.retain(|u| u.nickname != source);
             }
             QUIT(ref comment) => {
                 let mut tags = Tags::default();
@@ -480,11 +474,9 @@ impl<C: IrcConnection> IrcActor<C> {
                 })
                 .await?;
 
-                if self.current_batch.as_ref().map(|b| b.is_chathistory()) != Some(true) {
-                    self.state.users.remove(source);
-                    for channel in self.state.channels.values_mut() {
-                        channel.users.retain(|u| u.nickname != source);
-                    }
+                self.state.users.remove(source);
+                for channel in self.state.channels.values_mut() {
+                    channel.users.retain(|u| u.nickname != source);
                 }
             }
             PRIVMSG(ref target, ref text) => {
