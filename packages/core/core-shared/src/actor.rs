@@ -341,7 +341,7 @@ impl<C: IrcConnection> IrcActor<C> {
                 let state_message = Message {
                     text: None,
                     metadata: MessageMetadata {
-                        msgid: tags.msgid_with_fallback(&[source]),
+                        msgid: tags.msgid_with_fallback(&["JOIN", source]),
                         server_time: tags.server_time_with_fallback() as f64,
                         message_type: MessageType::Join,
                         user: source.to_string(),
@@ -416,7 +416,7 @@ impl<C: IrcConnection> IrcActor<C> {
                 let state_message = Message {
                     text: None,
                     metadata: MessageMetadata {
-                        msgid: tags.msgid_with_fallback(&[source]),
+                        msgid: tags.msgid_with_fallback(&["PART", source]),
                         server_time: tags.server_time_with_fallback() as f64,
                         message_type: MessageType::Part,
                         user: source.to_string(),
@@ -452,9 +452,9 @@ impl<C: IrcConnection> IrcActor<C> {
                 let state_message = Message {
                     text: None,
                     metadata: MessageMetadata {
-                        msgid: tags.msgid_with_fallback(&[source]),
+                        msgid: tags.msgid_with_fallback(&["QUIT", source]),
                         server_time: tags.server_time_with_fallback() as f64,
-                        message_type: MessageType::Part,
+                        message_type: MessageType::Quit,
                         user: source.to_string(),
                     },
                 };
@@ -491,7 +491,7 @@ impl<C: IrcConnection> IrcActor<C> {
 
                 let source = message.source_nickname().unwrap();
 
-                let msgid = tags.msgid_with_fallback(&[source, target, text]);
+                let msgid = tags.msgid_with_fallback(&["PRIVMSG", source, target, text]);
 
                 let reply = tags
                     .reply
