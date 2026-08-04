@@ -120,7 +120,6 @@ export const useIrcStore = defineStore("irc", () => {
     return computed(() => serverMessages.get(id)?.get(channel))
   }
 
-  // TODO: will be called automatically by a scroll listener to append new messages as user's nearing the top of the window
   async function requestScrollback(id: number, channel: string) {
     try {
       const history = await serverHandlers.value.get(id)?.history_before(channel, serverMessages.get(id)?.get(channel)?.at(0)?.metadata.msgid ?? "")

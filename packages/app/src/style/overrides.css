@@ -54,3 +54,18 @@
 .vui-sidebar .vui-dropdown-item {
   gap: var(--space-m);
 }
+
+.vui-switch {
+  .vui-switch-icon {
+    transition: outline var(--transition-fast);
+    outline: 2px solid transparent;
+  }
+
+  &:hover .vui-switch-icon {
+    outline-color: var(--color-border-strong);
+  }
+
+  .vui-hint {
+    margin-top: 0 !important;
+  }
+}
