@@ -5,8 +5,8 @@ use core_shared::{
     SendCommand,
     actor::{self, ActorCommand, ActorMessage, CommandResponse, IrcActor},
     state::{
-        self, Capabilities, ChannelMetadata, ChannelUser, MessageMetadata, MessageReference,
-        ServerMetadata, SignedIn, User,
+        self, Capabilities, ChannelInfo, ChannelMetadata, ChannelUser, MessageMetadata,
+        MessageReference, ServerMetadata, SignedIn, User,
     },
 };
 use futures::{
@@ -148,6 +148,25 @@ impl IrcConnection {
     #[wasm_bindgen]
     pub fn id(&self) -> i32 {
         self.id
+    }
+
+    #[wasm_bindgen]
+    pub async fn channel_list(&mut self) -> Result<Vec<ChannelInfo>, OrbitError> {
+        let (tx, rx) = oneshot::channel();
+        self.address
+            .send(ActorMessage {
+                command: ActorCommand::GetChannelList,
+                reply_tx: Some(tx),
+            })
+            .await
+            .context("Failed to send ActorMessage")?;
+
+        let resp = rx.await.context("Failed to await actor state message")?;
+        let CommandResponse::ChannelList(list) = resp else {
+            unreachable!("expected channel list, got: {:?}", resp);
+        };
+
+        Ok(list)
     }
 
     #[wasm_bindgen]

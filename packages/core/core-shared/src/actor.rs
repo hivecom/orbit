@@ -1,5 +1,6 @@
 #[cfg(not(feature = "web"))]
 use std::pin::pin;
+use std::str::FromStr;
 use std::{fmt, time::Duration};
 
 use futures::{FutureExt, future::FusedFuture};
@@ -14,8 +15,9 @@ use crate::dbg;
 use crate::{
     SendCommand,
     state::{
-        Channel, ChannelRole, ChannelUser, History, Message, MessageMetadata, MessageReference,
-        MessageType, OrbitError, Server, ServerEvent, SignedIn, Tags, TextMessage, User,
+        Channel, ChannelInfo, ChannelRole, ChannelUser, History, Message, MessageMetadata,
+        MessageReference, MessageType, OrbitError, Server, ServerEvent, SignedIn, Tags,
+        TextMessage, User,
     },
 };
 use anyhow::{Context, anyhow};
@@ -39,6 +41,7 @@ pub enum CommandKey {
     Join(String),
     Privmsg { target: String, text: String },
     History,
+    ChannelList,
     Label(String),
 }
 
@@ -50,6 +53,7 @@ pub enum CommandResponse {
     SignIn(Result<SignedIn, OrbitError>),
     Join(String),
     Privmsg(Box<Message>),
+    ChannelList(Vec<ChannelInfo>),
     History(History),
 }
 
@@ -170,6 +174,7 @@ pub enum ActorCommand {
         channel: String,
         before_msgid: String,
     },
+    GetChannelList,
 }
 
 pub trait IrcConnection: fmt::Debug {
@@ -188,15 +193,18 @@ struct RequestedHistory {
 #[derive(Debug)]
 struct CurrentBatch {
     id: String,
+    label: Option<String>,
     data: BatchData,
 }
 
 #[derive(Debug)]
 enum BatchData {
     History {
-        label: Option<String>,
         channel: String,
         messages: Vec<Message>,
+    },
+    ChannelList {
+        list: Vec<ChannelInfo>,
     },
     Unhandled,
 }
@@ -230,7 +238,7 @@ pub struct IrcActor<C: IrcConnection> {
     disconnect_handlers: Vec<UnboundedSender<String>>,
 
     current_batch: Option<CurrentBatch>,
-    requested_history_batches: Vec<RequestedHistory>,
+    requested_batches: Vec<RequestedHistory>,
     sasl_state: SaslState,
     rng: SmallRng,
 }
@@ -256,7 +264,7 @@ impl<C: IrcConnection> IrcActor<C> {
             error_handlers: Default::default(),
             disconnect_handlers: Default::default(),
             current_batch: Default::default(),
-            requested_history_batches: Default::default(),
+            requested_batches: Default::default(),
             sasl_state: Default::default(),
             rng: SmallRng::from_seed([1; 32]),
         };
@@ -331,7 +339,7 @@ impl<C: IrcConnection> IrcActor<C> {
                     .context("Failed to send pong")?;
             }
             Response(rpl, params) => {
-                self.handle_response(rpl, params).await?;
+                self.handle_response(message.tags, rpl, params).await?;
             }
             JOIN(ref channel_name, _, _) => {
                 let source = message.source_nickname().unwrap();
@@ -356,7 +364,7 @@ impl<C: IrcConnection> IrcActor<C> {
                 };
 
                 if self
-                    .push_batch(channel_name.clone(), state_message.clone())
+                    .push_history_batch(channel_name.clone(), state_message.clone())
                     .await
                 {
                     return Ok(());
@@ -386,7 +394,7 @@ impl<C: IrcConnection> IrcActor<C> {
                             None
                         };
 
-                        self.requested_history_batches.push(RequestedHistory {
+                        self.requested_batches.push(RequestedHistory {
                             channel: channel_name.clone(),
                             label: label.clone(),
                         });
@@ -427,7 +435,7 @@ impl<C: IrcConnection> IrcActor<C> {
                 };
 
                 if self
-                    .push_batch(channel_name.clone(), state_message.clone())
+                    .push_history_batch(channel_name.clone(), state_message.clone())
                     .await
                 {
                     return Ok(());
@@ -523,7 +531,10 @@ impl<C: IrcConnection> IrcActor<C> {
                     }),
                 };
 
-                if self.push_batch(target.clone(), state_message.clone()).await {
+                if self
+                    .push_history_batch(target.clone(), state_message.clone())
+                    .await
+                {
                     return Ok(());
                 }
 
@@ -563,24 +574,33 @@ impl<C: IrcConnection> IrcActor<C> {
                     match typ {
                         Some(BatchSubCommand::CUSTOM(c)) if &c == "CHATHISTORY" => {
                             let idx = self
-                                .requested_history_batches
+                                .requested_batches
                                 .iter()
                                 .position(|b| b.label == tags.label)
                                 .expect("Chat history was requested");
-                            let channel = self.requested_history_batches.remove(idx).channel;
+                            let channel = self.requested_batches.remove(idx).channel;
 
                             self.current_batch = Some(CurrentBatch {
                                 id: id.to_string(),
+                                label: tags.label,
                                 data: BatchData::History {
-                                    label: tags.label,
                                     channel,
                                     messages: Vec::new(),
                                 },
                             });
                         }
+                        Some(BatchSubCommand::CUSTOM(c)) if &c == "LABELED-RESPONSE" => {
+                            self.current_batch = Some(CurrentBatch {
+                                id: id.to_string(),
+                                label: tags.label,
+                                // FIXME: this might be another type of batch
+                                data: BatchData::ChannelList { list: Vec::new() },
+                            });
+                        }
                         _ => {
                             self.current_batch = Some(CurrentBatch {
                                 id: id.to_string(),
+                                label: tags.label,
                                 data: BatchData::Unhandled,
                             });
                             warn!(?typ, ?param, "unhandled BATCH type");
@@ -592,41 +612,51 @@ impl<C: IrcConnection> IrcActor<C> {
                         Some(&reference[1..])
                     );
 
-                    if let Some(batch) = self.current_batch.take()
-                        && let BatchData::History {
-                            label,
+                    if let Some(batch) = self.current_batch.take() {
+                        if let BatchData::History {
                             channel: channel_name,
                             messages,
                         } = batch.data
-                    {
-                        let channel = self.channel_mut(channel_name.clone()).await;
-                        for message in &messages {
-                            channel
-                                .messages
-                                .insert(message.metadata.msgid.clone(), message.clone());
+                        {
+                            let channel = self.channel_mut(channel_name.clone()).await;
+                            for message in &messages {
+                                channel
+                                    .messages
+                                    .insert(message.metadata.msgid.clone(), message.clone());
+                            }
+
+                            let history = History {
+                                channel: channel_name.clone(),
+                                messages,
+                            };
+
+                            let key = if let Some(label) = batch.label {
+                                CommandKey::Label(label)
+                            } else {
+                                CommandKey::History
+                            };
+
+                            self.response_channels
+                                .reply(
+                                    &CommandKey::Join(channel_name.clone()),
+                                    CommandResponse::Join(channel_name.clone()),
+                                )
+                                .map_err(|e| anyhow!("Failed to reply to JOIN command {e:?}"))?;
+
+                            self.response_channels
+                                .reply(&key, CommandResponse::History(history.clone()))
+                                .unwrap();
+                        } else if let BatchData::ChannelList { list } = batch.data {
+                            let key = if let Some(label) = batch.label {
+                                CommandKey::Label(label)
+                            } else {
+                                CommandKey::ChannelList
+                            };
+
+                            self.response_channels
+                                .reply(&key, CommandResponse::ChannelList(list.clone()))
+                                .unwrap();
                         }
-
-                        let history = History {
-                            channel: channel_name.clone(),
-                            messages,
-                        };
-
-                        let key = if let Some(label) = label {
-                            CommandKey::Label(label)
-                        } else {
-                            CommandKey::History
-                        };
-
-                        self.response_channels
-                            .reply(
-                                &CommandKey::Join(channel_name.clone()),
-                                CommandResponse::Join(channel_name.clone()),
-                            )
-                            .map_err(|e| anyhow!("Failed to reply to JOIN command {e:?}"))?;
-
-                        self.response_channels
-                            .reply(&key, CommandResponse::History(history.clone()))
-                            .unwrap();
                     }
 
                     self.current_batch = None;
@@ -742,7 +772,7 @@ impl<C: IrcConnection> IrcActor<C> {
         Ok(())
     }
 
-    pub async fn push_batch(&mut self, target: String, state_message: Message) -> bool {
+    pub async fn push_history_batch(&mut self, target: String, state_message: Message) -> bool {
         if let Some(batch) = self.current_batch.as_mut()
             && let BatchData::History {
                 channel, messages, ..
@@ -809,6 +839,7 @@ impl<C: IrcConnection> IrcActor<C> {
     #[tracing::instrument(err, skip(self))]
     pub async fn handle_response(
         &mut self,
+        irc_tags: Option<Vec<irc_proto::message::Tag>>,
         rpl: Response,
         params: Vec<String>,
     ) -> Result<(), OrbitError> {
@@ -919,6 +950,31 @@ impl<C: IrcConnection> IrcActor<C> {
                 }
                 self.state.metadata.name = self.state.support.network.clone();
             }
+            Response::RPL_LIST => {
+                let mut tags = Tags::default();
+                if let Some(ref t) = irc_tags {
+                    tags = Tags::parse(t);
+                }
+
+                assert_eq!(
+                    self.current_batch.as_ref().map(|b| b.id.as_str()),
+                    tags.batch.as_deref()
+                );
+
+                let [_, ref name, ref user_count, ref topic] = params[..] else {
+                    panic!("unexpected LIST format")
+                };
+
+                if let Some(batch) = self.current_batch.as_mut()
+                    && let BatchData::ChannelList { list, .. } = &mut batch.data
+                {
+                    list.push(ChannelInfo {
+                        name: name.to_owned(),
+                        user_count: i32::from_str(user_count).unwrap(),
+                        topic: topic.to_owned(),
+                    });
+                }
+            }
             Response::RPL_YOURHOST
             | Response::RPL_CREATED
             | Response::RPL_MYINFO
@@ -1013,13 +1069,28 @@ impl<C: IrcConnection> IrcActor<C> {
                     None
                 };
 
-                self.requested_history_batches.push(RequestedHistory {
+                self.requested_batches.push(RequestedHistory {
                     channel: channel.clone(),
                     label: label.clone(),
                 });
                 self.history_before(channel, format!("msgid={before_msgid}"), 5, label)
                     .await
                     .context("Failed to send history before")?;
+            }
+            ActorCommand::GetChannelList => {
+                let label = if self.state.capabilities.labeled_response.enabled {
+                    Some(
+                        self.response_channels
+                            .register_labeled(cmd.reply_tx.unwrap()),
+                    )
+                } else {
+                    self.response_channels
+                        .register(CommandKey::History, cmd.reply_tx.unwrap());
+
+                    None
+                };
+
+                self.list(label).await.context("Failed to send list")?;
             }
         }
 

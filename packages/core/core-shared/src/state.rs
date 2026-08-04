@@ -693,3 +693,12 @@ impl Tags {
         })
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "web", derive(Tsify))]
+#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone, inspectable))]
+pub struct ChannelInfo {
+    pub name: String,
+    pub user_count: i32,
+    pub topic: String,
+}

@@ -4,7 +4,7 @@ import { Button, Card, Flex, Input } from "@dolanske/vui"
 import { reactive, ref } from "vue"
 import { useIrcStore } from "../../stores/irc"
 import { useRouter } from "vue-router"
-import type { Server } from "core-wasm"
+import type { OrbitError, Server } from "core-wasm"
 
 const irc = useIrcStore()
 const router = useRouter()
@@ -41,8 +41,9 @@ function submit() {
 
       emit("success", state)
       router.push({ name: "RouteWindowManager" })
-    } catch (e) {
-      console.log("Error connecting to a server\n", e)
+    } catch (e: unknown) {
+      const error = e as OrbitError
+      console.log("Error connecting to a server\n", error.description)
       emit("error", e as string)
     }
 
