@@ -674,9 +674,9 @@ impl<C: IrcConnection> IrcActor<C> {
                             .or_insert_with(Vec::new);
 
                         if is_unreact {
-                            reactors.push(nickname.clone());
-                        } else {
                             reactors.retain(|v| *v != nickname);
+                        } else {
+                            reactors.push(nickname.clone());
                         }
 
                         // TODO: should it be sent if the message wasn't found?
