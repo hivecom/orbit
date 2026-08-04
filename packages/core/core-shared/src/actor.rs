@@ -45,7 +45,7 @@ pub enum CommandKey {
 #[derive(Debug)]
 pub enum CommandResponse {
     GetState(Box<Server>),
-    GetChannelState(Option<Channel>),
+    GetChannelState(Box<Option<Channel>>),
     Capabilities,
     SignIn(Result<SignedIn, OrbitError>),
     Join(String),
@@ -956,9 +956,9 @@ impl<C: IrcConnection> IrcActor<C> {
             ActorCommand::GetChannelState(channel_name) => cmd
                 .reply_tx
                 .unwrap()
-                .send(CommandResponse::GetChannelState(
+                .send(CommandResponse::GetChannelState(Box::new(
                     self.state.channels.get(&channel_name).cloned(),
-                ))
+                )))
                 .unwrap(),
             ActorCommand::SignIn {
                 nick,
