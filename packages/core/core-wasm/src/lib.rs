@@ -352,6 +352,25 @@ pub struct IrcChannel {
 #[wasm_bindgen]
 impl IrcChannel {
     #[wasm_bindgen]
+    pub async fn state(&mut self) -> Result<Channel, OrbitError> {
+        let (tx, rx) = oneshot::channel();
+        self.address
+            .send(ActorMessage {
+                command: ActorCommand::GetChannelState(self.name.clone()),
+                reply_tx: Some(tx),
+            })
+            .await
+            .context("Failed to send ActorMessage")?;
+
+        let resp = rx.await.context("Failed to await actor state message")?;
+        let CommandResponse::GetChannelState(channel) = resp else {
+            unreachable!("expected state, got: {:?}", resp);
+        };
+
+        Ok(channel.unwrap().into())
+    }
+
+    #[wasm_bindgen]
     pub async fn send_message(&mut self, text: String) -> Result<Message, OrbitError> {
         let (tx, rx) = oneshot::channel();
         self.address

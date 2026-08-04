@@ -73,6 +73,18 @@ export const useIrcStore = defineStore("irc", () => {
     serverChannel.value = await handler.join_channel("#orbit/testing")
     console.log("Signed in")
 
+    // Set initial channel messages
+    const channelState = await serverChannel.value.state()
+
+    const existingServer = serverMessages.get(0) ?? new Map<string, Message[]>()
+    const existingChannel = existingServer.get(channelState.metadata.name) ?? []
+
+    existingChannel.push(...channelState.messages)
+    existingChannel.sort((a, b) => a.metadata.server_time - b.metadata.server_time)
+
+    existingServer.set(channelState.metadata.name, existingChannel)
+    serverMessages.set(state.id, existingServer)
+
     registerServerEvents(state.id, handler)
 
     return {
