@@ -45,7 +45,7 @@ onBeforeMount(() => {
         </Dropdown>
       </div>
 
-      <WindowChat v-if="window?.type === 'chat'" v-bind="window" />
+      <WindowChat v-if="window?.type === 'chat'" v-bind="{ ...window, location }" />
       <WindowEmpty v-else-if="window?.type === 'empty'" />
 
       <!-- <h1>{{ window?.type }} | {{ index }}</h1>

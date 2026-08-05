@@ -1,14 +1,17 @@
 <script setup lang="ts">
-import { Button, Divider, Flex, Input, Kbd, KbdGroup, Switch } from "@dolanske/vui"
+import { Button, Counter, Divider, Flex, Input, Kbd, Switch } from "@dolanske/vui"
 import { IconArrowLeftLinear } from "@iconify-prerendered/vue-solar"
 import { shortcutMeta, useConfigStore } from "../../stores/config"
 import { computed } from "vue"
 
 const config = useConfigStore()
 
-const windowWidthSafeguard = computed({
+const MIN_WIDTH = 25
+const MAX_WIDTH = 100
+
+const safeguardedWidth = computed({
   get: () => config.options.appearance_chat_width,
-  set: (value) => (config.options.appearance_chat_width = Math.min(100, Math.max(value, 25))),
+  set: (value) => (config.options.appearance_chat_width = Math.min(MAX_WIDTH, Math.max(value, MIN_WIDTH))),
 })
 </script>
 
@@ -20,9 +23,7 @@ const windowWidthSafeguard = computed({
         <IconArrowLeftLinear />
       </Button>
     </div>
-
     <Divider class="mt-s mb-xl" />
-
     <section class="settings-section">
       <h3>Appearance</h3>
       <h4>Global</h4>
@@ -34,10 +35,11 @@ const windowWidthSafeguard = computed({
       <h4>Layout</h4>
       <Flex column :gap="0">
         <label for="chat-width-input" class="vui-label">Chat width</label>
-        <p class="vui-hint">Percentual width of the chat compared to its window. On small devices, the width might be automatically adjusted.</p>
-        <Input id="chat-width-input" :min="25" :max="100" type="number" v-model.number.lazy="windowWidthSafeguard" />
+        <p class="vui-hint">Percentual width of the chat compared to its window. On small devices, the width might be automatically adjusted</p>
+        <!-- FIXME: doesnt allow typing rn - probably because the automatic clamping immediatel removes it -->
+        <Counter id="chat-width-input" :increment-enabled="safeguardedWidth <= MAX_WIDTH" :decrement-enabled="safeguardedWidth >= MIN_WIDTH" type="number" v-model.number="safeguardedWidth" />
       </Flex>
-      <Switch reversed accent label="Center chat" hint="If width is other than 100%, the chat will be in the center of the chat window." v-model="config.options.appearance_chat_center_chat" />
+      <Switch reversed accent label="Center chat" hint="If width is other than 100%, the chat will be in the center of the chat window" v-model="config.options.appearance_chat_center_chat" />
       <div class="settings-chat-indicator">
         <div class="width-indicator">
           <div class="width-indicator chat" :class="{ center: config.options.appearance_chat_center_chat }" :style="{ width: config.options.appearance_chat_width + '%' }">

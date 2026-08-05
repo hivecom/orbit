@@ -44,7 +44,8 @@ export const useConfigStore = defineStore("config", () => {
   function init() {
     initialized.value = true
 
-    // Register watcher scope for application-wide shortcut handling
+    // Register watcher scope for application-wide shortcut handling. We need to use a scope
+    // because this registration happens outside of a specific vue component
     const watcherScope = effectScope()
 
     watcherScope.run(() => {

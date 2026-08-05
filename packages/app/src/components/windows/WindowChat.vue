@@ -1,24 +1,35 @@
 <script setup lang="ts">
 import { MessageType } from "core-wasm"
-import type { WindowChat } from "../../lib/windows"
+import { useWindowManager, type WindowChat, type WindowLocation } from "../../lib/windows"
 import { useIrcStore } from "../../stores/irc"
 import Composer from "../shared/composer/Composer.vue"
-import { Flex, PopoutHover } from "@dolanske/vui"
+import { Button, DropdownItem, Flex, PopoutHover } from "@dolanske/vui"
 import { IconInfoCircleLinear } from "@iconify-prerendered/vue-solar"
 import { nextTick, ref, useTemplateRef } from "vue"
 import { useEventListener, useThrottleFn } from "@vueuse/core"
+import { IRC_UNKNOWN_CHANNEL } from "platform/src/constants.ts"
 
 // TODO: Figure out connecting to specific channels and showing the one that's open (and replacing url state)
 
-const props = defineProps<WindowChat>()
+interface Props extends WindowChat {
+  location: WindowLocation
+}
+
+const props = defineProps<Props>()
 const irc = useIrcStore()
 
-const messages = irc.getChannelMessages(props.serverId, "#orbit/testing")
+const window = useWindowManager()
+
+// previous channel was `#orbit/testing`
+const messages = irc.getChannelMessages(props.serverId, props.channelId)
 const state = irc.getServerState(props.serverId)
+const channels = irc.getServerChannels(props.serverId)
+const channel = irc.getServerChannel(props.serverId, props.channelId)
 
 function sendMessage(message: string) {
+  // TODO: must send to the channe
   console.log(message)
-  irc.serverChannel?.send_message(message)
+  // irc.serverChannel?.send_message(message)
 }
 
 // Automatic message fetching on scroll
@@ -33,7 +44,7 @@ const debouncedScrollCheck = useThrottleFn(async (event: Event) => {
 
     const prevHeight = target.scrollHeight
 
-    await irc.requestScrollback(props.serverId, "#orbit/testing")
+    await irc.requestScrollback(props.serverId, props.channelId)
     await nextTick()
 
     // Adjust scroll position, otherwise we'll be triggering the fetch constantly
@@ -45,6 +56,25 @@ const debouncedScrollCheck = useThrottleFn(async (event: Event) => {
 }, 100)
 
 useEventListener(scrollContainer, "scroll", debouncedScrollCheck)
+
+// If user opens a window on a server where they haven't joined any channels, we
+// must give them a choice to join one
+const loadingChannel = ref(false)
+
+async function join(channelId: string) {
+  loadingChannel.value = true
+  await irc.channelJoin(props.serverId, channelId)
+
+  // User has chosen a channel so now we can replace the current window with the
+  // actual channel messages
+  window.replace(props.location, {
+    serverId: props.serverId,
+    type: props.type,
+    channelId: props.channelId,
+  })
+
+  loadingChannel.value = false
+}
 </script>
 
 <template>
@@ -63,7 +93,14 @@ useEventListener(scrollContainer, "scroll", debouncedScrollCheck)
         </pre>
       </PopoutHover>
     </div>
-    <div class="o-table-wrap">
+    <div class="o-channel-list" v-if="props.channelId === IRC_UNKNOWN_CHANNEL">
+      <Flex column x-center y-center>
+        <DropdownItem :disabled="loadingChannel" v-for="channel in channels?.available" :key="channel.name" @click="join(channel.name)">
+          {{ channel.name }}
+        </DropdownItem>
+      </Flex>
+    </div>
+    <div class="o-table-wrap" v-else>
       <div class="o-table-scroll-container" ref="chatScrollContainer">
         <table class="o-message-table">
           <tr v-for="message in messages" :key="message.metadata.msgid">
@@ -79,6 +116,7 @@ useEventListener(scrollContainer, "scroll", debouncedScrollCheck)
         <div id="scroll-anchor"></div>
       </div>
     </div>
+
     <div class="o-window-composer">
       <Composer @send="sendMessage" />
     </div>

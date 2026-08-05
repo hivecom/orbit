@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { Flex } from "@dolanske/vui"
 import ServerConnectDialog from "../../components/dialogs/ServerConnectDialog.vue"
-import { IRC_UNKNOWN, useIrcStore } from "../../stores/irc.ts"
+import { useIrcStore } from "../../stores/irc.ts"
 import { onBeforeMount, ref } from "vue"
 import { useRouter } from "vue-router"
 import UsernameDialog from "../../components/dialogs/UsernameDialog.vue"
 import Stepper from "../../components/shared/Stepper.vue"
 import type { Server } from "core-wasm"
 import { serializeWindow } from "../../lib/windows.ts"
+import { IRC_UNKNOWN_CHANNEL } from "platform/src/constants.ts"
 
 const router = useRouter()
 const irc = useIrcStore()
@@ -28,7 +29,7 @@ function redirectToChat(state: Server) {
       f: serializeWindow({
         type: "chat",
         serverId: state.id,
-        channelId: IRC_UNKNOWN,
+        channelId: IRC_UNKNOWN_CHANNEL,
       }),
     },
   })

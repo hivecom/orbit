@@ -1,10 +1,13 @@
 import { defineStore } from "pinia"
-import { ChannelMessage, Message, React, type IrcConnection, type Server, type ServerList, OrbitError, IrcChannel } from "core-wasm"
-import { computed, reactive, ref, shallowRef } from "vue"
+import { ChannelMessage, Message, React, type IrcConnection, type Server, type ServerList, OrbitError, IrcChannel, ChannelInfo, Channel } from "core-wasm"
+import { computed, ref, shallowRef } from "vue"
 import { useUserStore } from "./user"
 import { useAppStateStore } from "./app-state"
 
-export const IRC_UNKNOWN = "<unknown>"
+interface IrcChannelWithHandler {
+  handler: IrcChannel
+  data: Channel
+}
 
 /**
  * Global store handling all IRC data and hands it to the UI for consumption.
@@ -15,17 +18,36 @@ export const useIrcStore = defineStore("irc", () => {
 
   const initialized = shallowRef(false)
 
-  // Needs to be a ref, as deep properties will be dynamically updated
+  // Holds reference to server metadata
   const serverState = ref<Map<number, Server>>(new Map())
+  const serverHandlers = ref<Map<number, IrcConnection>>(new Map())
 
-  // Is shallow, as it's only set once on connection or disconnect
-  const serverHandlers = shallowRef<Map<number, IrcConnection>>(new Map())
+  // Holds channel information per server
+  const serverChannels = ref<Map<number, { joined: IrcChannelWithHandler[]; available: ChannelInfo[] }>>(new Map())
 
-  // Holds references to messages per server. This should be actually per `server:channel`
-  const serverMessages = reactive<Map<number, Map<string, Message[]>>>(new Map())
-  const serverChannel = ref<IrcChannel>()
+  // Holds references to messages per server where the id is `serverId:channelId`
+  const serverMessages = ref<Map<string, Message[]>>(new Map())
 
   let controller: ServerList = {} as ServerList
+
+  /**
+   * Initializes empty server datasets and fetches available (unjoined channels)
+   */
+  function initializeServer(server: Server, handler: IrcConnection) {
+    serverState.value.set(server.id, server)
+    serverHandlers.value.set(server.id, handler)
+    serverChannels.value.set(server.id, { joined: [], available: [] })
+
+    // TODO: auto initialization should check server state, if user is
+    // authenticated with the server, otherwise it might cause trouble when
+    // fetching channels. Just add a check for it here
+    void handler.channel_list().then((channels) => {
+      const data = serverChannels.value.get(server.id)
+      if (!data) return
+      data.available = channels
+      serverChannels.value.set(server.id, data)
+    })
+  }
 
   /**
    * Every global store ships with an init function which is always called in
@@ -46,9 +68,7 @@ export const useIrcStore = defineStore("irc", () => {
       for (let i = 0; i < results.length; i++) {
         const result = results[i]
         if (result && result.status === "fulfilled") {
-          const key = result.value.id
-          serverState.value.set(key, result.value)
-          serverHandlers.value.set(key, controller.servers[i]!)
+          initializeServer(result.value, controller.servers[i]!)
         }
       }
     })
@@ -58,6 +78,9 @@ export const useIrcStore = defineStore("irc", () => {
 
   /**
    * Connects to the server address
+   *
+   * By default it does not connect to any channels. Instead it fetches all
+   * unjoined channels and users get to choose the first one they join in the UI.
    */
   async function serverConnect(url: string) {
     const handler = await controller.connect(url).catch((e) => {
@@ -65,25 +88,9 @@ export const useIrcStore = defineStore("irc", () => {
     })
 
     const state = await handler.state()
-    // console.log("Received server state", state.toJSON())
-    serverState.value.set(state.id, state)
-    serverHandlers.value.set(state.id, handler)
+    initializeServer(state, handler)
 
     await handler.sign_in_anonymous(user.me.displayName, user.me.accountName, user.me.accountName)
-    serverChannel.value = await handler.join_channel("#orbit/testing")
-    // console.log("Signed in")
-
-    // Set initial channel messages
-    const channelState = await serverChannel.value.state()
-
-    const existingServer = serverMessages.get(0) ?? new Map<string, Message[]>()
-    const existingChannel = existingServer.get(channelState.metadata.name) ?? []
-
-    existingChannel.push(...channelState.messages)
-    existingChannel.sort((a, b) => a.metadata.server_time - b.metadata.server_time)
-
-    existingServer.set(channelState.metadata.name, existingChannel)
-    serverMessages.set(state.id, existingServer)
 
     registerServerEvents(state.id, handler)
 
@@ -97,14 +104,11 @@ export const useIrcStore = defineStore("irc", () => {
     // Runs whenever some dataset on the server object changes
     handler.on_data((event) => {
       if (event instanceof ChannelMessage) {
-        const existingServer = serverMessages.get(key) ?? new Map()
-        const existingChannel = existingServer.get(event.channel) ?? []
-
-        existingChannel.push(event.message)
-        existingChannel.sort((a: Message, b: Message) => a.metadata.server_time - b.metadata.server_time)
-
-        existingServer.set(event.channel, existingChannel)
-        serverMessages.set(key, existingServer)
+        const messageKey = `${key}:${event.channel}`
+        const messages = serverMessages.value.get(messageKey) ?? []
+        messages.push(event.message)
+        messages.sort((a: Message, b: Message) => a.metadata.server_time - b.metadata.server_time)
+        serverMessages.value.set(messageKey, messages)
       } else if (event instanceof React) {
         // TODO
         console.log("Received reaction", event)
@@ -123,53 +127,73 @@ export const useIrcStore = defineStore("irc", () => {
     })
   }
 
-  // TODO: these should be cached not to create a separate computed value on each call
-  function getServerState(id: number) {
-    return computed(() => serverState.value.get(id))
+  function getServerState(serverId: number) {
+    return computed(() => serverState.value.get(serverId))
   }
 
-  function getChannelMessages(id: number, channel: string) {
-    return computed(() => serverMessages.get(id)?.get(channel))
+  function getChannelMessages(serverId: number, channelId: string) {
+    const messageKey = `${serverId}:${channelId}`
+    return computed(() => serverMessages.value.get(messageKey))
   }
 
-  async function requestScrollback(id: number, channel: string) {
+  function getServerChannels(serverId: number) {
+    return computed(() => serverChannels.value.get(serverId))
+  }
+
+  function getServerChannel(serverId: number, channelId: string) {
+    return computed(() => serverChannels.value.get(serverId)?.joined.find((channel) => channel.data.metadata.name === channelId))
+  }
+
+  async function requestScrollback(serverId: number, channelId: string) {
+    const messageId = `${serverId}:${channelId}`
+
     try {
-      const oldestId = serverMessages.get(id)?.get(channel)?.at(0)?.metadata.msgid
+      const oldestId = serverMessages.value.get(messageId)?.[0].metadata.msgid
+      if (!oldestId) return
 
-      if (!oldestId) {
-        return
-      }
+      const history = await serverHandlers.value.get(serverId)?.history_before(channelId, oldestId)
+      if (!history) return
 
-      const history = await serverHandlers.value.get(id)?.history_before(channel, oldestId)
+      const messages = serverMessages.value.get(messageId)
+      if (!messages) return
 
-      if (!history) {
-        return
-      }
-
-      const existingServer = serverMessages.get(id) ?? new Map<string, Message[]>()
-      const existingChannel = existingServer.get(history.channel) ?? []
-
-      existingChannel.push(...history.messages)
-      existingChannel.sort((a, b) => a.metadata.server_time - b.metadata.server_time)
-
-      existingServer.set(history.channel, existingChannel)
-      serverMessages.set(id, existingServer)
+      messages.push(...history.messages)
+      messages.sort((a, b) => a.metadata.server_time - b.metadata.server_time)
+      serverMessages.value.set(messageId, messages)
     } catch (e: unknown) {
       const error = e as OrbitError
       console.error(JSON.parse(error.toString()))
     }
   }
 
+  /**
+   * Joins a channel in an existing server
+   */
+  async function channelJoin(serverId: number, channelId: string) {
+    const serverHandler = serverHandlers.value.get(serverId)
+    const channels = serverChannels.value.get(serverId)
+    if (!serverHandler || !channels) return
+
+    const handler = await serverHandler.join_channel(channelId)
+    const data = await handler.state()
+    channels.joined.push({ data, handler })
+
+    return { data, handler }
+  }
+
   return {
     init,
     serverConnect,
+    channelJoin,
     initialized,
     controller,
     serverData: serverState,
     serverControllers: serverHandlers,
     getServerState,
     getChannelMessages,
+    getServerChannels,
+    getServerChannel,
     requestScrollback,
-    serverChannel,
+    serverChannels,
   }
 })

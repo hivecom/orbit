@@ -1,8 +1,9 @@
 import { useUrlSearchParams } from "@vueuse/core"
 import { computed, readonly, ref, unref, watch } from "vue"
-import { IRC_UNKNOWN, useIrcStore } from "../stores/irc"
+import { useIrcStore } from "../stores/irc"
+import { IRC_UNKNOWN_CHANNEL } from "platform/src/constants"
 
-type WindowLocation = "f" | "l" | "r" | "lt" | "lb" | "rt" | "rb"
+export type WindowLocation = "f" | "l" | "r" | "lt" | "lb" | "rt" | "rb"
 
 type WindowChatURLState = `c:${string}:${string}`
 type WindowVoiceURLState = `v:${string}`
@@ -48,7 +49,7 @@ export function getDefaultState(): WindowState {
       f: {
         type: "chat",
         serverId: firstServer.id,
-        channelId: IRC_UNKNOWN,
+        channelId: IRC_UNKNOWN_CHANNEL,
       },
     }
   }
