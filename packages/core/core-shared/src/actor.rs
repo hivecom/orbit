@@ -1,5 +1,3 @@
-#[cfg(not(feature = "web"))]
-use std::pin::pin;
 use std::{fmt, time::Duration};
 
 use futures::{FutureExt, future::FusedFuture};
@@ -280,7 +278,7 @@ impl<C: IrcConnection> IrcActor<C> {
             #[cfg(feature = "web")]
             let timeout = gloo_timers::future::TimeoutFuture::new(1000).fuse();
             #[cfg(not(feature = "web"))]
-            let timeout = pin!(tokio::time::sleep(Duration::from_secs(1)).fuse());
+            let timeout = Box::pin(tokio::time::sleep(Duration::from_secs(1)).fuse());
 
             timeout
         }
