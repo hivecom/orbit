@@ -74,7 +74,7 @@ export const useIrcStore = defineStore("irc", () => {
     console.log("Signed in")
 
     // Set initial channel messages
-    const channelState = await serverChannel.value.state()
+    const channelState = (await serverChannel.value.state())!
 
     const existingServer = serverMessages.get(state.id) ?? new Map<string, Message[]>()
     const existingChannel = existingServer.get(channelState.metadata.name) ?? []
