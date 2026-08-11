@@ -5,7 +5,7 @@ use core_shared::{
     SendCommand,
     actor::{self, ActorCommand, ActorMessage, CommandResponse, IrcActor},
     state::{
-        self, Capabilities, ChannelMetadata, ChannelUser, MessageMetadata, MessageReference, React,
+        self, Capabilities, ChannelMetadata, ChannelUser, MessageMetadata, MessageReference,
         ServerMetadata, SignedIn, User,
     },
 };
@@ -137,7 +137,7 @@ impl IrcConnection {
             .await
             .context("Failed to send ActorMessage")?;
 
-        let resp = rx.await.context("Failed to await ActorMessage")?;
+        let resp = rx.await.context("Failed to await actor state message")?;
         let CommandResponse::GetState(server) = resp else {
             unreachable!("expected state, got: {:?}", resp);
         };
@@ -253,7 +253,7 @@ impl IrcConnection {
             .await
             .context("Failed to send ActorMessage")?;
 
-        let resp = rx.await.context("Failed to await ActorMessage")?;
+        let resp = rx.await.context("Failed to await actor sign in message")?;
         let CommandResponse::SignIn(result) = resp else {
             unreachable!("expected sign in, got: {:?}", resp);
         };
@@ -281,7 +281,7 @@ impl IrcConnection {
             .await
             .context("Failed to send ActorMessage")?;
 
-        let resp = rx.await.context("Failed to await ActorMessage")?;
+        let resp = rx.await.context("Failed to await actor sign in message")?;
 
         let CommandResponse::SignIn(result) = resp else {
             unreachable!("expected sign in, got: {:?}", resp);
@@ -305,7 +305,7 @@ impl IrcConnection {
             .await
             .context("Failed to send ActorMessage")?;
 
-        let resp = rx.await.context("Failed to await ActorMessage")?;
+        let resp = rx.await.context("Failed to await actor join message")?;
         let CommandResponse::Join(name) = resp else {
             unreachable!("expected join, got: {:?}", resp);
         };
@@ -314,6 +314,32 @@ impl IrcConnection {
             name,
             address: self.address.clone(),
         })
+    }
+
+    #[wasm_bindgen]
+    pub async fn history_before(
+        &mut self,
+        channel: String,
+        before_msgid: String,
+    ) -> Result<History, OrbitError> {
+        let (tx, rx) = oneshot::channel();
+        self.address
+            .send(ActorMessage {
+                command: ActorCommand::RequestHistory {
+                    channel,
+                    before_msgid,
+                },
+                reply_tx: Some(tx),
+            })
+            .await
+            .context("Failed to send ActorMessage")?;
+
+        let resp = rx.await.context("Failed to await actor history message")?;
+        let CommandResponse::History(history) = resp else {
+            unreachable!("expected history, got: {:?}", resp);
+        };
+
+        Ok(history.into())
     }
 }
 
@@ -325,6 +351,25 @@ pub struct IrcChannel {
 
 #[wasm_bindgen]
 impl IrcChannel {
+    #[wasm_bindgen]
+    pub async fn state(&mut self) -> Result<Option<Channel>, OrbitError> {
+        let (tx, rx) = oneshot::channel();
+        self.address
+            .send(ActorMessage {
+                command: ActorCommand::GetChannelState(self.name.clone()),
+                reply_tx: Some(tx),
+            })
+            .await
+            .context("Failed to send ActorMessage")?;
+
+        let resp = rx.await.context("Failed to await actor state message")?;
+        let CommandResponse::GetChannelState(channel) = resp else {
+            unreachable!("expected state, got: {:?}", resp);
+        };
+
+        Ok((*channel).map(Into::into))
+    }
+
     #[wasm_bindgen]
     pub async fn send_message(&mut self, text: String) -> Result<Message, OrbitError> {
         let (tx, rx) = oneshot::channel();
@@ -339,9 +384,9 @@ impl IrcChannel {
             .await
             .context("Failed to send ActorMessage")?;
 
-        let resp = rx.await.context("Failed to await ActorMessage")?;
+        let resp = rx.await.context("Failed to await actor message")?;
         let CommandResponse::Privmsg(message) = resp else {
-            unreachable!("expected join, got: {:?}", resp);
+            unreachable!("expected privmsg, got: {:?}", resp);
         };
 
         Ok((*message).into())
@@ -490,7 +535,17 @@ impl From<state::ServerEvent> for ServerEvent {
                 channel,
                 message: message.into(),
             }),
-            state::ServerEvent::React(r) => Self::React(r),
+            state::ServerEvent::React {
+                target_message,
+                user,
+                text,
+                is_unreact,
+            } => Self::React(React {
+                target_message,
+                user,
+                text,
+                is_unreact,
+            }),
         }
     }
 }
@@ -592,6 +647,31 @@ impl From<anyhow::Error> for OrbitError {
         Self {
             kind: OrbitErrorKind::Unknown,
             description: error.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Tsify)]
+#[wasm_bindgen(getter_with_clone, inspectable)]
+pub struct React {
+    pub target_message: String,
+    pub user: String,
+    pub text: String,
+    pub is_unreact: bool,
+}
+
+#[derive(Debug, Clone, Tsify)]
+#[wasm_bindgen(getter_with_clone, inspectable)]
+pub struct History {
+    pub channel: String,
+    pub messages: Vec<Message>,
+}
+
+impl From<state::History> for History {
+    fn from(history: state::History) -> Self {
+        Self {
+            channel: history.channel,
+            messages: history.messages.into_iter().map(Into::into).collect(),
         }
     }
 }
