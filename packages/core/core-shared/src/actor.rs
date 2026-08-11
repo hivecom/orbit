@@ -232,7 +232,7 @@ pub struct IrcActor<C: IrcConnection> {
     disconnect_handlers: Vec<UnboundedSender<String>>,
 
     current_batches: Vec<CurrentBatch>,
-    requested_history_batches: Vec<RequestedHistory>,
+    requested_history_batches: Vec<(RequestedHistory, Instant)>,
     sasl_state: SaslState,
     rng: SmallRng,
 }
@@ -314,6 +314,13 @@ impl<C: IrcConnection> IrcActor<C> {
                 _ = timeout => {
                     self.response_channels.check_timeouts();
 
+
+                    assert!(
+                        self.requested_history_batches
+                            .iter()
+                            .all(|(_, creation)| creation.elapsed() < Duration::from_secs(5))
+                    );
+
                     timeout = create_timeout();
                 }
             }
@@ -388,10 +395,13 @@ impl<C: IrcConnection> IrcActor<C> {
                             None
                         };
 
-                        self.requested_history_batches.push(RequestedHistory {
-                            channel: channel_name.clone(),
-                            label: label.clone(),
-                        });
+                        self.requested_history_batches.push((
+                            RequestedHistory {
+                                channel: channel_name.clone(),
+                                label: label.clone(),
+                            },
+                            Instant::now(),
+                        ));
                         self.history_latest(channel_name.clone(), None, 5, label)
                             .await
                             .context("Failed to request latest history")?;
@@ -582,9 +592,9 @@ impl<C: IrcConnection> IrcActor<C> {
                             let idx = self
                                 .requested_history_batches
                                 .iter()
-                                .position(|b| b.label == tags.label)
+                                .position(|b| b.0.label == tags.label)
                                 .expect("Chat history was requested");
-                            let channel = self.requested_history_batches.remove(idx).channel;
+                            let channel = self.requested_history_batches.remove(idx).0.channel;
 
                             self.current_batches.push(CurrentBatch {
                                 id: id.to_string(),
@@ -1123,10 +1133,13 @@ impl<C: IrcConnection> IrcActor<C> {
                     None
                 };
 
-                self.requested_history_batches.push(RequestedHistory {
-                    channel: channel.clone(),
-                    label: label.clone(),
-                });
+                self.requested_history_batches.push((
+                    RequestedHistory {
+                        channel: channel.clone(),
+                        label: label.clone(),
+                    },
+                    Instant::now(),
+                ));
                 self.history_before(channel, format!("msgid={before_msgid}"), 5, label)
                     .await
                     .context("Failed to send history before")?;
