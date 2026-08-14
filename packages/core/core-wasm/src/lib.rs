@@ -3,7 +3,8 @@ use std::{fmt, str::FromStr};
 use anyhow::{Context, bail};
 use core_shared::{
     SendCommand,
-    actor::{self, ActorCommand, ActorMessage, CommandResponse, IrcActor},
+    actor::{self, ActorCommand, ActorMessage, IrcActor},
+    response_channels::CommandResponse,
     state::{
         self, Capabilities, ChannelMetadata, ChannelUser, MessageMetadata, MessageReference,
         ServerMetadata, SignedIn, User,
