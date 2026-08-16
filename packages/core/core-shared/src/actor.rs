@@ -182,7 +182,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
 
     #[tracing::instrument(skip(self))]
     pub async fn run(mut self) {
-        fn create_timeout() -> impl FusedFuture {
+        fn create_timeout() -> impl FusedFuture<Output = impl Send> {
             #[cfg(feature = "web")]
             let timeout = gloo_timers::future::TimeoutFuture::new(1000).fuse();
             #[cfg(not(feature = "web"))]
