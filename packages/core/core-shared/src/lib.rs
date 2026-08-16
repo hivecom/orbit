@@ -1,4 +1,5 @@
 pub mod actor;
+pub mod database;
 mod handlers;
 pub mod response_channels;
 mod send_command;

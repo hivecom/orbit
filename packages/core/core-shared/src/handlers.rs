@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 #[cfg(not(feature = "web"))]
 use std::time::Instant;
 #[cfg(feature = "web")]
@@ -11,6 +12,7 @@ use crate::{
         ActorCommand, ActorMessage, BatchData, CurrentBatch, IrcActor, IrcConnection,
         RequestedHistory, SaslState,
     },
+    database::Database,
     response_channels::{CommandKey, CommandResponse, generate_label},
     state::{
         Channel, ChannelRole, ChannelUser, History, Message, MessageMetadata, MessageReference,
@@ -20,10 +22,9 @@ use crate::{
 use anyhow::{Context, anyhow};
 use base64::prelude::*;
 use irc_proto::{BatchSubCommand, CapSubCommand, Command::*, Message as IrcMessage, Response};
-use ordermap::OrderMap;
 use tracing::{debug, error, warn};
 
-impl<C: IrcConnection> IrcActor<C> {
+impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
     #[tracing::instrument(err, skip(self))]
     pub(crate) async fn handle_incoming(
         &mut self,
@@ -49,6 +50,7 @@ impl<C: IrcConnection> IrcActor<C> {
             BATCH(ref reference, ref typ, ref param) => {
                 self.handle_batch(&message, reference, typ, param).await?
             }
+
             ChannelMODE(ref channel_name, ref mode) => {
                 let target = message.response_target().unwrap();
                 let source = message.source_nickname().unwrap();
@@ -83,7 +85,7 @@ impl<C: IrcConnection> IrcActor<C> {
     pub(crate) async fn handle_part(
         &mut self,
         message: &IrcMessage,
-        channel_name: &str,
+        target: &str,
         comment: &Option<String>,
     ) -> Result<(), OrbitError> {
         let mut tags = Tags::default();
@@ -103,19 +105,23 @@ impl<C: IrcConnection> IrcActor<C> {
         };
 
         if self
-            .push_batch(channel_name.to_string(), state_message.clone())
+            .push_batch(target.to_string(), state_message.clone())
             .await
         {
             return Ok(());
         }
 
+        self.database
+            .insert_message(target, state_message.clone())
+            .await?;
+
         self.on_event(ServerEvent::Privmsg {
-            channel: channel_name.to_string(),
+            channel: target.to_string(),
             message: state_message,
         })
         .await?;
 
-        let channel = self.channel_mut(channel_name.to_string()).await;
+        let channel = self.channel_mut(target.to_string()).await;
 
         channel.users.retain(|u| u.nickname != source);
 
@@ -151,16 +157,23 @@ impl<C: IrcConnection> IrcActor<C> {
             }
         }
 
+        self.state.users.remove(source);
+        for channel in self.state.channels.values_mut() {
+            let before = channel.users.len();
+            channel.users.retain(|u| u.nickname != source);
+
+            if before > channel.users.len() {
+                self.database
+                    .insert_message(&channel.metadata.name, state_message.clone())
+                    .await?;
+            }
+        }
+
         self.on_event(ServerEvent::Privmsg {
             channel: String::new(),
             message: state_message,
         })
         .await?;
-
-        self.state.users.remove(source);
-        for channel in self.state.channels.values_mut() {
-            channel.users.retain(|u| u.nickname != source);
-        }
 
         Ok(())
     }
@@ -264,7 +277,7 @@ impl<C: IrcConnection> IrcActor<C> {
     pub(crate) async fn handle_join(
         &mut self,
         message: &IrcMessage,
-        channel_name: &str,
+        target: &str,
     ) -> Result<(), OrbitError> {
         let source = message.source_nickname().unwrap();
 
@@ -288,23 +301,23 @@ impl<C: IrcConnection> IrcActor<C> {
         };
 
         if self
-            .push_batch(channel_name.to_string(), state_message.clone())
+            .push_batch(target.to_string(), state_message.clone())
             .await
         {
             return Ok(());
         }
 
         if source == self.state.me.as_ref().unwrap().nickname {
-            let channel = Channel::new(channel_name.to_string());
+            let channel = Channel::new(target.to_string());
             self.state
                 .channels
-                .insert(channel_name.to_string(), channel.clone());
+                .insert(target.to_string(), channel.clone());
 
             if !self.state.capabilities.history.enabled {
                 self.response_channels
                     .reply(
-                        &CommandKey::Join(channel_name.to_string()),
-                        CommandResponse::Join(channel_name.to_string()),
+                        &CommandKey::Join(target.to_string()),
+                        CommandResponse::Join(target.to_string()),
                     )
                     .map_err(|e| anyhow!("Failed to reply to JOIN command {e:?}"))?;
             }
@@ -320,17 +333,17 @@ impl<C: IrcConnection> IrcActor<C> {
 
                 self.requested_history_batches.push((
                     RequestedHistory {
-                        channel: channel_name.to_string(),
+                        target: target.to_string(),
                         label: label.clone(),
                     },
                     Instant::now(),
                 ));
-                self.history_latest(channel_name.to_string(), None, 5, label)
+                self.history_latest(target.to_string(), None, 5, label)
                     .await
                     .context("Failed to request latest history")?;
             }
         } else {
-            let channel = self.channel_mut(channel_name.to_string()).await;
+            let channel = self.channel_mut(target.to_string()).await;
 
             channel.users.push(ChannelUser {
                 nickname: source.to_string(),
@@ -338,8 +351,12 @@ impl<C: IrcConnection> IrcActor<C> {
             });
         }
 
+        self.database
+            .insert_message(target, state_message.clone())
+            .await?;
+
         self.on_event(ServerEvent::Privmsg {
-            channel: channel_name.to_string(),
+            channel: target.to_string(),
             message: state_message,
         })
         .await?;
@@ -379,22 +396,8 @@ impl<C: IrcConnection> IrcActor<C> {
         }
 
         let source = message.source_nickname().unwrap();
-
         let msgid = tags.msgid_with_fallback(&["PRIVMSG", source, target, text]);
-
-        let reply = tags
-            .reply
-            .as_ref()
-            .map(|r| {
-                self.state
-                    .channels
-                    .get(target)
-                    .and_then(|c| c.messages.get(r))
-            })
-            .map(|m| MessageReference {
-                text: m.and_then(|m| m.text.clone().map(|t| t.content)),
-                username: m.map(|m| m.metadata.user.clone()),
-            });
+        let reply = self.reply_reference(&tags.reply).await?;
 
         let state_message = Message {
             metadata: MessageMetadata {
@@ -405,7 +408,7 @@ impl<C: IrcConnection> IrcActor<C> {
             },
             text: Some(TextMessage {
                 content: text.to_string(),
-                reactions: OrderMap::new(),
+                reactions: HashMap::new(),
                 reply,
                 redacted: false,
                 edited: false,
@@ -422,8 +425,9 @@ impl<C: IrcConnection> IrcActor<C> {
             user.username = Some(username);
         }
 
-        let channel = self.channel_mut(target.clone()).await;
-        channel.messages.insert(msgid, state_message.clone());
+        self.database
+            .insert_message(target, state_message.clone())
+            .await?;
 
         if source == self.state.me.as_ref().unwrap().nickname
             && let Err(e) = self.response_channels.reply(
@@ -446,6 +450,24 @@ impl<C: IrcConnection> IrcActor<C> {
         Ok(())
     }
 
+    async fn reply_reference(
+        &mut self,
+        reply: &Option<String>,
+    ) -> Result<Option<MessageReference>, OrbitError> {
+        if let Some(r) = reply {
+            let rmsg = self.database.message(r).await?.map(|(_, m)| m);
+
+            Ok(Some(MessageReference {
+                text: rmsg
+                    .as_ref()
+                    .and_then(|m| m.text.clone().map(|t| t.content)),
+                username: rmsg.map(|m| m.metadata.user),
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
     pub(crate) async fn handle_batch(
         &mut self,
         message: &IrcMessage,
@@ -465,7 +487,7 @@ impl<C: IrcConnection> IrcActor<C> {
                         .iter()
                         .position(|b| b.0.label == tags.label)
                         .expect("Chat history was requested");
-                    let channel = self.requested_history_batches.remove(idx).0.channel;
+                    let channel = self.requested_history_batches.remove(idx).0.target;
 
                     self.current_batches.push(CurrentBatch {
                         id: id.to_string(),
@@ -481,19 +503,7 @@ impl<C: IrcConnection> IrcActor<C> {
                     let target = message.response_target().unwrap();
                     let msgid = tags.msgid_with_fallback(&["MULTILINE", source, target]);
 
-                    let reply = tags
-                        .reply
-                        .as_ref()
-                        .map(|r| {
-                            self.state
-                                .channels
-                                .get(target)
-                                .and_then(|c| c.messages.get(r))
-                        })
-                        .map(|m| MessageReference {
-                            text: m.and_then(|m| m.text.clone().map(|t| t.content)),
-                            username: m.map(|m| m.metadata.user.clone()),
-                        });
+                    let reply = self.reply_reference(&tags.reply).await?;
 
                     self.current_batches.push(CurrentBatch {
                         id: id.to_string(),
@@ -539,11 +549,10 @@ impl<C: IrcConnection> IrcActor<C> {
                         channel: channel_name,
                         messages,
                     } => {
-                        let channel = self.channel_mut(channel_name.clone()).await;
                         for message in &messages {
-                            channel
-                                .messages
-                                .insert(message.metadata.msgid.clone(), message.clone());
+                            self.database
+                                .insert_message(&channel_name, message.clone())
+                                .await?;
                         }
 
                         let history = History {
@@ -587,10 +596,9 @@ impl<C: IrcConnection> IrcActor<C> {
                             user.username = Some(username);
                         }
 
-                        let channel = self.channel_mut(target.to_string()).await;
-                        channel
-                            .messages
-                            .insert(state_message.metadata.msgid.clone(), state_message.clone());
+                        self.database
+                            .insert_message(target.as_str(), state_message.clone())
+                            .await?;
 
                         if source == self.state.me.as_ref().unwrap().nickname
                             && let Err(e) = self.response_channels.reply(
@@ -632,33 +640,22 @@ impl<C: IrcConnection> IrcActor<C> {
         if let Some(react) = tags.react.or(tags.unreact)
             && let Some(reply) = tags.reply
         {
-            let channel = self.channel_mut(target.clone()).await;
-
-            let nickname = message.source_nickname().unwrap().to_string();
-            if let Some(message) = channel.messages.get_mut(&reply) {
-                let reactors = message
-                    .text
-                    .as_mut()
-                    .unwrap()
-                    .reactions
-                    .entry(react.clone())
-                    .or_insert_with(Vec::new);
-
-                if is_unreact {
-                    reactors.retain(|v| *v != nickname);
-                } else {
-                    reactors.push(nickname.clone());
-                }
-
-                // TODO: should it be sent if the message wasn't found?
-                self.on_event(ServerEvent::React {
-                    target_message: reply,
-                    user: nickname,
-                    text: react,
-                    is_unreact,
-                })
-                .await?;
+            let reactor = message.source_nickname().unwrap().to_string();
+            if is_unreact {
+                self.database
+                    .remove_reaction(&reply, &react, &reactor)
+                    .await?;
+            } else {
+                self.database.add_reaction(&reply, &react, &reactor).await?;
             }
+
+            self.on_event(ServerEvent::React {
+                target_message: reply,
+                user: reactor,
+                text: react,
+                is_unreact,
+            })
+            .await?;
         }
         Ok(())
     }
@@ -799,18 +796,31 @@ impl<C: IrcConnection> IrcActor<C> {
     #[tracing::instrument(err, skip(self))]
     pub(crate) async fn handle_command(&mut self, cmd: ActorMessage) -> Result<(), OrbitError> {
         match cmd.command {
-            ActorCommand::GetState => cmd
-                .reply_tx
-                .unwrap()
-                .send(CommandResponse::GetState(Box::new(self.state.clone())))
-                .unwrap(),
-            ActorCommand::GetChannelState(channel_name) => cmd
-                .reply_tx
-                .unwrap()
-                .send(CommandResponse::GetChannelState(Box::new(
-                    self.state.channels.get(&channel_name).cloned(),
-                )))
-                .unwrap(),
+            ActorCommand::GetState => {
+                let mut state = self.state.clone();
+                for (name, channel) in &mut state.channels {
+                    channel.messages = self.database.messages(name).await?;
+                }
+
+                cmd.reply_tx
+                    .unwrap()
+                    .send(CommandResponse::GetState(Box::new(state)))
+                    .unwrap();
+            }
+            ActorCommand::GetChannelState(channel_name) => {
+                let Some(mut channel) = self.state.channels.get(&channel_name).cloned() else {
+                    cmd.reply_tx
+                        .unwrap()
+                        .send(CommandResponse::GetChannelState(Box::new(None)))
+                        .unwrap();
+                    return Ok(());
+                };
+                channel.messages = self.database.messages(&channel_name).await?;
+                cmd.reply_tx
+                    .unwrap()
+                    .send(CommandResponse::GetChannelState(Box::new(Some(channel))))
+                    .unwrap();
+            }
             ActorCommand::SignIn {
                 nick,
                 user,
@@ -872,7 +882,7 @@ impl<C: IrcConnection> IrcActor<C> {
 
                 self.requested_history_batches.push((
                     RequestedHistory {
-                        channel: channel.clone(),
+                        target: channel.clone(),
                         label: label.clone(),
                     },
                     Instant::now(),

@@ -53,6 +53,12 @@ macro_rules! dbg {
 use tracing_subscriber::prelude::*;
 use tracing_subscriber_wasm::MakeConsoleWriter;
 
+use crate::database::IndexedDb;
+
+mod database;
+
+const DATABASE_NAME: &str = "obit-core";
+
 fn init_tracing() {
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_writer(MakeConsoleWriter::default())
@@ -119,7 +125,8 @@ pub struct IrcConnection {
 impl IrcConnection {
     async fn connect(id: i32, url: String) -> Result<Self, OrbitError> {
         let connection = WsConnection::new(url)?;
-        let address = IrcActor::start(id, connection, |actor| {
+        let database = IndexedDb::new(DATABASE_NAME).await?;
+        let address = IrcActor::start(id, connection, database, |actor| {
             spawn_local(async { actor.run().await })
         })
         .await?;
@@ -505,7 +512,7 @@ impl From<state::Channel> for Channel {
     fn from(channel: state::Channel) -> Self {
         Self {
             metadata: channel.metadata,
-            messages: channel.messages.into_values().map(Into::into).collect(),
+            messages: channel.messages.into_iter().map(Into::into).collect(),
             users: channel.users,
         }
     }

@@ -11,6 +11,7 @@ use web_time::Instant;
 use crate::dbg;
 use crate::{
     SendCommand,
+    database::Database,
     response_channels::{CommandKey, CommandResponse, ResponseChannels},
     state::{Channel, Message, OrbitError, Server, ServerEvent, User},
 };
@@ -79,7 +80,7 @@ pub trait IrcConnection: fmt::Debug {
 }
 
 pub(crate) struct RequestedHistory {
-    pub channel: String,
+    pub target: String,
     pub label: Option<String>,
 }
 
@@ -121,11 +122,12 @@ pub(crate) enum SaslState {
     },
 }
 
-pub struct IrcActor<C: IrcConnection> {
+pub struct IrcActor<C: IrcConnection, DB: Database> {
     pub(crate) cmd_rx: mpsc::UnboundedReceiver<ActorMessage>,
     pub(crate) incoming: C::Incoming,
     pub(crate) outgoing: C::Outgoing,
     pub(crate) state: Server,
+    pub(crate) database: DB,
     pub(crate) response_channels: ResponseChannels,
     pub(crate) event_handlers: Vec<UnboundedSender<ServerEvent>>,
     pub(crate) error_handlers: Vec<UnboundedSender<OrbitError>>,
@@ -137,12 +139,13 @@ pub struct IrcActor<C: IrcConnection> {
     pub(crate) rng: SmallRng,
 }
 
-impl<C: IrcConnection> IrcActor<C> {
+impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
     #[tracing::instrument]
     pub async fn start(
         id: i32,
         connection: C,
-        spawn: fn(IrcActor<C>) -> (),
+        database: DB,
+        spawn: fn(IrcActor<C, DB>) -> (),
     ) -> Result<UnboundedSender<ActorMessage>, OrbitError> {
         let address = connection.address().to_string();
         let (incoming, outgoing) = connection.in_out();
@@ -153,6 +156,7 @@ impl<C: IrcConnection> IrcActor<C> {
             incoming,
             outgoing,
             state: Server::new(id, address),
+            database,
             response_channels: ResponseChannels::default(),
             event_handlers: Default::default(),
             error_handlers: Default::default(),
@@ -368,7 +372,7 @@ impl<C: IrcConnection> IrcActor<C> {
     }
 }
 
-impl<C: IrcConnection> SendCommand for IrcActor<C> {
+impl<C: IrcConnection, DB: Database> SendCommand for IrcActor<C, DB> {
     type Error = <C::Outgoing as SendCommand>::Error;
     async fn message(&mut self, command: IrcMessage) -> Result<(), Self::Error> {
         self.outgoing.message(command).await

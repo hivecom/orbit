@@ -4,7 +4,7 @@ use std::str::FromStr;
 #[cfg(feature = "web")]
 use crate::dbg;
 use irc_proto::message::Tag;
-use ordermap::OrderMap;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use time::OffsetDateTime;
 use time::format_description::well_known::Iso8601;
@@ -78,7 +78,7 @@ impl ServerMetadata {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Channel {
     pub metadata: ChannelMetadata,
-    pub messages: OrderMap<String, Message>,
+    pub messages: Vec<Message>,
     pub users: Vec<ChannelUser>,
 }
 
@@ -493,7 +493,7 @@ pub struct ChannelUser {
     pub role: ChannelRole,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     pub text: Option<TextMessage>,
     pub metadata: MessageMetadata,
@@ -507,7 +507,7 @@ impl PartialEq for Message {
 
 impl Eq for Message {}
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "web", wasm_bindgen)]
 pub enum MessageType {
     Privmsg,
@@ -518,17 +518,17 @@ pub enum MessageType {
     Quit,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TextMessage {
     pub content: String,
-    pub reactions: OrderMap<String, Vec<String>>,
+    pub reactions: HashMap<String, Vec<String>>,
     pub reply: Option<MessageReference>,
     pub redacted: bool,
     pub edited: bool,
     pub relayed_by: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "web", derive(Tsify))]
 #[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone, inspectable))]
 pub struct MessageMetadata {
@@ -546,7 +546,7 @@ impl PartialEq for MessageMetadata {
 
 impl Eq for MessageMetadata {}
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "web", derive(Tsify))]
 #[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone, inspectable))]
 pub struct MessageReference {
