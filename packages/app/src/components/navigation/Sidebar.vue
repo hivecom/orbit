@@ -76,12 +76,14 @@ const filteredServers = computed(() => serversRaw.value.filter((server) => searc
         </PopoutHover>
       </template>
 
-      <DropdownItem>
-        <template #icon>
-          <IconAddCircleLinear />
-        </template>
-        Connect
-      </DropdownItem>
+      <RouterLink to="/" class="w-100">
+        <DropdownItem>
+          <template #icon>
+            <IconAddCircleLinear />
+          </template>
+          Connect
+        </DropdownItem>
+      </RouterLink>
     </Flex>
 
     <template #footer>

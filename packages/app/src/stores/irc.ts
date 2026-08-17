@@ -33,15 +33,14 @@ export const useIrcStore = defineStore("irc", () => {
   /**
    * Initializes empty server datasets and fetches available (unjoined channels)
    */
-  function initializeServer(server: Server, handler: IrcConnection) {
+  async function initializeServer(server: Server, handler: IrcConnection) {
     serverState.value.set(server.id, server)
     serverHandlers.value.set(server.id, handler)
     serverChannels.value.set(server.id, { joined: [], available: [] })
 
-    // TODO: auto initialization should check server state, if user is
-    // authenticated with the server, otherwise it might cause trouble when
-    // fetching channels. Just add a check for it here
-    void handler.channel_list().then((channels) => {
+    await handler.sign_in_anonymous(user.me.displayName, user.me.accountName, user.me.accountName)
+
+    await handler.channel_list().then((channels) => {
       const data = serverChannels.value.get(server.id)
       if (!data) return
       data.available = channels
@@ -61,17 +60,12 @@ export const useIrcStore = defineStore("irc", () => {
 
     // Get server state and save their data & controllers
     await Promise.allSettled(
-      controller.servers.map((serv) => {
+      controller.servers.map(async (serv, index) => {
+        const server = await serv.state()
+        await initializeServer(server, controller.servers[index]!)
         return serv.state()
       }),
-    ).then((results) => {
-      for (let i = 0; i < results.length; i++) {
-        const result = results[i]
-        if (result && result.status === "fulfilled") {
-          initializeServer(result.value, controller.servers[i]!)
-        }
-      }
-    })
+    )
 
     initialized.value = true
   }
@@ -88,9 +82,7 @@ export const useIrcStore = defineStore("irc", () => {
     })
 
     const state = await handler.state()
-    initializeServer(state, handler)
-
-    await handler.sign_in_anonymous(user.me.displayName, user.me.accountName, user.me.accountName)
+    await initializeServer(state, handler)
 
     registerServerEvents(state.id, handler)
 
@@ -175,7 +167,8 @@ export const useIrcStore = defineStore("irc", () => {
     if (!serverHandler || !channels) return
 
     const handler = await serverHandler.join_channel(channelId)
-    const data = await handler.state()
+    // NOTE: We might wanna handle this better
+    const data = (await handler.state())!
     channels.joined.push({ data, handler })
 
     return { data, handler }

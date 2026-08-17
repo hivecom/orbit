@@ -1,7 +1,7 @@
 import { useUrlSearchParams } from "@vueuse/core"
 import { computed, readonly, ref, unref, watch } from "vue"
 import { useIrcStore } from "../stores/irc"
-import { IRC_UNKNOWN_CHANNEL } from "platform/src/constants"
+import { IRC_UNKNOWN_CHANNEL } from "./constants"
 
 export type WindowLocation = "f" | "l" | "r" | "lt" | "lb" | "rt" | "rb"
 

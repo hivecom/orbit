@@ -7,7 +7,7 @@ import { Button, DropdownItem, Flex, PopoutHover } from "@dolanske/vui"
 import { IconInfoCircleLinear } from "@iconify-prerendered/vue-solar"
 import { nextTick, ref, useTemplateRef } from "vue"
 import { useEventListener, useThrottleFn } from "@vueuse/core"
-import { IRC_UNKNOWN_CHANNEL } from "platform/src/constants.ts"
+import { IRC_UNKNOWN_CHANNEL } from "../../lib/constants.ts"
 
 // TODO: Figure out connecting to specific channels and showing the one that's open (and replacing url state)
 
@@ -24,7 +24,7 @@ const window = useWindowManager()
 const messages = irc.getChannelMessages(props.serverId, props.channelId)
 const state = irc.getServerState(props.serverId)
 const channels = irc.getServerChannels(props.serverId)
-const channel = irc.getServerChannel(props.serverId, props.channelId)
+// const channel = irc.getServerChannel(props.serverId, props.channelId)
 
 function sendMessage(message: string) {
   // TODO: must send to the channe
@@ -98,6 +98,10 @@ async function join(channelId: string) {
         <DropdownItem :disabled="loadingChannel" v-for="channel in channels?.available" :key="channel.name" @click="join(channel.name)">
           {{ channel.name }}
         </DropdownItem>
+
+        <pre>
+          {{ channels }}
+        </pre>
       </Flex>
     </div>
     <div class="o-table-wrap" v-else>
@@ -140,6 +144,10 @@ async function join(channelId: string) {
   .o-window-composer {
     position: sticky;
     bottom: 0;
+  }
+
+  .o-channel-list {
+    flex: 1;
   }
 
   .o-table-wrap {
