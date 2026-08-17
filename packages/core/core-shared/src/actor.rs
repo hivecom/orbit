@@ -215,6 +215,9 @@ impl CurrentBatch {
     fn is_chathistory(&self) -> bool {
         matches!(self.data, BatchData::History { .. })
     }
+    fn is_channellist(&self) -> bool {
+        matches!(self.data, BatchData::ChannelList { .. })
+    }
 }
 
 #[derive(Default, Clone)]
@@ -1078,7 +1081,7 @@ impl<C: IrcConnection> IrcActor<C> {
                     panic!("unexpected LIST format")
                 };
 
-                if let Some(batch) = self.current_batches.iter_mut().find(|b| b.is_chathistory())
+                if let Some(batch) = self.current_batches.iter_mut().find(|b| b.is_channellist())
                     && let BatchData::ChannelList { list, .. } = &mut batch.data
                 {
                     assert_eq!(Some(batch.id.as_str()), tags.batch.as_deref());
