@@ -103,7 +103,7 @@ pub(crate) enum BatchData {
     },
     Multiline {
         target: String,
-        message: Message,
+        message: Box<Message>,
     },
     ChannelList {
         list: Vec<ChannelInfo>,
