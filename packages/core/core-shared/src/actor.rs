@@ -206,7 +206,7 @@ enum BatchData {
     },
     Multiline {
         target: String,
-        message: Message,
+        message: Box<Message>,
     },
     Unhandled,
 }
@@ -644,7 +644,7 @@ impl<C: IrcConnection> IrcActor<C> {
                                 id: id.to_string(),
                                 data: BatchData::Multiline {
                                     target: String::new(),
-                                    message: Message {
+                                    message: Box::new(Message {
                                         metadata: MessageMetadata {
                                             msgid,
                                             message_type: MessageType::Privmsg,
@@ -659,7 +659,7 @@ impl<C: IrcConnection> IrcActor<C> {
                                             edited: false,
                                             relayed_by: tags.relayed_by,
                                         }),
-                                    },
+                                    }),
                                 },
                                 label: tags.label,
                             });
@@ -724,7 +724,7 @@ impl<C: IrcConnection> IrcActor<C> {
                                 let source = message.source_nickname().unwrap();
 
                                 if self
-                                    .push_batch(target.to_string(), state_message.clone())
+                                    .push_batch(target.to_string(), *state_message.clone())
                                     .await
                                 {
                                     return Ok(());
@@ -738,7 +738,7 @@ impl<C: IrcConnection> IrcActor<C> {
                                 let channel = self.channel_mut(target.to_string()).await;
                                 channel.messages.insert(
                                     state_message.metadata.msgid.clone(),
-                                    state_message.clone(),
+                                    *state_message.clone(),
                                 );
 
                                 if source == self.state.me.as_ref().unwrap().nickname
@@ -752,7 +752,7 @@ impl<C: IrcConnection> IrcActor<C> {
                                                 .content
                                                 .clone(),
                                         },
-                                        CommandResponse::Privmsg(Box::new(state_message.clone())),
+                                        CommandResponse::Privmsg(Box::new(*state_message.clone())),
                                     )
                                 {
                                     error!("Failed to reply to PRIVMSG command {e:?}");
@@ -760,7 +760,7 @@ impl<C: IrcConnection> IrcActor<C> {
 
                                 self.on_event(ServerEvent::Privmsg {
                                     channel: target.to_string(),
-                                    message: state_message,
+                                    message: *state_message,
                                 })
                                 .await?;
                             }
