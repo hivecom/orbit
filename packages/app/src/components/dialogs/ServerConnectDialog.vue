@@ -43,7 +43,7 @@ function submit() {
       router.push({ name: "RouteWindowManager" })
     } catch (e: unknown) {
       const error = e as OrbitError
-      console.log("Error connecting to a server\n", error.description)
+      console.log("Error connecting to a server\n", error)
       emit("error", e as string)
     }
 

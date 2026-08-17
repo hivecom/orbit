@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Button, Counter, Divider, Flex, Input, Kbd, Switch } from "@dolanske/vui"
 import { IconArrowLeftLinear } from "@iconify-prerendered/vue-solar"
-import { shortcutMeta, useConfigStore } from "../../stores/config"
+import { useConfigStore } from "../../stores/config"
 import { computed } from "vue"
 
 const config = useConfigStore()
@@ -50,13 +50,13 @@ const safeguardedWidth = computed({
     </section>
     <section class="settings-section">
       <h3>Shortcuts</h3>
-      <Flex v-for="(value, key) in config.keymap" expand x-between y-center>
+      <Flex v-for="value in config.keymap" expand x-between y-center>
         <div>
-          <span class="vui-label">{{ shortcutMeta[key].title }}</span>
-          <p class="vui-hint">{{ shortcutMeta[key].description }}</p>
+          <span class="vui-label">{{ value.title }}</span>
+          <p class="vui-hint">{{ value.description }}</p>
         </div>
         <Flex gap="xxs">
-          <Kbd v-for="key in value.split('+')" :key :keys="key" />
+          <Kbd v-for="key in value.keys.split('+')" :key :keys="key" />
         </Flex>
       </Flex>
     </section>

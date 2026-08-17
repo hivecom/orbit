@@ -8,7 +8,7 @@ import UsernameDialog from "../../components/dialogs/UsernameDialog.vue"
 import Stepper from "../../components/shared/Stepper.vue"
 import type { Server } from "core-wasm"
 import { serializeWindow } from "../../lib/windows.ts"
-import { IRC_UNKNOWN_CHANNEL } from "platform/src/constants.ts"
+import { IRC_UNKNOWN_CHANNEL } from "../../lib/constants.ts"
 
 const router = useRouter()
 const irc = useIrcStore()
