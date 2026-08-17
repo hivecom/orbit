@@ -371,7 +371,7 @@ pub struct IrcChannel {
 #[wasm_bindgen]
 impl IrcChannel {
     #[wasm_bindgen]
-    pub async fn state(&mut self) -> Result<Channel, OrbitError> {
+    pub async fn state(&mut self) -> Result<Option<Channel>, OrbitError> {
         let (tx, rx) = oneshot::channel();
         self.address
             .send(ActorMessage {
@@ -386,7 +386,7 @@ impl IrcChannel {
             unreachable!("expected state, got: {:?}", resp);
         };
 
-        Ok(channel.unwrap().into())
+        Ok((*channel).map(Into::into))
     }
 
     #[wasm_bindgen]
