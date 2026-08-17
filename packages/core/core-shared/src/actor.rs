@@ -115,6 +115,10 @@ impl CurrentBatch {
     pub fn is_chathistory(&self) -> bool {
         matches!(self.data, BatchData::History { .. })
     }
+
+    pub fn is_channellist(&self) -> bool {
+        matches!(self.data, BatchData::ChannelList { .. })
+    }
 }
 
 #[derive(Default, Clone)]

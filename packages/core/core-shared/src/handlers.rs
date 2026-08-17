@@ -857,7 +857,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                     panic!("unexpected LIST format")
                 };
 
-                if let Some(batch) = self.current_batches.iter_mut().last()
+                if let Some(batch) = self.current_batches.iter_mut().find(|b| b.is_channellist())
                     && let BatchData::ChannelList { list, .. } = &mut batch.data
                 {
                     list.push(ChannelInfo {
