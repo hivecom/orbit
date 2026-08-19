@@ -183,6 +183,7 @@ const params = useUrlSearchParams<{ [WIN_URL_KEY]?: string }>("history", { write
 const windows = ref<WindowState>({})
 const focusedWindow = ref<WindowAndLocation | null>(null)
 const isEmpty = computed(() => Object.values(windows.value).filter((item) => item && item.type !== "empty").length === 0)
+const initialized = ref(false)
 
 export function useWindowManager() {
   // Keep URL -> State in sync
@@ -341,8 +342,9 @@ export function useWindowManager() {
    * Called when app initializes, as default state requires pinia state
    */
   function init() {
+    if (initialized.value) return
     windows.value = loadInitialState()
-    console.log(windows.value)
+    initialized.value = true
   }
 
   return {
