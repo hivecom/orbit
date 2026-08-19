@@ -1,6 +1,6 @@
 import { defineStore } from "pinia"
 import { ChannelMessage, Message, React, type IrcConnection, type Server, type ServerList, OrbitError, IrcChannel, ChannelInfo, Channel } from "core-wasm"
-import { computed, ref, shallowRef } from "vue"
+import { ref, shallowRef } from "vue"
 import { useUserStore } from "./user"
 import { useAppStateStore } from "./app-state"
 
@@ -120,20 +120,20 @@ export const useIrcStore = defineStore("irc", () => {
   }
 
   function getServerState(serverId: number) {
-    return computed(() => serverState.value.get(serverId))
+    return serverState.value.get(serverId)
   }
 
   function getChannelMessages(serverId: number, channelId: string) {
     const messageKey = `${serverId}:${channelId}`
-    return computed(() => serverMessages.value.get(messageKey))
+    return serverMessages.value.get(messageKey)
   }
 
   function getServerChannels(serverId: number) {
-    return computed(() => serverChannels.value.get(serverId))
+    return serverChannels.value.get(serverId)
   }
 
   function getServerChannel(serverId: number, channelId: string) {
-    return computed(() => serverChannels.value.get(serverId)?.joined.find((channel) => channel.data.metadata.name === channelId))
+    return serverChannels.value.get(serverId)?.joined.find((channel) => channel.data.metadata.name === channelId)
   }
 
   async function requestScrollback(serverId: number, channelId: string) {
@@ -162,16 +162,27 @@ export const useIrcStore = defineStore("irc", () => {
    * Joins a channel in an existing server
    */
   async function channelJoin(serverId: number, channelId: string) {
-    const serverHandler = serverHandlers.value.get(serverId)
-    const channels = serverChannels.value.get(serverId)
-    if (!serverHandler || !channels) return
+    try {
+      const serverHandler = serverHandlers.value.get(serverId)
+      const channels = serverChannels.value.get(serverId)
+      if (!serverHandler || !channels) return
+      const handler = await serverHandler.join_channel(channelId)
+      const data = (await handler.state())!
 
-    const handler = await serverHandler.join_channel(channelId)
-    // NOTE: We might wanna handle this better
-    const data = (await handler.state())!
-    channels.joined.push({ data, handler })
+      // Add channel to joined, remove it from available
+      channels.joined.push({ data, handler })
+      channels.available = channels.available.filter((item) => item.name !== data.metadata.name)
 
-    return { data, handler }
+      // Upon joining, show backlog
+      serverMessages.value.set(`${serverId}:${channelId}`, data.messages)
+
+      serverChannels.value.set(serverId, channels)
+    } catch (e: unknown) {
+      const error = e as OrbitError
+      console.error(JSON.parse(error.toString()))
+    }
+
+    // return { data, handler }
   }
 
   return {
