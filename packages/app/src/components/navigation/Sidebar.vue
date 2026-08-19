@@ -10,10 +10,13 @@ import { useConfigStore } from "../../stores/config.ts"
 import { useIRCJoinChannel } from "../../composables/useIRCJoinChannel.ts"
 import { useUserStore } from "../../stores/user.ts"
 import { useWindowManager } from "../../lib/windows.ts"
+import { useRouter } from "vue-router"
 
 const irc = useIrcStore()
 const user = useUserStore()
 const config = useConfigStore()
+
+const router = useRouter()
 
 config.onShortcut("global:navigation-toggle", () => {
   mini.value = !mini.value
@@ -23,6 +26,7 @@ const mini = useStorage("orbit-sidebar-state", true)
 
 // Search through servers
 // TODO: mini-sidebar search
+// TODO: mini-sidebar server peak
 const search = ref("")
 const serversRaw = computed(() => Array.from(irc.serverData.values()))
 const filteredServers = computed(() => serversRaw.value.filter((server) => searchString([server.metadata.name, server.metadata.address], search.value)))
@@ -32,8 +36,10 @@ const { join, loading } = useIRCJoinChannel()
 const { replace, focusedWindow } = useWindowManager()
 
 // Replace active window with a channel we've already joined
-function openChannelWindow(serverId: number, channelId: string) {
+async function openChannelWindow(serverId: number, channelId: string) {
   // FIXME: `f` is not good - location always needs to be set
+  // TODO figure out - if we are not on /wm while replace or any API is called,
+  // should we automatically redirect there? where should that happen?
   replace(focusedWindow.value?.location ?? "f", {
     type: "chat",
     serverId,

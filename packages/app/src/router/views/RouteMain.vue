@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { Flex } from "@dolanske/vui"
 import ServerConnectDialog from "../../components/dialogs/ServerConnectDialog.vue"
-import { useIrcStore } from "../../stores/irc.ts"
-import { onBeforeMount, ref } from "vue"
+// import { useIrcStore } from "../../stores/irc.ts"
+import { ref } from "vue"
 import { useRouter } from "vue-router"
 import UsernameDialog from "../../components/dialogs/UsernameDialog.vue"
 import Stepper from "../../components/shared/Stepper.vue"
@@ -11,13 +11,13 @@ import { serializeWindow } from "../../lib/windows.ts"
 import { IRC_UNKNOWN_CHANNEL } from "../../lib/constants.ts"
 
 const router = useRouter()
-const irc = useIrcStore()
+// const irc = useIrcStore()
 
-onBeforeMount(() => {
-  if (irc.serverData.size > 0) {
-    router.replace({ name: "RouteWindowManager" })
-  }
-})
+// onBeforeMount(() => {
+//   if (irc.serverData.size > 0) {
+//     router.replace({ name: "RouteWindowManager" })
+//   }
+// })
 
 // First time open state sync
 const step = ref<"username" | "server">("username")
