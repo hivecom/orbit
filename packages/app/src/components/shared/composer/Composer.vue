@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { onMounted, useTemplateRef } from "vue"
 
-// TODO: replace with tip tap later
+interface Props {
+  placeholder?: string
+}
+
+const { placeholder = "Write a message..." } = defineProps<Props>()
 
 const emit = defineEmits<{
   send: [text: string]
@@ -29,7 +33,7 @@ onMounted(() => {
 
 <template>
   <form @submit.prevent="submit" class="o-composer">
-    <input type="text" v-model="message" placeholder="Write a message..." ref="inputRef" />
+    <input type="text" v-model="message" :placeholder ref="inputRef" />
   </form>
 </template>
 

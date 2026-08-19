@@ -1,30 +1,86 @@
 <script setup lang="ts">
 import { Button, Dropdown, DropdownItem } from "@dolanske/vui"
-import { useWindowManager } from "../../lib/windows"
+import { useWindowManager, type Window, type WindowLocation } from "../../lib/windows"
 import { IconHamburgerMenuLinear } from "@iconify-prerendered/vue-solar"
 import { useIrcStore } from "../../stores/irc"
-import { onBeforeMount } from "vue"
+import { EffectScope, effectScope, onBeforeMount, onScopeDispose, useTemplateRef, watch } from "vue"
 import { useRouter } from "vue-router"
 import WindowEmpty from "../../components/windows/WindowEmpty.vue"
 import WindowChat from "../../components/windows/WindowChat.vue"
+import { useFocusWithin, whenever } from "@vueuse/core"
 
-const { windows, split, close, swap } = useWindowManager()
+const { windows, split, close, swap, focusedWindow, init } = useWindowManager()
 
 const router = useRouter()
 const irc = useIrcStore()
 
+const windowRef = useTemplateRef("window")
+
 // Redirect back to main route (username / server setup) if no servers are available
 onBeforeMount(() => {
-  console.log("page mount", irc.serverData)
+  init()
+
   if (irc.serverData.size === 0) {
     router.replace({ path: "/" })
   }
 })
+
+function getSwapMessage(window: Window | undefined, location: WindowLocation) {
+  if (!window) return ""
+  switch (window.type) {
+    case "chat":
+    case "voice":
+      return `Swap with ${window.channelId}`
+    default:
+    case "empty":
+      return `Empty window ${location}`
+  }
+}
+
+// Every time windows update, we register focus checks to determine the
+// currently active window. Useful for when user wants to open a new window
+// without setting exactly
+let focusScope: EffectScope | undefined
+
+watch(
+  windowRef,
+  () => {
+    // Reset previous scope and insert new one
+    focusScope?.stop()
+    focusScope = effectScope()
+
+    focusScope.run(() => {
+      if (!windowRef.value) return
+
+      for (const window of windowRef.value) {
+        const { focused } = useFocusWithin(window)
+
+        whenever(focused, () => {
+          const location = window.dataset.location as WindowLocation
+          const windowObject = windows.value[location]
+
+          if (!windowObject) return
+
+          focusedWindow.value = {
+            ...windowObject,
+            location,
+          }
+        })
+      }
+    })
+  },
+  {
+    flush: "post",
+    immediate: true,
+  },
+)
+
+onScopeDispose(() => focusScope?.stop())
 </script>
 
 <template>
   <div class="o-wm">
-    <div v-for="(window, location) in windows" :class="[`wm-${location}`, `wm-${window?.type}`, 'wm-window']">
+    <div v-for="(window, location) in windows" :data-location="location" :class="[`wm-${location}`, `wm-${window?.type}`, 'wm-window']" ref="window">
       <div class="wm-window-actions">
         <Dropdown>
           <template #trigger="{ toggle }">
@@ -34,30 +90,19 @@ onBeforeMount(() => {
           </template>
 
           <DropdownItem @click="split(location, window)">Split</DropdownItem>
-          <DropdownItem @click="close(location)">Close</DropdownItem>
 
           <template v-for="(w, l) in windows" :key="w?.type">
             <DropdownItem v-if="l !== location" @click="swap(location, l)">
-              <!-- TODO: show actual chat title -->
-              Swap with {{ l }}
+              {{ getSwapMessage(w, l) }}
             </DropdownItem>
           </template>
+
+          <DropdownItem v-if="Object.keys(windows).length > 1" @click="close(location)">Close</DropdownItem>
         </Dropdown>
       </div>
 
       <WindowChat v-if="window?.type === 'chat'" v-bind="{ ...window, location }" />
       <WindowEmpty v-else-if="window?.type === 'empty'" />
-
-      <!-- <h1>{{ window?.type }} | {{ index }}</h1>
-      <p v-if="window && window.type !== 'empty'">
-        {{ window.type === "chat" ? `Server: ${window.serverId} | Channel: ${window.channelId}` : `Channel: ${window.channelId}` }}
-      </p>
-
-
-      <ButtonGroup :gap="2">
-        <Button @click="replace(location, { type: 'chat', serverId: Math.random().toFixed(2), channelId: Math.random().toFixed(2) })">Chat</Button>
-        <Button @click="replace(location, { type: 'voice', channelId: Math.random().toFixed(4) })">Voice</Button>
-      </ButtonGroup> -->
     </div>
   </div>
 </template>
@@ -72,7 +117,6 @@ onBeforeMount(() => {
   height: 100%;
   padding: var(--space-s);
 
-  /* Classes which children consume and automatically get positioned */
   .wm-f {
     grid-area: 1 / 1 / 3 / 3;
   }

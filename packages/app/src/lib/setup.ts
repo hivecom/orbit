@@ -41,8 +41,7 @@ export async function createOrbitApp(root: Component<any, any, any, any, any>, p
         useUserStore().init()
         useConfigStore().init()
 
-        const ircStore = useIrcStore(pinia)
-        await ircStore.init(controller)
+        await useIrcStore(pinia).init(controller)
       })
       .catch((e) => {
         const appState = useAppStateStore()

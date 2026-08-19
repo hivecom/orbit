@@ -1,35 +1,25 @@
 <script setup lang="ts">
 import { MessageType } from "core-wasm"
-import { useWindowManager, type WindowChat, type WindowLocation } from "../../lib/windows"
+import { type WindowAndLocation, type WindowChat } from "../../lib/windows"
 import { useIrcStore } from "../../stores/irc"
 import Composer from "../shared/composer/Composer.vue"
-import { Button, DropdownItem, Flex, PopoutHover } from "@dolanske/vui"
-import { IconInfoCircleLinear } from "@iconify-prerendered/vue-solar"
-import { nextTick, ref, useTemplateRef } from "vue"
+import { DropdownItem, Flex, Grid } from "@dolanske/vui"
+import { computed, nextTick, ref, useTemplateRef } from "vue"
 import { useEventListener, useThrottleFn } from "@vueuse/core"
 import { IRC_UNKNOWN_CHANNEL } from "../../lib/constants.ts"
+import { useIRCJoinChannel } from "../../composables/useIRCJoinChannel.ts"
 
-// TODO: Figure out connecting to specific channels and showing the one that's open (and replacing url state)
-
-interface Props extends WindowChat {
-  location: WindowLocation
-}
-
-const props = defineProps<Props>()
+const props = defineProps<WindowAndLocation<WindowChat>>()
 const irc = useIrcStore()
 
-const window = useWindowManager()
-
-// previous channel was `#orbit/testing`
-const messages = irc.getChannelMessages(props.serverId, props.channelId)
-const state = irc.getServerState(props.serverId)
-const channels = irc.getServerChannels(props.serverId)
-// const channel = irc.getServerChannel(props.serverId, props.channelId)
+const messages = computed(() => irc.getChannelMessages(props.serverId, props.channelId))
+const state = computed(() => irc.getServerState(props.serverId))
+const channels = computed(() => irc.getServerChannels(props.serverId))
+const channel = computed(() => irc.getServerChannel(props.serverId, props.channelId))
 
 function sendMessage(message: string) {
-  // TODO: must send to the channe
-  console.log(message)
-  // irc.serverChannel?.send_message(message)
+  if (!channel.value) return
+  channel.value.handler.send_message(message)
 }
 
 // Automatic message fetching on scroll
@@ -59,49 +49,25 @@ useEventListener(scrollContainer, "scroll", debouncedScrollCheck)
 
 // If user opens a window on a server where they haven't joined any channels, we
 // must give them a choice to join one
-const loadingChannel = ref(false)
-
-async function join(channelId: string) {
-  loadingChannel.value = true
-  await irc.channelJoin(props.serverId, channelId)
-
-  // User has chosen a channel so now we can replace the current window with the
-  // actual channel messages
-  window.replace(props.location, {
-    serverId: props.serverId,
-    type: props.type,
-    channelId: props.channelId,
-  })
-
-  loadingChannel.value = false
-}
+const { join, loading: loadingChannel } = useIRCJoinChannel()
 </script>
 
 <template>
   <div class="o-window-chat" v-if="state">
-    <div class="o-window-meta">
-      <PopoutHover>
-        <template #trigger>
-          <Flex y-center gap="xs">
-            <IconInfoCircleLinear />
-            <p>{{ state?.metadata.address }}</p>
-          </Flex>
-        </template>
-
-        <pre class="m-s">
-          {{ JSON.stringify(state, null, 2) }}
-        </pre>
-      </PopoutHover>
+    <div class="o-window-meta" v-if="props.channelId !== IRC_UNKNOWN_CHANNEL">
+      <p>{{ props.channelId }}</p>
     </div>
     <div class="o-channel-list" v-if="props.channelId === IRC_UNKNOWN_CHANNEL">
-      <Flex column x-center y-center>
-        <DropdownItem :disabled="loadingChannel" v-for="channel in channels?.available" :key="channel.name" @click="join(channel.name)">
-          {{ channel.name }}
-        </DropdownItem>
-
-        <pre>
-          {{ channels }}
-        </pre>
+      <Flex column x-center y-center class="h-100">
+        <div>
+          <strong class="text-color-lighter mb-m block">Join a channel</strong>
+          <Grid :columns="4">
+            <DropdownItem> </DropdownItem>
+            <DropdownItem :disabled="loadingChannel" v-for="channel in channels?.available" :key="channel.name" @click="join(props.serverId, channel.name, props.location)">
+              {{ channel.name }}
+            </DropdownItem>
+          </Grid>
+        </div>
       </Flex>
     </div>
     <div class="o-table-wrap" v-else>
@@ -121,8 +87,8 @@ async function join(channelId: string) {
       </div>
     </div>
 
-    <div class="o-window-composer">
-      <Composer @send="sendMessage" />
+    <div class="o-window-composer" v-if="props.channelId !== IRC_UNKNOWN_CHANNEL">
+      <Composer @send="sendMessage" :placeholder="`Message ${props.channelId}`" />
     </div>
   </div>
 </template>
