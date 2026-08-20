@@ -15,6 +15,7 @@
     "@iconify-prerendered/vue-solar": "catalog:",
     "@vueuse/core": "catalog:",
     "core-wasm": "workspace:*",
+    "dayjs": "catalog:",
     "pinia": "catalog:",
     "platform": "workspace:*",
     "vue": "^3.5.34",

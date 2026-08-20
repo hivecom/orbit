@@ -71,3 +71,7 @@
     margin-top: 0 !important;
   }
 }
+
+.vui-dropdown-item.lighter {
+  --color-text: var(--color-text-lighter) !important;
+}

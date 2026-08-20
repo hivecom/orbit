@@ -9,14 +9,11 @@ import { computed, ref } from "vue"
 import { useConfigStore } from "../../stores/config.ts"
 import { useIRCJoinChannel } from "../../composables/useIRCJoinChannel.ts"
 import { useUserStore } from "../../stores/user.ts"
-import { useWindowManager } from "../../lib/windows.ts"
-import { useRouter } from "vue-router"
+// import { useWindowManager } from "../../lib/windows.ts"
 
 const irc = useIrcStore()
 const user = useUserStore()
 const config = useConfigStore()
-
-const router = useRouter()
 
 config.onShortcut("global:navigation-toggle", () => {
   mini.value = !mini.value
@@ -27,25 +24,26 @@ const mini = useStorage("orbit-sidebar-state", true)
 // Search through servers
 // TODO: mini-sidebar search
 // TODO: mini-sidebar server peak
+
 const search = ref("")
 const serversRaw = computed(() => Array.from(irc.serverData.values()))
 const filteredServers = computed(() => serversRaw.value.filter((server) => searchString([server.metadata.name, server.metadata.address], search.value)))
 
 // Join a channel and replace active window
 const { join, loading } = useIRCJoinChannel()
-const { replace, focusedWindow } = useWindowManager()
+// const { replace, focusedWindow } = useWindowManager()
 
 // Replace active window with a channel we've already joined
-async function openChannelWindow(serverId: number, channelId: string) {
-  // FIXME: `f` is not good - location always needs to be set
-  // TODO figure out - if we are not on /wm while replace or any API is called,
-  // should we automatically redirect there? where should that happen?
-  replace(focusedWindow.value?.location ?? "f", {
-    type: "chat",
-    serverId,
-    channelId,
-  })
-}
+// async function openChannelWindow(serverId: number, channelId: string) {
+//   // FIXME: `f` is not good - location always needs to be set
+//   // TODO figure out - if we are not on /wm while replace or any API is called,
+//   // should we automatically redirect there? where should that happen?
+//   replace(focusedWindow.value?.location ?? "f", {
+//     type: "chat",
+//     serverId,
+//     channelId,
+//   })
+// }
 </script>
 
 <template>
@@ -105,10 +103,10 @@ async function openChannelWindow(serverId: number, channelId: string) {
         </PopoutHover>
 
         <div class="o-sidebar-server-channels">
-          <DropdownItem :inert="loading" v-for="item in irc.serverChannels.get(server.id)?.joined" @click="openChannelWindow(server.id, item.data.metadata.name)">
+          <DropdownItem :inert="loading" v-for="item in irc.serverChannels.get(server.id)?.joined" @click="join(server.id, item.data.metadata.name)">
             {{ item.data.metadata.name }}
           </DropdownItem>
-          <DropdownItem class="o-server-channel-available" :inert="loading" v-for="item in irc.serverChannels.get(server.id)?.available" @click="join(server.id, item.name)">
+          <DropdownItem class="lighter" :inert="loading" v-for="item in irc.serverChannels.get(server.id)?.available" @click="join(server.id, item.name)">
             {{ item.name }}
           </DropdownItem>
         </div>
@@ -170,9 +168,9 @@ async function openChannelWindow(serverId: number, channelId: string) {
   padding-left: var(--space-m);
   border-left: 1px solid var(--color-border-weak);
   margin-left: calc(var(--space-m) + 2px);
-
+  /* 
   .o-server-channel-available {
     --color-text: var(--color-text-lighter) !important;
-  }
+  } */
 }
 </style>
