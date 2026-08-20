@@ -7,7 +7,7 @@ import { EffectScope, effectScope, onBeforeMount, onScopeDispose, useTemplateRef
 import { useRouter } from "vue-router"
 import WindowEmpty from "../../components/windows/WindowEmpty.vue"
 import WindowChat from "../../components/windows/WindowChat.vue"
-import { useFocusWithin, whenever } from "@vueuse/core"
+import { useEventListener, useFocusWithin, whenever } from "@vueuse/core"
 
 const { windows, split, close, swap, focusedWindow, init } = useWindowManager()
 
@@ -43,7 +43,7 @@ function getSwapMessage(window: Window | undefined, location: WindowLocation) {
 let focusScope: EffectScope | undefined
 
 watch(
-  windowRef,
+  () => Object.keys(windows.value).length,
   () => {
     // Reset previous scope and insert new one
     focusScope?.stop()
@@ -55,7 +55,9 @@ watch(
       for (const window of windowRef.value) {
         const { focused } = useFocusWithin(window)
 
-        whenever(focused, () => {
+        // If user focuses OR clicks within a window, we set it as focused
+        const changeFocusedElement = () => {
+          console.log("Called focused updatr")
           const location = window.dataset.location as WindowLocation
           const windowObject = windows.value[location]
 
@@ -65,13 +67,18 @@ watch(
             ...windowObject,
             location,
           }
-        })
+        }
+
+        // These should properly dispose their listeners on each watch rerun
+        whenever(focused, changeFocusedElement)
+        useEventListener(window, "click", changeFocusedElement)
       }
     })
   },
   {
     flush: "post",
     immediate: true,
+    // deep: true,
   },
 )
 

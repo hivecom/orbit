@@ -2,10 +2,8 @@ import { useUrlSearchParams } from "@vueuse/core"
 import { computed, ref, unref, watch } from "vue"
 import { useIrcStore } from "../stores/irc"
 import { IRC_UNKNOWN_CHANNEL } from "./constants"
-
-// TODO: how to tell which window currently has focus? Should it just be a
-// method which tries to find focus within the HTML element and then create a
-// window object from it which gets returned?
+import { flags } from "../flags"
+import { useRouter } from "vue-router"
 
 export type WindowLocation = "f" | "l" | "r" | "lt" | "lb" | "rt" | "rb"
 
@@ -156,20 +154,25 @@ export function deserializeState(url: string): WindowState {
 }
 
 export function loadInitialState(): WindowState {
-  const urlValue = useUrlSearchParams("history")[WIN_URL_KEY]
+  // Keep URL state between windows while app is open, but on initial load if
+  // persistence is disabled, URL state should be ignored as well
+  if (flags.WINDOWS_PERSIST) {
+    const urlValue = useUrlSearchParams("history")[WIN_URL_KEY]
 
-  if (urlValue) {
-    return deserializeState(urlValue.toString())
+    if (urlValue) {
+      return deserializeState(urlValue.toString())
+    }
+
+    try {
+      const raw = localStorage.getItem(WIN_STORAGE_KEY)
+
+      if (raw) {
+        const parsed = deserializeState(raw)
+        return parsed
+      }
+    } catch {}
   }
 
-  try {
-    const raw = localStorage.getItem(WIN_STORAGE_KEY)
-
-    if (raw) {
-      const parsed = deserializeState(raw)
-      return parsed
-    }
-  } catch {}
   return getDefaultState()
 }
 
@@ -183,9 +186,11 @@ const params = useUrlSearchParams<{ [WIN_URL_KEY]?: string }>("history", { write
 const windows = ref<WindowState>({})
 const focusedWindow = ref<WindowAndLocation | null>(null)
 const isEmpty = computed(() => Object.values(windows.value).filter((item) => item && item.type !== "empty").length === 0)
-const initialized = ref(false)
+// const initialized = ref(false)
 
 export function useWindowManager() {
+  const router = useRouter()
+
   // Keep URL -> State in sync
   watch(
     () => params[WIN_URL_KEY],
@@ -202,7 +207,10 @@ export function useWindowManager() {
     (newState) => {
       const serialized = serializeState(newState)
       params[WIN_URL_KEY] = serialized
-      localStorage.setItem(WIN_STORAGE_KEY, serialized)
+
+      if (flags.WINDOWS_PERSIST) {
+        localStorage.setItem(WIN_STORAGE_KEY, serialized)
+      }
     },
     { deep: true },
   )
@@ -326,7 +334,17 @@ export function useWindowManager() {
   /**
    * Inserts a new window into a specific location
    */
-  function replace(location: WindowLocation, newState: Window) {
+  async function replace(location: WindowLocation, newState: Window) {
+    // If we are not in `/wm` instead of updating state, we push router with a
+    // URL and state will get synced automatically
+    if (!windows.value[location]) {
+      location = "f"
+    }
+
+    if (router.currentRoute.value.path !== "/wm") {
+      await router.push("/wm")
+    }
+
     windows.value[location] = newState
   }
 
@@ -342,9 +360,9 @@ export function useWindowManager() {
    * Called when app initializes, as default state requires pinia state
    */
   function init() {
-    if (initialized.value) return
+    // if (initialized.value) return
     windows.value = loadInitialState()
-    initialized.value = true
+    // initialized.value = true
   }
 
   return {

@@ -8,7 +8,7 @@ const config = {
   appearance_global_zen_enabled: false,
   appearance_chat_colored_usernames: false,
   appearance_chat_timestamps_enabled: true,
-  appearance_chat_timestamps_format: "hh:mm:ss",
+  appearance_chat_timestamps_format: "HH:mm:ss",
   appearance_chat_center_chat: true,
   appearance_chat_width: 100,
 }

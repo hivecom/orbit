@@ -19,7 +19,7 @@ export const useIrcStore = defineStore("irc", () => {
   const initialized = shallowRef(false)
 
   // Holds reference to server metadata
-  const serverState = ref<Map<number, Server>>(new Map())
+  const serverData = ref<Map<number, Server>>(new Map())
   const serverHandlers = ref<Map<number, IrcConnection>>(new Map())
 
   // Holds channel information per server
@@ -34,7 +34,7 @@ export const useIrcStore = defineStore("irc", () => {
    * Initializes empty server datasets and fetches available (unjoined channels)
    */
   async function initializeServer(server: Server, handler: IrcConnection) {
-    serverState.value.set(server.id, server)
+    serverData.value.set(server.id, server)
     serverHandlers.value.set(server.id, handler)
     serverChannels.value.set(server.id, { joined: [], available: [] })
 
@@ -55,8 +55,6 @@ export const useIrcStore = defineStore("irc", () => {
    */
   async function init(_controller: ServerList) {
     controller = _controller
-
-    console.log("Initial orbit servers", controller.servers.length)
 
     // Get server state and save their data & controllers
     await Promise.allSettled(
@@ -111,7 +109,7 @@ export const useIrcStore = defineStore("irc", () => {
     handler.on_disconnect((reason) => {
       console.log("Disconnected", reason)
       serverHandlers.value.delete(key)
-      serverState.value.delete(key)
+      serverData.value.delete(key)
     })
 
     handler.on_error((error) => {
@@ -120,7 +118,7 @@ export const useIrcStore = defineStore("irc", () => {
   }
 
   function getServerState(serverId: number) {
-    return serverState.value.get(serverId)
+    return serverData.value.get(serverId)
   }
 
   function getChannelMessages(serverId: number, channelId: string) {
@@ -191,8 +189,8 @@ export const useIrcStore = defineStore("irc", () => {
     channelJoin,
     initialized,
     controller,
-    serverData: serverState,
-    serverControllers: serverHandlers,
+    serverData,
+    serverHandlers,
     getServerState,
     getChannelMessages,
     getServerChannels,

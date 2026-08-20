@@ -8,9 +8,12 @@ import { computed, nextTick, ref, useTemplateRef } from "vue"
 import { useEventListener, useThrottleFn } from "@vueuse/core"
 import { IRC_UNKNOWN_CHANNEL } from "../../lib/constants.ts"
 import { useIRCJoinChannel } from "../../composables/useIRCJoinChannel.ts"
+import { useDateFormatter } from "../../lib/date.ts"
 
 const props = defineProps<WindowAndLocation<WindowChat>>()
 const irc = useIrcStore()
+
+const format = useDateFormatter()
 
 const messages = computed(() => irc.getChannelMessages(props.serverId, props.channelId))
 const state = computed(() => irc.getServerState(props.serverId))
@@ -60,10 +63,11 @@ const { join, loading: loadingChannel } = useIRCJoinChannel()
     <div class="o-channel-list" v-if="props.channelId === IRC_UNKNOWN_CHANNEL">
       <Flex column x-center y-center class="h-100">
         <div>
-          <strong class="text-color-lighter mb-m block">Join a channel</strong>
           <Grid :columns="4">
-            <DropdownItem> </DropdownItem>
-            <DropdownItem :disabled="loadingChannel" v-for="channel in channels?.available" :key="channel.name" @click="join(props.serverId, channel.name, props.location)">
+            <DropdownItem :disabled="loadingChannel" v-for="channel in channels?.joined" :key="channel.data.metadata.name" @click="join(props.serverId, channel.data.metadata.name, props.location)">
+              {{ channel.data.metadata.name }}
+            </DropdownItem>
+            <DropdownItem class="lighter" :disabled="loadingChannel" v-for="channel in channels?.available" :key="channel.name" @click="join(props.serverId, channel.name, props.location)">
               {{ channel.name }}
             </DropdownItem>
           </Grid>
@@ -72,10 +76,11 @@ const { join, loading: loadingChannel } = useIRCJoinChannel()
     </div>
     <div class="o-table-wrap" v-else>
       <div class="o-table-scroll-container" ref="chatScrollContainer">
-        <table class="o-message-table">
+        <table class="o-msg-table">
           <tr v-for="message in messages" :key="message.metadata.msgid">
-            <td class="message-username">{{ message.metadata.user }}</td>
-            <td class="message-content" :class="{ status: message.metadata.message_type !== MessageType.Privmsg }">
+            <td class="msg-timestamp">{{ format.chatTimestamp(message.metadata.server_time) }}</td>
+            <td class="msg-username">{{ message.metadata.user }}</td>
+            <td class="msg-content" :class="{ status: message.metadata.message_type !== MessageType.Privmsg }">
               <template v-if="message.metadata.message_type === MessageType.Privmsg">{{ message.text?.content }} </template>
               <template v-else-if="message.metadata.message_type === MessageType.Join"> joined </template>
               <template v-else-if="message.metadata.message_type === MessageType.Part"> left </template>
@@ -134,7 +139,7 @@ const { join, loading: loadingChannel } = useIRCJoinChannel()
         height: 1px;
       }
 
-      .o-message-table {
+      .o-msg-table {
         table-layout: auto;
 
         td {
@@ -148,19 +153,26 @@ const { join, loading: loadingChannel } = useIRCJoinChannel()
           font-size: var(--font-size-s);
           border-bottom: none;
 
-          &.message-username {
+          &.msg-timestamp,
+          &.msg-username {
             color: var(--color-text-lighter);
+            white-space: nowrap;
+          }
+
+          &.msg-username {
+            color: var(--color-text-light);
           }
 
           &.status {
-            color: var(--color-text-light);
+            color: var(--color-text-lighter);
+            font-style: italic;
           }
 
           &:nth-child(1) {
             padding-left: var(--space-m);
           }
 
-          &:nth-child(2) {
+          &:nth-child(3) {
             width: 100%;
           }
         }
