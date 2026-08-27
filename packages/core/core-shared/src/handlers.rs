@@ -201,7 +201,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
         }
 
         self.database
-            .insert_message(target, state_message.clone())
+            .insert_message(self.state.id, target, state_message.clone())
             .await?;
 
         self.on_event(ServerEvent::Privmsg {
@@ -244,7 +244,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
         }
 
         self.database
-            .insert_message(target, state_message.clone())
+            .insert_message(self.state.id, target, state_message.clone())
             .await?;
 
         self.on_event(ServerEvent::Privmsg {
@@ -311,7 +311,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                 };
 
                 self.database
-                    .insert_message(&channel.metadata.name, state_message.clone())
+                    .insert_message(self.state.id, &channel.metadata.name, state_message.clone())
                     .await?;
                 channel_quits.push(state_message);
             }
@@ -389,7 +389,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
         }
 
         self.database
-            .insert_message(target, state_message.clone())
+            .insert_message(self.state.id, target, state_message.clone())
             .await?;
 
         if source == self.state.me.as_ref().unwrap().nickname
@@ -418,7 +418,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
         reply: &Option<String>,
     ) -> Result<Option<MessageReference>, OrbitError> {
         if let Some(r) = reply {
-            let rmsg = self.database.message(r).await?.map(|(_, m)| m);
+            let rmsg = self.database.message(r).await?.map(|(_, _, m)| m);
 
             Ok(Some(MessageReference {
                 text: rmsg
@@ -514,7 +514,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                     } => {
                         for message in &messages {
                             self.database
-                                .insert_message(&channel_name, message.clone())
+                                .insert_message(self.state.id, &channel_name, message.clone())
                                 .await?;
                         }
 
@@ -560,7 +560,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                         }
 
                         self.database
-                            .insert_message(target.as_str(), state_message.clone())
+                            .insert_message(self.state.id, target.as_str(), state_message.clone())
                             .await?;
 
                         if source == self.state.me.as_ref().unwrap().nickname
@@ -813,7 +813,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
             ActorCommand::GetState => {
                 let mut state = self.state.clone();
                 for (name, channel) in &mut state.channels {
-                    channel.messages = self.database.messages(name).await?;
+                    channel.messages = self.database.messages(self.state.id, name).await?;
                 }
 
                 cmd.reply_tx
@@ -829,7 +829,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                         .unwrap();
                     return Ok(());
                 };
-                channel.messages = self.database.messages(&channel_name).await?;
+                channel.messages = self.database.messages(self.state.id, &channel_name).await?;
                 cmd.reply_tx
                     .unwrap()
                     .send(CommandResponse::GetChannelState(Box::new(Some(channel))))

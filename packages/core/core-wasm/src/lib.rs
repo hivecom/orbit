@@ -57,7 +57,7 @@ use crate::database::IndexedDb;
 
 mod database;
 
-const DATABASE_NAME: &str = "obit-core";
+const DATABASE_NAME: &str = "orbit-core";
 
 fn init_tracing() {
     let fmt_layer = tracing_subscriber::fmt::layer()

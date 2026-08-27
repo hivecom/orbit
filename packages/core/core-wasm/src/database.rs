@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::dbg;
 
 const MESSAGE_STORE: &str = "messages";
-const CHANNEL_TIME_INDEX: &str = "channel-timestamp";
+const CHANNEL_TIME_INDEX: &str = "server-channel-timestamp";
 
 pub struct IndexedDb {
     inner: InnerDb,
@@ -39,6 +39,7 @@ impl IndexedDb {
                             .create_index(
                                 CHANNEL_TIME_INDEX,
                                 KeyPath::Sequence(KeyPathSeq::from_slice(&[
+                                    "server_id",
                                     "channel",
                                     "timestamp",
                                 ])),
@@ -61,6 +62,7 @@ impl IndexedDb {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DbMessage {
     pub message: core_shared::state::Message,
+    pub server_id: i32,
     pub channel: String,
     pub timestamp: f64,
 }
@@ -69,6 +71,7 @@ impl ActorDatabase for IndexedDb {
     #[tracing::instrument(err, skip(self))]
     async fn insert_message(
         &mut self,
+        server_id: i32,
         channel: &str,
         message: core_shared::state::Message,
     ) -> Result<(), OrbitError> {
@@ -86,6 +89,7 @@ impl ActorDatabase for IndexedDb {
 
         let msgid = message.metadata.msgid.clone();
         let message = DbMessage {
+            server_id,
             timestamp: message.metadata.server_time,
             channel: channel.to_string(),
             message,
@@ -114,7 +118,7 @@ impl ActorDatabase for IndexedDb {
     async fn message(
         &mut self,
         msgid: &str,
-    ) -> Result<Option<(String, core_shared::state::Message)>, OrbitError> {
+    ) -> Result<Option<(i32, String, core_shared::state::Message)>, OrbitError> {
         let tx = self
             .inner
             .transaction(MESSAGE_STORE)
@@ -135,12 +139,13 @@ impl ActorDatabase for IndexedDb {
             .map_err(|e| anyhow!(e.to_string()))
             .context("Failed to get message")?;
 
-        Ok(message.map(|m| (m.channel, m.message)))
+        Ok(message.map(|m| (m.server_id, m.channel, m.message)))
     }
 
     #[tracing::instrument(err, skip(self))]
     async fn messages(
         &mut self,
+        server_id: i32,
         channel: &str,
     ) -> Result<Vec<core_shared::state::Message>, OrbitError> {
         let tx = self
@@ -160,7 +165,12 @@ impl ActorDatabase for IndexedDb {
             .context("Failed to access index")?;
 
         // false = inclusive bound
-        let range = KeyRange::Bound((channel, 0.0), false, (channel, f64::MAX), false);
+        let range = KeyRange::Bound(
+            (server_id, channel, 0.0),
+            false,
+            (server_id, channel, f64::MAX),
+            false,
+        );
 
         let mut messages = Vec::new();
         for data in index
@@ -189,7 +199,7 @@ impl ActorDatabase for IndexedDb {
         react: &str,
         reactor: &str,
     ) -> Result<(), OrbitError> {
-        let Some((channel, mut message)) = self.message(msgid).await? else {
+        let Some((server_id, channel, mut message)) = self.message(msgid).await? else {
             return Ok(());
         };
         let Some(text) = &mut message.text else {
@@ -200,7 +210,7 @@ impl ActorDatabase for IndexedDb {
         reactors.sort();
         reactors.dedup();
 
-        self.insert_message(&channel, message).await?;
+        self.insert_message(server_id, &channel, message).await?;
 
         Ok(())
     }
@@ -212,7 +222,7 @@ impl ActorDatabase for IndexedDb {
         react: &str,
         reactor: &str,
     ) -> Result<(), OrbitError> {
-        let Some((channel, mut message)) = self.message(msgid).await? else {
+        let Some((server_id, channel, mut message)) = self.message(msgid).await? else {
             return Ok(());
         };
         let Some(text) = &mut message.text else {
@@ -227,7 +237,7 @@ impl ActorDatabase for IndexedDb {
             }
         }
 
-        self.insert_message(&channel, message).await?;
+        self.insert_message(server_id, &channel, message).await?;
 
         Ok(())
     }
