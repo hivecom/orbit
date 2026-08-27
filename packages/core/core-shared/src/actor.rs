@@ -94,7 +94,7 @@ pub(crate) struct CurrentBatch {
 pub(crate) enum BatchData {
     History {
         label: Option<String>,
-        channel: String,
+        target: String,
         messages: Vec<Message>,
     },
     Multiline {
@@ -231,16 +231,20 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
         }
     }
 
-    pub(crate) async fn push_batch(&mut self, target: String, state_message: Message) -> bool {
+    pub(crate) async fn push_batch(
+        &mut self,
+        pushed_target: String,
+        state_message: Message,
+    ) -> bool {
         if let Some(batch) = self.current_batches.iter_mut().find(|b| b.is_chathistory())
             && let BatchData::History {
-                channel, messages, ..
+                target, messages, ..
             } = &mut batch.data
         {
-            if channel.is_empty() {
-                *channel = target.clone();
+            if target.is_empty() {
+                *target = pushed_target.clone();
             } else {
-                assert_eq!(*channel, target)
+                assert_eq!(*target, pushed_target)
             }
             messages.push(state_message);
 

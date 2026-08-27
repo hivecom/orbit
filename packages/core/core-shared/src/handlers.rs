@@ -38,9 +38,6 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                     .await
                     .context("Failed to send pong")?;
             }
-
-            Response(rpl, params) => self.handle_response(rpl, params).await?,
-
             JOIN(ref channel_name, _, _) => self.handle_join(&message, channel_name).await?,
             PART(ref channel_name, ref comment) => {
                 self.handle_part(&message, channel_name, comment).await?
@@ -50,7 +47,6 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
             BATCH(ref reference, ref typ, ref param) => {
                 self.handle_batch(&message, reference, typ, param).await?
             }
-
             ChannelMODE(ref channel_name, ref mode) => {
                 let target = message.response_target().unwrap();
                 let source = message.source_nickname().unwrap();
@@ -67,163 +63,16 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                     dbg!(target, source, channel_name, text);
                 }
             }
+            AUTHENTICATE(ref param) if param == "+" => self.handle_authenticate(&message).await?,
             Raw(ref cmd, ref mut target) if cmd == "TAGMSG" => {
                 let target = target.remove(0);
                 self.handle_tagmsg(&message, target).await?;
             }
-            AUTHENTICATE(ref param) if param == "+" => self.handle_authenticate(&message).await?,
+            Response(rpl, params) => self.handle_response(rpl, params).await?,
             ERROR(msg) => self.on_error(OrbitError::Generic(msg)).await?,
             _ => {
                 warn!("unhandled message, {message:?}");
             }
-        }
-
-        Ok(())
-    }
-
-    #[tracing::instrument(err, skip(self))]
-    pub(crate) async fn handle_part(
-        &mut self,
-        message: &IrcMessage,
-        target: &str,
-        comment: &Option<String>,
-    ) -> Result<(), OrbitError> {
-        let mut tags = Tags::default();
-        if let Some(ref t) = message.tags {
-            tags = Tags::parse(t);
-        }
-        let source = message.source_nickname().unwrap();
-
-        let state_message = Message {
-            text: None,
-            metadata: MessageMetadata {
-                msgid: tags.msgid_with_fallback(&["PART", source]),
-                server_time: tags.server_time_with_fallback() as f64,
-                message_type: MessageType::Part,
-                user: source.to_string(),
-            },
-        };
-
-        if self
-            .push_batch(target.to_string(), state_message.clone())
-            .await
-        {
-            return Ok(());
-        }
-
-        self.database
-            .insert_message(target, state_message.clone())
-            .await?;
-
-        self.on_event(ServerEvent::Privmsg {
-            channel: target.to_string(),
-            message: state_message,
-        })
-        .await?;
-
-        let channel = self.channel_mut(target.to_string()).await;
-
-        channel.users.retain(|u| u.nickname != source);
-
-        Ok(())
-    }
-
-    #[tracing::instrument(err, skip(self))]
-    pub(crate) async fn handle_quit(
-        &mut self,
-        message: &IrcMessage,
-        comment: &Option<String>,
-    ) -> Result<(), OrbitError> {
-        let mut tags = Tags::default();
-        if let Some(ref t) = message.tags {
-            tags = Tags::parse(t);
-        }
-        let source = message.source_nickname().unwrap();
-
-        let state_message = Message {
-            text: None,
-            metadata: MessageMetadata {
-                msgid: tags.msgid_with_fallback(&["QUIT", source]),
-                server_time: tags.server_time_with_fallback() as f64,
-                message_type: MessageType::Quit,
-                user: source.to_string(),
-            },
-        };
-
-        for batch in &mut self.current_batches {
-            if let BatchData::History { messages, .. } = &mut batch.data {
-                messages.push(state_message);
-                return Ok(());
-            }
-        }
-
-        self.state.users.remove(source);
-        for channel in self.state.channels.values_mut() {
-            let before = channel.users.len();
-            channel.users.retain(|u| u.nickname != source);
-
-            if before > channel.users.len() {
-                self.database
-                    .insert_message(&channel.metadata.name, state_message.clone())
-                    .await?;
-            }
-        }
-
-        self.on_event(ServerEvent::Privmsg {
-            channel: String::new(),
-            message: state_message,
-        })
-        .await?;
-
-        Ok(())
-    }
-
-    #[tracing::instrument(err, skip(self))]
-    pub(crate) async fn handle_authenticate(
-        &mut self,
-        message: &IrcMessage,
-    ) -> Result<(), OrbitError> {
-        if let SaslState::Requested {
-            nickname,
-            realname,
-            username,
-            password,
-        } = self.sasl_state.clone()
-        {
-            let credentials =
-                BASE64_STANDARD.encode(format!("\0{}\0{}", username, password).as_bytes());
-
-            // Chunk overly long credentials
-            let mut sending = credentials.as_str();
-            while !sending.is_empty() {
-                let (chunk, rest) = sending.split_at(400.min(sending.len()));
-                self.sasl(chunk.to_string())
-                    .await
-                    .context("Failed to send SASL chunk")?;
-
-                if rest.is_empty() && chunk.len() == 400 {
-                    self.sasl("+".to_string())
-                        .await
-                        .context("Failed to send SASL end")?;
-                }
-                sending = rest;
-            }
-            self.nick(nickname.clone())
-                .await
-                .context("Failed to send NICK")?;
-            self.user(username.clone(), String::from("0"), realname.clone())
-                .await
-                .context("Failed to send USER")?;
-
-            self.state.me = Some(User {
-                nickname,
-                username: Some(username),
-                realname: Some(realname),
-                display_name: None,
-                description: None,
-                profile_picture_url: None,
-                bot: false,
-            });
         }
 
         Ok(())
@@ -293,7 +142,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
         let state_message = Message {
             text: None,
             metadata: MessageMetadata {
-                msgid: tags.msgid_with_fallback(&["JOIN", source]),
+                msgid: tags.msgid_with_fallback(&["JOIN", source, target]),
                 server_time: tags.server_time_with_fallback() as f64,
                 message_type: MessageType::Join,
                 user: source.to_string(),
@@ -361,6 +210,120 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
         })
         .await?;
 
+        Ok(())
+    }
+
+    #[tracing::instrument(err, skip(self))]
+    pub(crate) async fn handle_part(
+        &mut self,
+        message: &IrcMessage,
+        target: &str,
+        comment: &Option<String>,
+    ) -> Result<(), OrbitError> {
+        let mut tags = Tags::default();
+        if let Some(ref t) = message.tags {
+            tags = Tags::parse(t);
+        }
+        let source = message.source_nickname().unwrap();
+
+        let state_message = Message {
+            text: None,
+            metadata: MessageMetadata {
+                msgid: tags.msgid_with_fallback(&["PART", source, target]),
+                server_time: tags.server_time_with_fallback() as f64,
+                message_type: MessageType::Part,
+                user: source.to_string(),
+            },
+        };
+
+        if self
+            .push_batch(target.to_string(), state_message.clone())
+            .await
+        {
+            return Ok(());
+        }
+
+        self.database
+            .insert_message(target, state_message.clone())
+            .await?;
+
+        self.on_event(ServerEvent::Privmsg {
+            channel: target.to_string(),
+            message: state_message,
+        })
+        .await?;
+
+        let channel = self.channel_mut(target.to_string()).await;
+
+        channel.users.retain(|u| u.nickname != source);
+
+        Ok(())
+    }
+
+    #[tracing::instrument(err, skip(self))]
+    pub(crate) async fn handle_quit(
+        &mut self,
+        message: &IrcMessage,
+        comment: &Option<String>,
+    ) -> Result<(), OrbitError> {
+        let mut tags = Tags::default();
+        if let Some(ref t) = message.tags {
+            tags = Tags::parse(t);
+        }
+        let source = message.source_nickname().unwrap();
+
+        for batch in &mut self.current_batches {
+            if let BatchData::History {
+                messages, target, ..
+            } = &mut batch.data
+            {
+                let state_message = Message {
+                    text: None,
+                    metadata: MessageMetadata {
+                        msgid: tags.msgid_with_fallback(&["QUIT", source, target]),
+                        server_time: tags.server_time_with_fallback() as f64,
+                        message_type: MessageType::Quit,
+                        user: source.to_string(),
+                    },
+                };
+
+                messages.push(state_message);
+                return Ok(());
+            }
+        }
+
+        let mut channel_quits = Vec::new();
+
+        self.state.users.remove(source);
+        for channel in self.state.channels.values_mut() {
+            let before = channel.users.len();
+            channel.users.retain(|u| u.nickname != source);
+
+            if before > channel.users.len() {
+                let state_message = Message {
+                    text: None,
+                    metadata: MessageMetadata {
+                        msgid: tags.msgid_with_fallback(&["QUIT", source, &channel.metadata.name]),
+                        server_time: tags.server_time_with_fallback() as f64,
+                        message_type: MessageType::Quit,
+                        user: source.to_string(),
+                    },
+                };
+
+                self.database
+                    .insert_message(&channel.metadata.name, state_message.clone())
+                    .await?;
+                channel_quits.push(state_message);
+            }
+        }
+
+        for msg in channel_quits {
+            self.on_event(ServerEvent::Privmsg {
+                channel: String::new(),
+                message: msg,
+            })
+            .await?;
+        }
         Ok(())
     }
 
@@ -493,7 +456,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                         id: id.to_string(),
                         data: BatchData::History {
                             label: tags.label,
-                            channel,
+                            target: channel,
                             messages: Vec::new(),
                         },
                     });
@@ -546,7 +509,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                 match batch.data {
                     BatchData::History {
                         label,
-                        channel: channel_name,
+                        target: channel_name,
                         messages,
                     } => {
                         for message in &messages {
@@ -621,6 +584,57 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                     BatchData::Unhandled => (),
                 }
             }
+        }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(err, skip(self))]
+    pub(crate) async fn handle_authenticate(
+        &mut self,
+        message: &IrcMessage,
+    ) -> Result<(), OrbitError> {
+        if let SaslState::Requested {
+            nickname,
+            realname,
+            username,
+            password,
+        } = self.sasl_state.clone()
+        {
+            let credentials =
+                BASE64_STANDARD.encode(format!("\0{}\0{}", username, password).as_bytes());
+
+            // Chunk overly long credentials
+            let mut sending = credentials.as_str();
+            while !sending.is_empty() {
+                let (chunk, rest) = sending.split_at(400.min(sending.len()));
+                self.sasl(chunk.to_string())
+                    .await
+                    .context("Failed to send SASL chunk")?;
+
+                if rest.is_empty() && chunk.len() == 400 {
+                    self.sasl("+".to_string())
+                        .await
+                        .context("Failed to send SASL end")?;
+                }
+                sending = rest;
+            }
+            self.nick(nickname.clone())
+                .await
+                .context("Failed to send NICK")?;
+            self.user(username.clone(), String::from("0"), realname.clone())
+                .await
+                .context("Failed to send USER")?;
+
+            self.state.me = Some(User {
+                nickname,
+                username: Some(username),
+                realname: Some(realname),
+                display_name: None,
+                description: None,
+                profile_picture_url: None,
+                bot: false,
+            });
         }
 
         Ok(())
