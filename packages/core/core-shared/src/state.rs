@@ -665,20 +665,22 @@ impl Tags {
     #[cfg(feature = "web")]
     pub fn server_time_with_fallback(&self) -> i64 {
         self.server_time
-            .map(|t| t.unix_timestamp())
+            .map(|t| (t.unix_timestamp_nanos() / 1_000_000) as i64)
             .unwrap_or_else(|| {
                 web_time::SystemTime::now()
                     .duration_since(web_time::UNIX_EPOCH)
                     .unwrap()
-                    .as_secs() as i64
+                    .as_millis() as i64
             })
     }
 
     #[cfg(not(feature = "web"))]
     pub fn server_time_with_fallback(&self) -> i64 {
-        self.server_time
+        (self
+            .server_time
             .unwrap_or_else(OffsetDateTime::now_utc)
-            .unix_timestamp()
+            .unix_timestamp_nanos()
+            / 1_000_000) as i64
     }
 
     pub fn msgid_with_fallback(&self, hash_extras: &[&str]) -> String {
