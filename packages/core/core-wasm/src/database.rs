@@ -97,6 +97,9 @@ impl ActorDatabase for IndexedDb {
             .with_key_type::<String>()
             .serde()
             .map_err(|e| anyhow!(e.to_string()))
+            .context("Failed to serialize msgid")?
+            .await
+            .map_err(|e| anyhow!(e.to_string()))
             .context("Failed to put message")?;
 
         tx.commit()
@@ -112,10 +115,25 @@ impl ActorDatabase for IndexedDb {
         &mut self,
         msgid: &str,
     ) -> Result<Option<(String, core_shared::state::Message)>, OrbitError> {
-        let transaction = self.inner.transaction(MESSAGE_STORE).build().unwrap();
-        let store = transaction.object_store(MESSAGE_STORE).unwrap();
+        let tx = self
+            .inner
+            .transaction(MESSAGE_STORE)
+            .build()
+            .map_err(|e| anyhow!(e.to_string()))
+            .context("Failed to create messages transaction")?;
+        let store = tx
+            .object_store(MESSAGE_STORE)
+            .map_err(|e| anyhow!(e.to_string()))
+            .context("Failed to open messages object store")?;
 
-        let message: Option<DbMessage> = store.get(msgid).serde().unwrap().await.unwrap();
+        let message: Option<DbMessage> = store
+            .get(msgid)
+            .serde()
+            .map_err(|e| anyhow!(e.to_string()))
+            .context("Failed to serialize msgid")?
+            .await
+            .map_err(|e| anyhow!(e.to_string()))
+            .context("Failed to get message")?;
 
         Ok(message.map(|m| (m.channel, m.message)))
     }
@@ -125,9 +143,21 @@ impl ActorDatabase for IndexedDb {
         &mut self,
         channel: &str,
     ) -> Result<Vec<core_shared::state::Message>, OrbitError> {
-        let transaction = self.inner.transaction(MESSAGE_STORE).build().unwrap();
-        let store = transaction.object_store(MESSAGE_STORE).unwrap();
-        let index = store.index(CHANNEL_TIME_INDEX).unwrap();
+        let tx = self
+            .inner
+            .transaction(MESSAGE_STORE)
+            .with_mode(TransactionMode::Readwrite)
+            .build()
+            .map_err(|e| anyhow!(e.to_string()))
+            .context("Failed to create messages transaction")?;
+        let store = tx
+            .object_store(MESSAGE_STORE)
+            .map_err(|e| anyhow!(e.to_string()))
+            .context("Failed to open messages object store")?;
+        let index = store
+            .index(CHANNEL_TIME_INDEX)
+            .map_err(|e| anyhow!(e.to_string()))
+            .context("Failed to access index")?;
 
         // false = inclusive bound
         let range = KeyRange::Bound((channel, 0.0), false, (channel, f64::MAX), false);
@@ -137,11 +167,15 @@ impl ActorDatabase for IndexedDb {
             .get_all::<DbMessage>()
             .with_query(range)
             .serde()
-            .unwrap()
+            .map_err(|e| anyhow!(e.to_string()))
+            .context("Failed to serialize message range")?
             .await
-            .unwrap()
+            .map_err(|e| anyhow!(e.to_string()))
+            .context("Failed to get messages")?
         {
-            let data = data.unwrap();
+            let data = data
+                .map_err(|e| anyhow!(e.to_string()))
+                .context("Failed to deserialize message")?;
             messages.push(data.message);
         }
 
