@@ -177,7 +177,6 @@ impl ActorDatabase for IndexedDb {
         let tx = self
             .inner
             .transaction(MESSAGE_STORE)
-            .with_mode(TransactionMode::Readwrite)
             .build()
             .map_err(|e| anyhow!(e.to_string()))
             .context("Failed to create messages transaction")?;
