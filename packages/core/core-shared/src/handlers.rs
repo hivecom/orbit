@@ -290,12 +290,11 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                 let state_message = Message {
                     text: None,
                     metadata: MessageMetadata {
-                        msgid: tags.msgid_with_fallback(&[
-                            &self.state.id.to_string(),
-                            "QUIT",
-                            source,
+                        msgid: format!(
+                            "{}-{}",
+                            tags.msgid_with_fallback(&[&self.state.id.to_string(), "QUIT", source]),
                             target,
-                        ]),
+                        ),
                         server_time: tags.server_time_with_fallback() as f64,
                         message_type: MessageType::Quit,
                         user: source.to_string(),
@@ -318,12 +317,11 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                 let state_message = Message {
                     text: None,
                     metadata: MessageMetadata {
-                        msgid: tags.msgid_with_fallback(&[
-                            &self.state.id.to_string(),
-                            "QUIT",
-                            source,
-                            &channel.metadata.name,
-                        ]),
+                        msgid: format!(
+                            "{}-{}",
+                            tags.msgid_with_fallback(&[&self.state.id.to_string(), "QUIT", source]),
+                            &channel.metadata.name
+                        ),
                         server_time: tags.server_time_with_fallback() as f64,
                         message_type: MessageType::Quit,
                         user: source.to_string(),
