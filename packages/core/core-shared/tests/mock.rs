@@ -1,5 +1,7 @@
-use core_shared::actor::{CommandResponse, IrcConnection};
-use core_shared::state::{Capabilities, Capability, User};
+use core_shared::actor::IrcConnection;
+use core_shared::database::Database;
+use core_shared::response_channels::CommandResponse;
+use core_shared::state::{Capabilities, Capability, OrbitError, User};
 use futures::SinkExt;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
 use irc_proto::{CapSubCommand, Command, Message as IrcMessage};
@@ -42,6 +44,10 @@ impl IrcConnection for MockConn {
                     Command::CAP(None, CapSubCommand::REQ, None, Some(_)) => {
                         incoming_tx.send(Ok(IrcMessage::from_str("@time=2026-07-13T11:01:09.182Z :irc.hivecom.net CAP * ACK :echo-message message-tags sasl draft/message-redaction draft/metadata-2 draft/chathistory draft/event-playback draft/account-registration draft/multiline server-time").unwrap())).await.unwrap();
                     }
+                    Command::AUTHENTICATE(param) if param == "PLAIN" => incoming_tx
+                        .send(Ok(IrcMessage::from_str("AUTHENTICATE +").unwrap()))
+                        .await
+                        .unwrap(),
                     Command::USER(_, _, _) => {
                         incoming_tx.send(Ok(IrcMessage::from_str(":irc.hivecom.net 001 testnick :Welcome to the Hivecom IRC Network testnick").unwrap())).await.unwrap();
                     }
@@ -56,9 +62,42 @@ impl IrcConnection for MockConn {
     }
 }
 
+#[derive(Debug)]
+struct MockDb;
+
+impl Database for MockDb {
+    async fn insert_message(
+        &mut self,
+        _: i32,
+        _: &str,
+        _: core_shared::state::Message,
+    ) -> Result<(), OrbitError> {
+        todo!()
+    }
+    async fn message(
+        &mut self,
+        _: &str,
+    ) -> Result<Option<(i32, String, core_shared::state::Message)>, OrbitError> {
+        todo!()
+    }
+    async fn messages(
+        &mut self,
+        _: i32,
+        _: &str,
+    ) -> Result<Vec<core_shared::state::Message>, OrbitError> {
+        todo!()
+    }
+    async fn add_reaction(&mut self, _: &str, _: &str, _: &str) -> Result<(), OrbitError> {
+        todo!()
+    }
+    async fn remove_reaction(&mut self, _: &str, _: &str, _: &str) -> Result<(), OrbitError> {
+        todo!()
+    }
+}
+
 #[tokio::test]
 async fn test_irc_register_flow() {
-    let addr = IrcActor::<MockConn>::start(0, MockConn, |actor: IrcActor<MockConn>| {
+    let addr = IrcActor::start(0, MockConn, MockDb, |actor| {
         tokio::spawn(actor.run());
     })
     .await
