@@ -142,7 +142,12 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
         let state_message = Message {
             text: None,
             metadata: MessageMetadata {
-                msgid: tags.msgid_with_fallback(&["JOIN", source, target]),
+                msgid: tags.msgid_with_fallback(&[
+                    &self.state.id.to_string(),
+                    "JOIN",
+                    source,
+                    target,
+                ]),
                 server_time: tags.server_time_with_fallback() as f64,
                 message_type: MessageType::Join,
                 user: source.to_string(),
@@ -229,7 +234,12 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
         let state_message = Message {
             text: None,
             metadata: MessageMetadata {
-                msgid: tags.msgid_with_fallback(&["PART", source, target]),
+                msgid: tags.msgid_with_fallback(&[
+                    &self.state.id.to_string(),
+                    "PART",
+                    source,
+                    target,
+                ]),
                 server_time: tags.server_time_with_fallback() as f64,
                 message_type: MessageType::Part,
                 user: source.to_string(),
@@ -280,7 +290,12 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                 let state_message = Message {
                     text: None,
                     metadata: MessageMetadata {
-                        msgid: tags.msgid_with_fallback(&["QUIT", source, target]),
+                        msgid: tags.msgid_with_fallback(&[
+                            &self.state.id.to_string(),
+                            "QUIT",
+                            source,
+                            target,
+                        ]),
                         server_time: tags.server_time_with_fallback() as f64,
                         message_type: MessageType::Quit,
                         user: source.to_string(),
@@ -303,7 +318,12 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                 let state_message = Message {
                     text: None,
                     metadata: MessageMetadata {
-                        msgid: tags.msgid_with_fallback(&["QUIT", source, &channel.metadata.name]),
+                        msgid: tags.msgid_with_fallback(&[
+                            &self.state.id.to_string(),
+                            "QUIT",
+                            source,
+                            &channel.metadata.name,
+                        ]),
                         server_time: tags.server_time_with_fallback() as f64,
                         message_type: MessageType::Quit,
                         user: source.to_string(),
@@ -359,7 +379,13 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
         }
 
         let source = message.source_nickname().unwrap();
-        let msgid = tags.msgid_with_fallback(&["PRIVMSG", source, target, text]);
+        let msgid = tags.msgid_with_fallback(&[
+            &self.state.id.to_string(),
+            "PRIVMSG",
+            source,
+            target,
+            text,
+        ]);
         let reply = self.reply_reference(&tags.reply).await?;
 
         let state_message = Message {
@@ -464,7 +490,12 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                 Some(BatchSubCommand::CUSTOM(c)) if c.as_str() == "DRAFT/MULTILINE" => {
                     let source = message.source_nickname().unwrap();
                     let target = message.response_target().unwrap();
-                    let msgid = tags.msgid_with_fallback(&["MULTILINE", source, target]);
+                    let msgid = tags.msgid_with_fallback(&[
+                        &self.state.id.to_string(),
+                        "MULTILINE",
+                        source,
+                        target,
+                    ]);
 
                     let reply = self.reply_reference(&tags.reply).await?;
 
