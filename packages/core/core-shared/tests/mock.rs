@@ -68,6 +68,7 @@ struct MockDb;
 impl Database for MockDb {
     async fn insert_message(
         &mut self,
+        _: i32,
         _: &str,
         _: core_shared::state::Message,
     ) -> Result<(), OrbitError> {
@@ -76,10 +77,14 @@ impl Database for MockDb {
     async fn message(
         &mut self,
         _: &str,
-    ) -> Result<Option<(String, core_shared::state::Message)>, OrbitError> {
+    ) -> Result<Option<(i32, String, core_shared::state::Message)>, OrbitError> {
         todo!()
     }
-    async fn messages(&mut self, _: &str) -> Result<Vec<core_shared::state::Message>, OrbitError> {
+    async fn messages(
+        &mut self,
+        _: i32,
+        _: &str,
+    ) -> Result<Vec<core_shared::state::Message>, OrbitError> {
         todo!()
     }
     async fn add_reaction(&mut self, _: &str, _: &str, _: &str) -> Result<(), OrbitError> {
