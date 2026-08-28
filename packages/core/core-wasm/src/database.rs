@@ -3,6 +3,7 @@ use std::fmt;
 use anyhow::{Context, anyhow};
 use core_shared::{database::Database as ActorDatabase, state::OrbitError};
 use indexed_db_futures::prelude::QuerySource;
+use indexed_db_futures::transaction::Transaction;
 use indexed_db_futures::{
     Build, KeyPath, KeyPathSeq, database::Database as InnerDb, transaction::TransactionMode,
 };
@@ -57,6 +58,64 @@ impl IndexedDb {
 
         Ok(IndexedDb { inner })
     }
+
+    #[tracing::instrument(err, skip(self))]
+    async fn message_tx(
+        &self,
+        tx: &Transaction<'_>,
+        msgid: &str,
+    ) -> Result<Option<(i32, String, core_shared::state::Message)>, OrbitError> {
+        let store = tx
+            .object_store(MESSAGE_STORE)
+            .map_err(|e| anyhow!(e.to_string()))
+            .context("Failed to open messages object store")?;
+
+        let message: Option<DbMessage> = store
+            .get(msgid)
+            .serde()
+            .map_err(|e| anyhow!(e.to_string()))
+            .context("Failed to serialize msgid")?
+            .await
+            .map_err(|e| anyhow!(e.to_string()))
+            .context("Failed to get message")?;
+
+        Ok(message.map(|m| (m.server_id, m.channel, m.message)))
+    }
+
+    #[tracing::instrument(err, skip(self))]
+    async fn insert_message_tx(
+        &self,
+        tx: &Transaction<'_>,
+        server_id: i32,
+        channel: &str,
+        message: core_shared::state::Message,
+    ) -> Result<(), OrbitError> {
+        let store = tx
+            .object_store(MESSAGE_STORE)
+            .map_err(|e| anyhow!(e.to_string()))
+            .context("Failed to open messages object store")?;
+
+        let msgid = message.metadata.msgid.clone();
+        let message = DbMessage {
+            server_id,
+            timestamp: message.metadata.server_time,
+            channel: channel.to_string(),
+            message,
+        };
+
+        store
+            .put(message)
+            .with_key(msgid)
+            .with_key_type::<String>()
+            .serde()
+            .map_err(|e| anyhow!(e.to_string()))
+            .context("Failed to serialize msgid")?
+            .await
+            .map_err(|e| anyhow!(e.to_string()))
+            .context("Failed to put message")?;
+
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -82,29 +141,9 @@ impl ActorDatabase for IndexedDb {
             .build()
             .map_err(|e| anyhow!(e.to_string()))
             .context("Failed to create messages transaction")?;
-        let store = tx
-            .object_store(MESSAGE_STORE)
-            .map_err(|e| anyhow!(e.to_string()))
-            .context("Failed to open messages object store")?;
 
-        let msgid = message.metadata.msgid.clone();
-        let message = DbMessage {
-            server_id,
-            timestamp: message.metadata.server_time,
-            channel: channel.to_string(),
-            message,
-        };
-
-        store
-            .put(message)
-            .with_key(msgid)
-            .with_key_type::<String>()
-            .serde()
-            .map_err(|e| anyhow!(e.to_string()))
-            .context("Failed to serialize msgid")?
-            .await
-            .map_err(|e| anyhow!(e.to_string()))
-            .context("Failed to put message")?;
+        self.insert_message_tx(&tx, server_id, channel, message)
+            .await?;
 
         tx.commit()
             .await
@@ -125,21 +164,8 @@ impl ActorDatabase for IndexedDb {
             .build()
             .map_err(|e| anyhow!(e.to_string()))
             .context("Failed to create messages transaction")?;
-        let store = tx
-            .object_store(MESSAGE_STORE)
-            .map_err(|e| anyhow!(e.to_string()))
-            .context("Failed to open messages object store")?;
 
-        let message: Option<DbMessage> = store
-            .get(msgid)
-            .serde()
-            .map_err(|e| anyhow!(e.to_string()))
-            .context("Failed to serialize msgid")?
-            .await
-            .map_err(|e| anyhow!(e.to_string()))
-            .context("Failed to get message")?;
-
-        Ok(message.map(|m| (m.server_id, m.channel, m.message)))
+        self.message_tx(&tx, msgid).await
     }
 
     #[tracing::instrument(err, skip(self))]
@@ -199,7 +225,15 @@ impl ActorDatabase for IndexedDb {
         react: &str,
         reactor: &str,
     ) -> Result<(), OrbitError> {
-        let Some((server_id, channel, mut message)) = self.message(msgid).await? else {
+        let tx = self
+            .inner
+            .transaction(MESSAGE_STORE)
+            .with_mode(TransactionMode::Readwrite)
+            .build()
+            .map_err(|e| anyhow!(e.to_string()))
+            .context("Failed to create messages transaction")?;
+
+        let Some((server_id, channel, mut message)) = self.message_tx(&tx, msgid).await? else {
             return Ok(());
         };
         let Some(text) = &mut message.text else {
@@ -210,7 +244,13 @@ impl ActorDatabase for IndexedDb {
         reactors.sort();
         reactors.dedup();
 
-        self.insert_message(server_id, &channel, message).await?;
+        self.insert_message_tx(&tx, server_id, &channel, message)
+            .await?;
+
+        tx.commit()
+            .await
+            .map_err(|e| anyhow!(e.to_string()))
+            .context("Failed to commit transaction")?;
 
         Ok(())
     }
@@ -222,22 +262,43 @@ impl ActorDatabase for IndexedDb {
         react: &str,
         reactor: &str,
     ) -> Result<(), OrbitError> {
-        let Some((server_id, channel, mut message)) = self.message(msgid).await? else {
+        let tx = self
+            .inner
+            .transaction(MESSAGE_STORE)
+            .with_mode(TransactionMode::Readwrite)
+            .build()
+            .map_err(|e| anyhow!(e.to_string()))
+            .context("Failed to create messages transaction")?;
+
+        let Some((server_id, channel, mut message)) = self.message_tx(&tx, msgid).await? else {
             return Ok(());
         };
         let Some(text) = &mut message.text else {
             return Ok(());
         };
+
+        let mut changed = false;
         if let Some(reactors) = text.reactions.get_mut(react)
             && let Some(pos) = reactors.iter().position(|r| *r == reactor)
         {
             reactors.remove(pos);
             if reactors.is_empty() {
                 text.reactions.remove(react);
+                changed = true;
             }
         }
 
-        self.insert_message(server_id, &channel, message).await?;
+        if changed {
+            return Ok(());
+        }
+
+        self.insert_message_tx(&tx, server_id, &channel, message)
+            .await?;
+
+        tx.commit()
+            .await
+            .map_err(|e| anyhow!(e.to_string()))
+            .context("Failed to commit transaction")?;
 
         Ok(())
     }
