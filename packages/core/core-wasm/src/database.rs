@@ -282,13 +282,13 @@ impl ActorDatabase for IndexedDb {
             && let Some(pos) = reactors.iter().position(|r| *r == reactor)
         {
             reactors.remove(pos);
+            changed = true;
             if reactors.is_empty() {
                 text.reactions.remove(react);
-                changed = true;
             }
         }
 
-        if changed {
+        if !changed {
             return Ok(());
         }
 
