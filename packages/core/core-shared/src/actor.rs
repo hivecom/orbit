@@ -1,13 +1,13 @@
 use std::{fmt, time::Duration};
 
 use futures::{FutureExt, future::FusedFuture};
-use rand::{SeedableRng, rngs::SmallRng};
 #[cfg(not(feature = "web"))]
 use std::time::Instant;
 #[cfg(feature = "web")]
 use web_time::Instant;
 
 #[cfg(feature = "web")]
+#[allow(unused_imports)]
 use crate::dbg;
 use crate::{
     SendCommand,
@@ -79,9 +79,24 @@ pub trait IrcConnection: fmt::Debug {
     fn address(&self) -> &str;
 }
 
-pub(crate) struct RequestedHistory {
+#[derive(Debug)]
+pub(crate) struct RequestedBatch {
     pub target: String,
     pub label: Option<String>,
+    pub typ: BatchType,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum BatchType {
+    Join,
+    JoinHistory,
+    History,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum HistoryPurpose {
+    Join,
+    History,
 }
 
 #[derive(Debug)]
@@ -93,6 +108,7 @@ pub(crate) struct CurrentBatch {
 #[derive(Debug)]
 pub(crate) enum BatchData {
     History {
+        purpose: HistoryPurpose,
         label: Option<String>,
         target: String,
         messages: Vec<Message>,
@@ -101,12 +117,19 @@ pub(crate) enum BatchData {
         target: String,
         message: Message,
     },
+    Join {
+        label: String,
+        target: String,
+    },
     Unhandled,
 }
 
 impl CurrentBatch {
     pub fn is_chathistory(&self) -> bool {
         matches!(self.data, BatchData::History { .. })
+    }
+    pub fn is_join(&self) -> bool {
+        matches!(self.data, BatchData::Join { .. })
     }
 }
 
@@ -134,9 +157,8 @@ pub struct IrcActor<C: IrcConnection, DB: Database> {
     pub(crate) disconnect_handlers: Vec<UnboundedSender<String>>,
 
     pub(crate) current_batches: Vec<CurrentBatch>,
-    pub(crate) requested_history_batches: Vec<(RequestedHistory, Instant)>,
+    pub(crate) requested_batches: Vec<(RequestedBatch, Instant)>,
     pub(crate) sasl_state: SaslState,
-    pub(crate) rng: SmallRng,
 }
 
 impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
@@ -162,9 +184,8 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
             error_handlers: Default::default(),
             disconnect_handlers: Default::default(),
             current_batches: Default::default(),
-            requested_history_batches: Default::default(),
+            requested_batches: Default::default(),
             sasl_state: Default::default(),
-            rng: SmallRng::from_seed([1; 32]),
         };
 
         let (tx, rx) = oneshot::channel();
@@ -220,7 +241,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
 
 
                     assert!(
-                        self.requested_history_batches
+                        self.requested_batches
                             .iter()
                             .all(|(_, creation)| creation.elapsed() < Duration::from_secs(5))
                     );
