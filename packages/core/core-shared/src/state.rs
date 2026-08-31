@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 
-#[cfg(feature = "web")]
-use crate::dbg;
 use irc_proto::message::Tag;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -13,6 +11,10 @@ use tracing::{error, warn};
 use tsify::Tsify;
 #[cfg(feature = "web")]
 use wasm_bindgen::prelude::*;
+
+#[cfg(feature = "web")]
+#[allow(unused_imports)]
+use crate::dbg;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Server {
@@ -146,6 +148,7 @@ pub struct Capabilities {
     pub(crate) extended_join: Capability,
     pub(crate) extended_monitor: Capability,
     pub(crate) invite_notify: Capability,
+    // Depends on batch
     pub(crate) labeled_response: Capability,
     pub(crate) multi_prefix: Capability,
     pub(crate) setname: Capability,
@@ -579,7 +582,7 @@ pub enum ServerEvent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct History {
-    pub channel: String,
+    pub target: String,
     pub messages: Vec<Message>,
 }
 

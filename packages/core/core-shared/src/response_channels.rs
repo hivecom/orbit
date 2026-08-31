@@ -6,11 +6,14 @@ use std::time::Instant;
 #[cfg(feature = "web")]
 use web_time::Instant;
 
-#[cfg(feature = "web")]
-use crate::dbg;
-use crate::state::{Channel, History, Message, OrbitError, Server, SignedIn};
 use futures::channel::oneshot;
 use tracing::warn;
+
+use crate::state::{Channel, History, Message, OrbitError, Server, SignedIn};
+
+#[cfg(feature = "web")]
+#[allow(unused_imports)]
+use crate::dbg;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CommandKey {
@@ -18,7 +21,7 @@ pub(crate) enum CommandKey {
     SignIn,
     Join(String),
     Privmsg { target: String, text: String },
-    History,
+    History(String),
     Label(String),
 }
 
@@ -28,7 +31,7 @@ pub enum CommandResponse {
     GetChannelState(Box<Option<Channel>>),
     Capabilities,
     SignIn(Result<SignedIn, OrbitError>),
-    Join(String),
+    Join(Box<Channel>),
     Privmsg(Box<Message>),
     History(History),
 }

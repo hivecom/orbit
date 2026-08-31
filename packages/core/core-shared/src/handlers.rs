@@ -1,28 +1,30 @@
+use anyhow::{Context, anyhow};
+use base64::prelude::*;
+use irc_proto::{BatchSubCommand, CapSubCommand, Command::*, Message as IrcMessage, Response};
 use std::collections::HashMap;
 #[cfg(not(feature = "web"))]
 use std::time::Instant;
+use tracing::{debug, error, warn};
 #[cfg(feature = "web")]
 use web_time::Instant;
 
-#[cfg(feature = "web")]
-use crate::dbg;
 use crate::{
     SendCommand,
     actor::{
-        ActorCommand, ActorMessage, BatchData, CurrentBatch, IrcActor, IrcConnection,
-        RequestedHistory, SaslState,
+        ActorCommand, ActorMessage, BatchData, BatchType, CurrentBatch, HistoryPurpose, IrcActor,
+        IrcConnection, RequestedBatch, SaslState,
     },
     database::Database,
-    response_channels::{CommandKey, CommandResponse, generate_label},
+    response_channels::{CommandKey, CommandResponse},
     state::{
         Channel, ChannelRole, ChannelUser, History, Message, MessageMetadata, MessageReference,
         MessageType, OrbitError, ServerEvent, SignedIn, Tags, TextMessage, User,
     },
 };
-use anyhow::{Context, anyhow};
-use base64::prelude::*;
-use irc_proto::{BatchSubCommand, CapSubCommand, Command::*, Message as IrcMessage, Response};
-use tracing::{debug, error, warn};
+
+#[cfg(feature = "web")]
+#[allow(unused_imports)]
+use crate::dbg;
 
 impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
     #[tracing::instrument(err, skip(self))]
@@ -168,31 +170,34 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                 .insert(target.to_string(), channel.clone());
 
             if !self.state.capabilities.history.enabled {
-                self.response_channels
-                    .reply(
-                        &CommandKey::Join(target.to_string()),
-                        CommandResponse::Join(target.to_string()),
-                    )
-                    .map_err(|e| anyhow!("Failed to reply to JOIN command {e:?}"))?;
+                if !self.state.capabilities.labeled_response.enabled {
+                    let channel = self
+                        .state
+                        .channels
+                        .get(target)
+                        .expect("should exist after just joining");
+                    self.response_channels
+                        .reply(
+                            &CommandKey::Join(target.to_string()),
+                            CommandResponse::Join(Box::new(channel.clone())),
+                        )
+                        .map_err(|e| anyhow!("Failed to reply to JOIN command {e:?}"))?;
+                }
+
+                self.on_event(ServerEvent::Joined(channel)).await?;
             }
 
-            self.on_event(ServerEvent::Joined(channel)).await?;
-
             if self.state.capabilities.history.enabled {
-                let label = if self.state.capabilities.labeled_response.enabled {
-                    Some(generate_label(&mut self.rng))
-                } else {
-                    None
-                };
-
-                self.requested_history_batches.push((
-                    RequestedHistory {
+                self.requested_batches.push((
+                    RequestedBatch {
                         target: target.to_string(),
-                        label: label.clone(),
+                        label: tags.label.clone(),
+                        typ: BatchType::JoinHistory,
                     },
                     Instant::now(),
                 ));
-                self.history_latest(target.to_string(), None, 5, label)
+
+                self.history_latest(target.to_string(), None, 5, tags.label)
                     .await
                     .context("Failed to request latest history")?;
             }
@@ -470,17 +475,22 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
             match typ {
                 Some(BatchSubCommand::CUSTOM(c)) if c.as_str() == "CHATHISTORY" => {
                     let idx = self
-                        .requested_history_batches
+                        .requested_batches
                         .iter()
                         .position(|b| b.0.label == tags.label)
                         .expect("Chat history was requested");
-                    let channel = self.requested_history_batches.remove(idx).0.target;
+                    let request = self.requested_batches.remove(idx).0;
 
                     self.current_batches.push(CurrentBatch {
                         id: id.to_string(),
                         data: BatchData::History {
+                            purpose: match request.typ {
+                                BatchType::Join => unreachable!("not a chathistory type"),
+                                BatchType::JoinHistory => HistoryPurpose::Join,
+                                BatchType::History => HistoryPurpose::History,
+                            },
                             label: tags.label,
-                            target: channel,
+                            target: request.target,
                             messages: Vec::new(),
                         },
                     });
@@ -520,6 +530,27 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                         },
                     });
                 }
+                Some(BatchSubCommand::CUSTOM(c)) if c.as_str() == "LABELED-RESPONSE" => {
+                    let idx = self
+                        .requested_batches
+                        .iter()
+                        .position(|b| b.0.label == tags.label)
+                        .expect("labeled response was requested");
+                    let RequestedBatch { target, label, typ } =
+                        self.requested_batches.remove(idx).0;
+
+                    if typ == BatchType::Join {
+                        self.current_batches.push(CurrentBatch {
+                            id: id.to_string(),
+                            data: BatchData::Join {
+                                label: label.expect("a labeled response should have a label"),
+                                target,
+                            },
+                        });
+                    } else {
+                        debug!("Unhandled: {:?}", typ);
+                    }
+                }
                 _ => {
                     self.current_batches.push(CurrentBatch {
                         id: id.to_string(),
@@ -537,6 +568,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
             if let Some(batch) = self.current_batches.pop() {
                 match batch.data {
                     BatchData::History {
+                        purpose: typ,
                         label,
                         target: channel_name,
                         messages,
@@ -547,29 +579,47 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                                 .await?;
                         }
 
-                        let history = History {
-                            channel: channel_name.clone(),
-                            messages,
-                        };
+                        match typ {
+                            HistoryPurpose::History => {
+                                let key = if let Some(label) = label {
+                                    CommandKey::Label(label)
+                                } else {
+                                    CommandKey::History(channel_name.clone())
+                                };
 
-                        let key = if let Some(label) = label {
-                            CommandKey::Label(label)
-                        } else {
-                            CommandKey::History
-                        };
+                                self.response_channels
+                                    .reply(
+                                        &key,
+                                        CommandResponse::History(History {
+                                            target: channel_name,
+                                            messages,
+                                        }),
+                                    )
+                                    .map_err(|e| {
+                                        anyhow!("Failed to reply to History command {e:?}")
+                                    })?;
+                            }
+                            HistoryPurpose::Join => {
+                                let key = if let Some(label) = label {
+                                    CommandKey::Label(label)
+                                } else {
+                                    CommandKey::Join(channel_name.clone())
+                                };
 
-                        self.response_channels
-                            .reply(
-                                &CommandKey::Join(channel_name.clone()),
-                                CommandResponse::Join(channel_name.clone()),
-                            )
-                            .map_err(|e| anyhow!("Failed to reply to JOIN command {e:?}"))?;
+                                let channel = self
+                                    .state
+                                    .channels
+                                    .get(&channel_name)
+                                    .expect("should exist after just joining");
 
-                        self.response_channels
-                            .reply(&key, CommandResponse::History(history.clone()))
-                            .unwrap();
+                                self.response_channels
+                                    .reply(&key, CommandResponse::Join(Box::new(channel.clone())))
+                                    .map_err(|e| {
+                                        anyhow!("Failed to reply to Join command {e:?}")
+                                    })?;
+                            }
+                        }
                     }
-
                     BatchData::Multiline {
                         target,
                         message: state_message,
@@ -609,6 +659,20 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                             message: state_message,
                         })
                         .await?;
+                    }
+                    BatchData::Join { label, target } => {
+                        let channel = self
+                            .state
+                            .channels
+                            .get(&target)
+                            .expect("should exist after just joining");
+
+                        self.response_channels
+                            .reply(
+                                &CommandKey::Label(label),
+                                CommandResponse::Join(Box::new(channel.clone())),
+                            )
+                            .map_err(|e| anyhow!("Failed to reply to JOIN command {e:?}"))?;
                     }
                     BatchData::Unhandled => (),
                 }
@@ -765,9 +829,11 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                 channel.metadata.topic = Some(topic);
 
                 let metadata = channel.metadata.clone();
-                self.on_event(ServerEvent::ChannelUpdated(metadata))
-                    .await
-                    .unwrap();
+                if !self.current_batches.iter().any(|b| b.is_join()) {
+                    self.on_event(ServerEvent::ChannelUpdated(metadata))
+                        .await
+                        .unwrap();
+                }
             }
             Response::RPL_NAMREPLY => {
                 let channel_name = params[2].to_string();
@@ -802,13 +868,16 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
 
                 channel.users = channel_users;
             }
-            Response::RPL_ENDOFNAMES => self
-                .on_event(ServerEvent::UserList {
-                    channel: params[1].to_string(),
-                    users: self.state.channels.get(&params[1]).unwrap().users.clone(),
-                })
-                .await
-                .map_err(|e| anyhow!("Failed to send server event {e:?}"))?,
+            Response::RPL_ENDOFNAMES => {
+                if !self.current_batches.iter().any(|b| b.is_join()) {
+                    self.on_event(ServerEvent::UserList {
+                        channel: params[1].to_string(),
+                        users: self.state.channels.get(&params[1]).unwrap().users.clone(),
+                    })
+                    .await
+                    .map_err(|e| anyhow!("Failed to send server event {e:?}"))?
+                }
+            }
             Response::RPL_ISUPPORT => {
                 for option in &params[1..(params.len() - 1)] {
                     let (key, value) = option.split_once('=').unzip();
@@ -884,9 +953,27 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                 self.sign_in_anonymous(nick, user, realname).await?;
             }
             ActorCommand::Join { channel, password } => {
-                self.response_channels
-                    .register(CommandKey::Join(channel.clone()), cmd.reply_tx.unwrap());
-                self.join(channel, password).await.unwrap();
+                let label = if self.state.capabilities.labeled_response.enabled {
+                    let label = self
+                        .response_channels
+                        .register_labeled(cmd.reply_tx.unwrap());
+                    self.requested_batches.push((
+                        RequestedBatch {
+                            target: channel.to_string(),
+                            label: Some(label.clone()),
+                            typ: BatchType::Join,
+                        },
+                        Instant::now(),
+                    ));
+
+                    Some(label)
+                } else {
+                    self.response_channels
+                        .register(CommandKey::Join(channel.clone()), cmd.reply_tx.unwrap());
+
+                    None
+                };
+                self.join(channel, password, label).await.unwrap();
             }
             ActorCommand::Privmsg { text, target } => {
                 self.response_channels.register(
@@ -918,15 +1005,16 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                     )
                 } else {
                     self.response_channels
-                        .register(CommandKey::History, cmd.reply_tx.unwrap());
+                        .register(CommandKey::History(channel.clone()), cmd.reply_tx.unwrap());
 
                     None
                 };
 
-                self.requested_history_batches.push((
-                    RequestedHistory {
+                self.requested_batches.push((
+                    RequestedBatch {
                         target: channel.clone(),
                         label: label.clone(),
+                        typ: BatchType::History,
                     },
                     Instant::now(),
                 ));

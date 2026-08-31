@@ -314,12 +314,12 @@ impl IrcConnection {
             .context("Failed to send ActorMessage")?;
 
         let resp = rx.await.context("Failed to await actor join message")?;
-        let CommandResponse::Join(name) = resp else {
+        let CommandResponse::Join(channel) = resp else {
             unreachable!("expected join, got: {:?}", resp);
         };
 
         Ok(IrcChannel {
-            name,
+            name: channel.metadata.name,
             address: self.address.clone(),
         })
     }
@@ -678,7 +678,7 @@ pub struct History {
 impl From<state::History> for History {
     fn from(history: state::History) -> Self {
         Self {
-            channel: history.channel,
+            channel: history.target,
             messages: history.messages.into_iter().map(Into::into).collect(),
         }
     }
