@@ -107,6 +107,6 @@ impl ResponseChannels {
 
     pub fn check_timeouts(&mut self) {
         self.channels
-            .retain(|(_, creation, _)| creation.elapsed() < Duration::from_secs(1));
+            .retain(|(_, creation, _)| creation.elapsed() < Duration::from_secs(5));
     }
 }
