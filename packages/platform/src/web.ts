@@ -198,9 +198,12 @@ function createTrayPort(): TrayPort {
       document.title = title
     },
     async setBadgeCount(count) {
+      await initializeCanvas()
+
       if (count > 0) {
-        await initializeCanvas()
         drawBadgeCount(count)
+      } else {
+        void this.removeBadge()
       }
     },
     async addBadgeAlert() {
