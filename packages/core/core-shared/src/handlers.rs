@@ -99,7 +99,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
             }
             CapSubCommand::LS if let Some(param) = param => {
                 if param == "*" {
-                    return Ok(());
+                    unreachable!("that should mean that caps is Some");
                 }
                 for cap in param.split_whitespace() {
                     let cap = cap
@@ -108,6 +108,8 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                         .ok_or_else(|| anyhow!("Cap is empty: \"{}\"", cap))?;
                     self.state.capabilities.set_from_name(cap, None);
                 }
+
+                self.request_caps().await?;
             }
             CapSubCommand::ACK if let Some(param) = param => {
                 for cap in param.split_whitespace() {
