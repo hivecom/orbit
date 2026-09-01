@@ -1,5 +1,5 @@
 import { createMockPlatform } from "./mock"
-import type { AudioDevice, AudioDevicePort, FaviconData, FileTransferPort, NotificationPort, Platform, TrayPort } from "./types"
+import type { AudioDevice, AudioDevicePort, FileTransferPort, NotificationPort, Platform, TrayPort } from "./types"
 
 function createNotificationPort(): NotificationPort {
   return {
@@ -54,6 +54,12 @@ function createFileTransferPort(): FileTransferPort {
       anchor.remove()
     },
   }
+}
+
+export interface FaviconData {
+  element: HTMLLinkElement
+  cleanBitmap: ImageBitmap
+  url: string
 }
 
 function createTrayPort(): TrayPort {

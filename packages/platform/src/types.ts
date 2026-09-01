@@ -36,12 +36,6 @@ export interface TrayPort {
   setTitle: (title: string) => Promise<void>
 }
 
-export interface FaviconData {
-  element: HTMLLinkElement
-  cleanBitmap: ImageBitmap
-  url: string
-}
-
 export interface AudioDevice {
   id: string
   label: string
