@@ -327,6 +327,10 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
             "draft/extended-isupport",
             "server-time",
             "batch",
+            "draft/webpush",
+            "extended-monitor",
+            "away-notify",
+            "draft/read-marker",
         ] {
             if self.state.capabilities.cap_by_name(cap).has {
                 enable.push(cap);
