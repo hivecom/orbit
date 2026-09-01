@@ -153,6 +153,7 @@ pub struct Capabilities {
     pub(crate) multi_prefix: Capability,
     pub(crate) setname: Capability,
     pub(crate) standard_replies: Capability,
+    pub(crate) tls: Capability,
     pub(crate) userhost_in_names: Capability,
 }
 
@@ -189,7 +190,7 @@ impl Capabilities {
             "draft/channel-rename" => &self.channel_rename,
             "draft/extended-isupport" => &self.extended_isupport,
             "draft/languages" => &self.languages,
-            "draft/no-implicit-names" => &self.no_implicit_names,
+            "no-implicit-names" | "draft/no-implicit-names" => &self.no_implicit_names,
             "draft/persistence" => &self.persistence,
             "draft/pre-away" => &self.pre_away,
             "draft/read-marker" => &self.read_marker,
@@ -201,6 +202,7 @@ impl Capabilities {
             "multi-prefix" => &self.multi_prefix,
             "setname" => &self.setname,
             "standard-replies" => &self.standard_replies,
+            "tls" => &self.tls,
             "userhost-in-names" => &self.userhost_in_names,
             _ => unimplemented!("cap: {cap}"),
         }
@@ -290,7 +292,7 @@ impl Capabilities {
                 self.languages.has = true;
                 enabled.map(|e| self.languages.enabled = e);
             }
-            "draft/no-implicit-names" => {
+            "no-implicit-names" | "draft/no-implicit-names" => {
                 self.no_implicit_names.has = true;
                 enabled.map(|e| self.no_implicit_names.enabled = e);
             }
@@ -338,6 +340,10 @@ impl Capabilities {
                 self.standard_replies.has = true;
                 enabled.map(|e| self.standard_replies.enabled = e);
             }
+            "tls" => {
+                self.tls.has = true;
+                enabled.map(|e| self.tls.enabled = e);
+            }
             "userhost-in-names" => {
                 self.userhost_in_names.has = true;
                 enabled.map(|e| self.userhost_in_names.enabled = e);
@@ -345,7 +351,8 @@ impl Capabilities {
             _ if cap.starts_with("soju.im")
                 || cap.starts_with("znc.in")
                 || cap.starts_with("inspircd.org")
-                || cap.starts_with("ergo.chat") => {}
+                || cap.starts_with("ergo.chat")
+                || cap.starts_with("solanum.chat") => {}
             _ => unimplemented!("cap: {cap}"),
         };
     }
@@ -354,6 +361,7 @@ impl Capabilities {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Support {
     pub accept: Option<i64>,
+    pub account_extended_ban: Option<Vec<String>>,
     pub away_length: Option<i64>,
     pub bot: Option<char>,
     pub caller_id: Option<char>,
@@ -363,15 +371,20 @@ pub struct Support {
     pub channel_length: Option<i64>,
     pub channel_types: Option<String>,
     pub chat_history: Option<i64>,
+    pub client_tag_deny: Option<Vec<String>>,
+    pub deaf: Option<char>,
     // search extensions for list command
     pub elist: Option<String>,
     pub esilence: Option<String>,
+    pub etrace: bool,
     pub excepts: bool,
     pub extban: Option<String>,
     pub host_length: Option<i64>,
+    pub fnc: bool,
     pub forward: Option<String>,
     pub invex: bool,
     pub key_length: Option<i64>,
+    pub knock: bool,
     pub kick_length: Option<i64>,
     pub line_length: Option<i64>,
     pub max_list: Option<HashMap<String, i64>>,
@@ -381,6 +394,7 @@ pub struct Support {
     pub name_length: Option<i64>,
     pub namesx: bool,
     pub message_ref_types: Option<Vec<String>>,
+    pub max_nick_length: Option<i64>,
     pub network: Option<String>,
     pub nick_length: Option<i64>,
     pub prefix: Option<Vec<(char, char)>>,
@@ -411,6 +425,10 @@ impl Support {
     pub fn set(&mut self, key: &str, value: Option<&str>) {
         match key.trim() {
             "ACCEPT" => self.accept = value.map(|v| i64::from_str(v).unwrap()),
+            "ACCOUNTEXTBAN" => {
+                self.account_extended_ban =
+                    value.map(|v| v.split(',').map(ToOwned::to_owned).collect())
+            }
             "AWAYLEN" => self.away_length = value.map(|v| i64::from_str(v).unwrap()),
             "BOT" => self.bot = value.map(|v| v.chars().nth(0).unwrap()),
             "CALLERID" => self.caller_id = value.map(|v| v.chars().nth(0).unwrap_or('g')),
@@ -436,14 +454,21 @@ impl Support {
             "draft/CHATHISTORY" | "CHATHISTORY" => {
                 self.chat_history = value.map(|v| i64::from_str(v).unwrap())
             }
+            "CLIENTTAGDENY" => {
+                self.client_tag_deny = value.map(|v| v.split(',').map(ToOwned::to_owned).collect())
+            }
+            "DEAF" => self.deaf = value.map(|v| v.chars().nth(0).unwrap()),
             "ELIST" => self.elist = value.map(ToOwned::to_owned),
             "ESILENCE" => self.esilence = value.map(ToOwned::to_owned),
+            "ETRACE" => self.etrace = true,
             "EXCEPTS" => self.excepts = true,
             "EXTBAN" => self.extban = value.map(ToOwned::to_owned),
             "HOSTLEN" => self.host_length = value.map(|v| i64::from_str(v).unwrap()),
+            "FNC" => self.fnc = true,
             "FORWARD" => self.forward = value.map(ToOwned::to_owned),
             "INVEX" => self.invex = true,
             "KEYLEN" => self.key_length = value.map(|v| i64::from_str(v).unwrap()),
+            "KNOCK" => self.knock = true,
             "KICKLEN" => self.kick_length = value.map(|v| i64::from_str(v).unwrap()),
             "LINELEN" => self.line_length = value.map(|v| i64::from_str(v).unwrap()),
             "MAXLIST" => {
@@ -466,6 +491,7 @@ impl Support {
                 self.message_ref_types =
                     value.map(|v| v.split(',').map(ToOwned::to_owned).collect())
             }
+            "MAXNICKLEN" => self.max_nick_length = value.map(|v| i64::from_str(v).unwrap()),
             "NETWORK" => self.network = value.map(ToOwned::to_owned),
             "NICKLEN" => self.nick_length = value.map(|v| i64::from_str(v).unwrap()),
             "PREFIX" => {
