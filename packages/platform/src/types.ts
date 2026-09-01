@@ -6,7 +6,11 @@ export interface NotificationOptions {
 
 export interface NotificationPort {
   requestPermission: () => Promise<boolean>
-  notify: (options: NotificationOptions) => Notification | null
+  // TODO: when developing platforms outside of web, we might want to dismiss a
+  // notification from code. For that we'll need some kind of a reference, so
+  // this method might have to return an id so a new `dismiss(id)` method can
+  // call it
+  notify: (options: NotificationOptions) => Promise<void>
 }
 
 export interface TrayPort {

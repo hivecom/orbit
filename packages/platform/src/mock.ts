@@ -11,8 +11,8 @@ export function createMockPlatform(target: Platform["target"]): Platform {
       async requestPermission() {
         return Promise.resolve(true)
       },
-      notify({ title, body, icon }) {
-        return new Notification(title, { body, icon })
+      notify() {
+        return Promise.resolve()
       },
     },
     tray: {
