@@ -165,6 +165,46 @@ pub struct Capability {
 }
 
 impl Capabilities {
+    pub fn cap_by_name(&self, cap: &str) -> &Capability {
+        match cap {
+            "message-tags" => &self.message_tags,
+            "draft/message-redaction" => &self.message_redaction,
+            "draft/multiline" => &self.multiline,
+            "draft/metadata-2" => &self.metadata,
+            "draft/webpush" => &self.webpush,
+
+            "echo-message" => &self.echo_messages,
+            "sasl" => &self.sasl,
+            "draft/chathistory" => &self.history,
+            "draft/event-playback" => &self.event_playback,
+            "draft/account-registration" => &self.account_registration,
+            "server-time" => &self.server_time,
+
+            "account-notify" => &self.account_notify,
+            "account-tag" => &self.account_tag,
+            "away-notify" => &self.away_notify,
+            "batch" => &self.batch,
+            "cap-notify" => &self.cap_notify,
+            "chghost" => &self.chghost,
+            "draft/channel-rename" => &self.channel_rename,
+            "draft/extended-isupport" => &self.extended_isupport,
+            "draft/languages" => &self.languages,
+            "draft/no-implicit-names" => &self.no_implicit_names,
+            "draft/persistence" => &self.persistence,
+            "draft/pre-away" => &self.pre_away,
+            "draft/read-marker" => &self.read_marker,
+            "draft/relaymsg" => &self.relaymsg,
+            "extended-join" => &self.extended_join,
+            "extended-monitor" => &self.extended_monitor,
+            "invite-notify" => &self.invite_notify,
+            "labeled-response" => &self.labeled_response,
+            "multi-prefix" => &self.multi_prefix,
+            "setname" => &self.setname,
+            "standard-replies" => &self.standard_replies,
+            "userhost-in-names" => &self.userhost_in_names,
+            _ => unimplemented!("cap: {cap}"),
+        }
+    }
     pub fn set_from_name(&mut self, cap: &str, enabled: Option<bool>) {
         #[allow(clippy::option_map_unit_fn)]
         match cap {
@@ -304,6 +344,7 @@ impl Capabilities {
             }
             _ if cap.starts_with("soju.im")
                 || cap.starts_with("znc.in")
+                || cap.starts_with("inspircd.org")
                 || cap.starts_with("ergo.chat") => {}
             _ => unimplemented!("cap: {cap}"),
         };
@@ -312,8 +353,10 @@ impl Capabilities {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Support {
+    pub accept: Option<i64>,
     pub away_length: Option<i64>,
     pub bot: Option<char>,
+    pub caller_id: Option<char>,
     pub case_mapping: Option<String>,
     pub channel_limit: Option<HashMap<char, i64>>,
     pub channel_modes: Option<Vec<String>>,
@@ -322,37 +365,55 @@ pub struct Support {
     pub chat_history: Option<i64>,
     // search extensions for list command
     pub elist: Option<String>,
+    pub esilence: Option<String>,
     pub excepts: bool,
     pub extban: Option<String>,
+    pub host_length: Option<i64>,
     pub forward: Option<String>,
     pub invex: bool,
+    pub key_length: Option<i64>,
     pub kick_length: Option<i64>,
+    pub line_length: Option<i64>,
     pub max_list: Option<HashMap<String, i64>>,
     pub max_targets: Option<i64>,
-    pub modes: bool,
+    pub modes: Option<i64>,
     pub monitor: Option<i64>,
+    pub name_length: Option<i64>,
+    pub namesx: bool,
     pub message_ref_types: Option<Vec<String>>,
     pub network: Option<String>,
     pub nick_length: Option<i64>,
     pub prefix: Option<Vec<(char, char)>>,
     pub rp_channel: Option<char>,
     pub rp_user: Option<char>,
+    pub remove: bool,
     pub safe_list: bool,
     pub safe_rate: bool,
+    pub secure_list: Option<i64>,
+    pub silence: Option<i64>,
     pub status_message: Option<String>,
     pub target_max: Option<Vec<(String, Option<i64>)>>,
     pub topic_length: Option<i64>,
+    pub uhnames: bool,
+    pub user_ip: bool,
+    pub user_length: Option<i64>,
+    pub user_modes: Option<Vec<String>>,
     pub utf8_mapping: Option<String>,
     pub utf8_only: bool,
     pub vapid: Option<String>,
+    pub vbanlist: bool,
+    pub vlist: Option<String>,
+    pub watch: Option<i64>,
     pub whox: bool,
 }
 
 impl Support {
     pub fn set(&mut self, key: &str, value: Option<&str>) {
         match key.trim() {
+            "ACCEPT" => self.accept = value.map(|v| i64::from_str(v).unwrap()),
             "AWAYLEN" => self.away_length = value.map(|v| i64::from_str(v).unwrap()),
             "BOT" => self.bot = value.map(|v| v.chars().nth(0).unwrap()),
+            "CALLERID" => self.caller_id = value.map(|v| v.chars().nth(0).unwrap_or('g')),
             "CASEMAPPING" => self.case_mapping = value.map(ToOwned::to_owned),
             "CHANLIMIT" => {
                 self.channel_limit = value.map(|v| {
@@ -376,11 +437,15 @@ impl Support {
                 self.chat_history = value.map(|v| i64::from_str(v).unwrap())
             }
             "ELIST" => self.elist = value.map(ToOwned::to_owned),
+            "ESILENCE" => self.esilence = value.map(ToOwned::to_owned),
             "EXCEPTS" => self.excepts = true,
             "EXTBAN" => self.extban = value.map(ToOwned::to_owned),
+            "HOSTLEN" => self.host_length = value.map(|v| i64::from_str(v).unwrap()),
             "FORWARD" => self.forward = value.map(ToOwned::to_owned),
             "INVEX" => self.invex = true,
+            "KEYLEN" => self.key_length = value.map(|v| i64::from_str(v).unwrap()),
             "KICKLEN" => self.kick_length = value.map(|v| i64::from_str(v).unwrap()),
+            "LINELEN" => self.line_length = value.map(|v| i64::from_str(v).unwrap()),
             "MAXLIST" => {
                 self.max_list = value.map(|v| {
                     v.split(',')
@@ -393,8 +458,10 @@ impl Support {
                 })
             }
             "MAXTARGETS" => self.max_targets = value.map(|v| i64::from_str(v).unwrap()),
-            "MODES" => self.modes = true,
+            "MODES" => self.modes = value.map(|v| i64::from_str(v).unwrap()),
             "MONITOR" => self.monitor = value.map(|v| i64::from_str(v).unwrap()),
+            "NAMELEN" => self.name_length = value.map(|v| i64::from_str(v).unwrap()),
+            "NAMESX" => self.namesx = true,
             "MSGREFTYPES" => {
                 self.message_ref_types =
                     value.map(|v| v.split(',').map(ToOwned::to_owned).collect())
@@ -411,8 +478,11 @@ impl Support {
             }
             "RPCHAN" => self.rp_channel = value.map(|v| v.chars().nth(0).unwrap()),
             "RPUSER" => self.rp_user = value.map(|v| v.chars().nth(0).unwrap()),
+            "REMOVE" => self.remove = true,
             "SAFELIST" => self.safe_list = true,
             "SAFERATE" => self.safe_rate = true,
+            "SECURELIST" => self.secure_list = value.map(|v| i64::from_str(v).unwrap()),
+            "SILENCE" => self.silence = value.map(|v| i64::from_str(v).unwrap()),
             "STATUSMSG" => self.status_message = value.map(ToOwned::to_owned),
             "TARGMAX" => {
                 self.target_max = value.map(|v| {
@@ -426,9 +496,18 @@ impl Support {
                 })
             }
             "TOPICLEN" => self.topic_length = value.map(|v| i64::from_str(v).unwrap()),
+            "UHNAMES" => self.uhnames = true,
+            "USERIP" => self.user_ip = true,
+            "USERLEN" => self.user_length = value.map(|v| i64::from_str(v).unwrap()),
+            "USERMODES" => {
+                self.user_modes = value.map(|v| v.split(',').map(ToOwned::to_owned).collect())
+            }
             "UTF8MAPPING" => self.utf8_mapping = value.map(ToOwned::to_owned),
             "UTF8ONLY" => self.utf8_only = true,
             "VAPID" => self.vapid = value.map(ToOwned::to_owned),
+            "VBANLIST" => self.vbanlist = true,
+            "VLIST" => self.vlist = value.map(ToOwned::to_owned),
+            "WATCH" => self.watch = value.map(|v| i64::from_str(v).unwrap()),
             "WHOX" => self.whox = true,
             _ => unimplemented!("isupport: {key}, {value:?}"),
         };

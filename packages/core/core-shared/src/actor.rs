@@ -192,7 +192,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
         actor
             .response_channels
             .register(CommandKey::RequestCaps, tx);
-        actor.request_caps().await?;
+        actor.init_cap_request().await?;
 
         spawn(actor);
 
@@ -303,12 +303,17 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
     }
 
     #[tracing::instrument(err, skip(self))]
-    pub(crate) async fn request_caps(&mut self) -> Result<(), OrbitError> {
+    pub(crate) async fn init_cap_request(&mut self) -> Result<(), OrbitError> {
         let irc_version = String::from("302");
         self.cap_ls(irc_version)
             .await
             .context("Failed to send CAPS LS")?;
-        self.cap_req(&[
+
+        Ok(())
+    }
+    pub(crate) async fn request_caps(&mut self) -> Result<(), OrbitError> {
+        let mut enable = Vec::new();
+        for cap in [
             "echo-message",
             "labeled-response",
             "message-tags",
@@ -319,11 +324,20 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
             "draft/event-playback",
             "draft/account-registration",
             "draft/multiline",
+            "draft/extended-isupport",
             "server-time",
             "batch",
-        ])
-        .await
-        .context("Failed to send CAP REQ")?;
+        ] {
+            if self.state.capabilities.cap_by_name(cap).has {
+                enable.push(cap);
+            }
+        }
+
+        if !enable.is_empty() {
+            self.cap_req(&enable)
+                .await
+                .context("Failed to send CAP REQ")?;
+        }
 
         Ok(())
     }
