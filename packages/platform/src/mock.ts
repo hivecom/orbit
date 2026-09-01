@@ -12,7 +12,7 @@ export function createMockPlatform(target: Platform["target"]): Platform {
         return Promise.resolve(true)
       },
       notify() {
-        return Promise.resolve()
+        void null
       },
     },
     tray: {

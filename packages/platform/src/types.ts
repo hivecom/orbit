@@ -10,12 +10,12 @@ export interface NotificationPort {
   // notification from code. For that we'll need some kind of a reference, so
   // this method might have to return an id so a new `dismiss(id)` method can
   // call it
-  notify: (options: NotificationOptions) => Promise<void>
+  notify: (options: NotificationOptions) => void
 }
 
 export interface TrayPort {
   /**
-   * Sets the red badge count on the favicon/app icon. Count must be grater than 0
+   * Sets the red badge count on the favicon/app icon. Passing 0 clears the badge
    */
   setBadgeCount: (count: number) => Promise<void>
   /**

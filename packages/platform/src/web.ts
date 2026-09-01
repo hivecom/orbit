@@ -15,8 +15,7 @@ function createNotificationPort(): NotificationPort {
         return null
       }
 
-      // Return notification object. Useful if we want to manually clear them
-      return new Notification(title, { body, icon })
+      void new Notification(title, { body, icon })
     },
   }
 }
