@@ -392,7 +392,7 @@ impl IrcChannel {
             .await
             .context("Failed to send ActorMessage")?;
 
-        let resp = rx.await.context("Failed to await actor message")?;
+        let resp = rx.await.context("Failed to await actor privmessage")?;
         let CommandResponse::Privmsg(message) = resp else {
             unreachable!("expected privmsg, got: {:?}", resp);
         };
