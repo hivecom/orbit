@@ -624,7 +624,7 @@ pub enum MessageType {
     Quit,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TextMessage {
     pub content: String,
     pub reactions: HashMap<String, Vec<String>>,
