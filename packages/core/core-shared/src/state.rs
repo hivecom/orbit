@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+
 use std::str::FromStr;
 
 use irc_proto::message::Tag;
@@ -144,7 +145,6 @@ pub struct Capabilities {
     pub(crate) pre_away: Capability,
     pub(crate) read_marker: Capability,
     pub(crate) relaymsg: Capability,
-    pub(crate) ergo_nope: Capability,
     pub(crate) extended_join: Capability,
     pub(crate) extended_monitor: Capability,
     pub(crate) invite_notify: Capability,
@@ -270,10 +270,6 @@ impl Capabilities {
                 self.relaymsg.has = true;
                 enabled.map(|e| self.relaymsg.enabled = e);
             }
-            "ergo.chat/nope" => {
-                self.ergo_nope.has = true;
-                enabled.map(|e| self.ergo_nope.enabled = e);
-            }
             "extended-join" => {
                 self.extended_join.has = true;
                 enabled.map(|e| self.extended_join.enabled = e);
@@ -306,7 +302,9 @@ impl Capabilities {
                 self.userhost_in_names.has = true;
                 enabled.map(|e| self.userhost_in_names.enabled = e);
             }
-            _ if cap.starts_with("soju.im") || cap.starts_with("znc.in") => (),
+            _ if cap.starts_with("soju.im")
+                || cap.starts_with("znc.in")
+                || cap.starts_with("ergo.chat") => {}
             _ => unimplemented!("cap: {cap}"),
         };
     }
