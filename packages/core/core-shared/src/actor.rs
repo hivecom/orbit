@@ -337,7 +337,11 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
             }
         }
 
-        if !enable.is_empty() {
+        if enable.is_empty() {
+            self.response_channels
+                .reply(&CommandKey::RequestCaps, CommandResponse::Capabilities)
+                .unwrap();
+        } else {
             self.cap_req(&enable)
                 .await
                 .context("Failed to send CAP REQ")?;

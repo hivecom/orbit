@@ -978,13 +978,48 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                 self.join(channel, password, label).await.unwrap();
             }
             ActorCommand::Privmsg { text, target } => {
-                self.response_channels.register(
-                    CommandKey::Privmsg {
-                        target: target.clone(),
-                        text: text.clone(),
-                    },
-                    cmd.reply_tx.unwrap(),
-                );
+                if self.state.capabilities.echo_messages.enabled {
+                    self.response_channels.register(
+                        CommandKey::Privmsg {
+                            target: target.clone(),
+                            text: text.clone(),
+                        },
+                        cmd.reply_tx.unwrap(),
+                    );
+                } else {
+                    let tags = Tags::default();
+                    let nickname = &self.state.me.as_ref().unwrap().nickname;
+
+                    let state_message = Message {
+                        text: Some(TextMessage {
+                            content: text.clone(),
+                            ..Default::default()
+                        }),
+                        metadata: MessageMetadata {
+                            msgid: tags.msgid_with_fallback(&[
+                                &self.state.id.to_string(),
+                                "PRIVMSG",
+                                nickname,
+                                &target,
+                                text.as_ref(),
+                            ]),
+                            server_time: tags.server_time_with_fallback() as f64,
+                            message_type: MessageType::Privmsg,
+                            user: nickname.to_string(),
+                        },
+                    };
+
+                    cmd.reply_tx
+                        .unwrap()
+                        .send(CommandResponse::Privmsg(Box::new(state_message.clone())))
+                        .unwrap();
+
+                    self.on_event(ServerEvent::Privmsg {
+                        channel: target.to_string(),
+                        message: state_message,
+                    })
+                    .await?;
+                }
                 self.privmsg(target, text).await.unwrap();
             }
             ActorCommand::AddEventHandler { handler } => {
