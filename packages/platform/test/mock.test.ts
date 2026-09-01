@@ -36,9 +36,9 @@ describe("Mock platforms", () => {
 
   it("Should contain nullable fields on desktop", () => {
     const mocked = createMockPlatform("desktop")
-    expect(mocked.deepLinks).toBeDefined()
+    expect(mocked.deepLinks).not.toBeNull()
     expect(mocked.deepLinks.onOpen).toBeDefined()
-    expect(mocked.dns).toBeDefined()
+    expect(mocked.dns).not.toBeNull()
     expect(mocked.dns.resolveSrv).toBeDefined()
   })
 
