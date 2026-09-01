@@ -74,8 +74,9 @@ function createTrayPort(): TrayPort {
 
   // Implemented with the help of https://stackoverflow.com/a/65720799
   const BADGE_SIZE = 0.6
-  const BADGE_BG_COLOR = window.getComputedStyle(document.body).getPropertyValue("--color-text-red")
   const BADGE_TEXT_COLOR = "rgb(255, 255, 255)"
+
+  const getBadgeBgcolor = () => window.getComputedStyle(document.body).getPropertyValue("--color-text-red")
 
   // Returns the favicon object based on the initial favicon.
   async function getCurrentFavicon(): Promise<FaviconData | null> {
@@ -116,7 +117,7 @@ function createTrayPort(): TrayPort {
 
       ctx.beginPath()
       ctx.roundRect(xa, ya, badgeSize, badgeSize, radius)
-      ctx.fillStyle = BADGE_BG_COLOR
+      ctx.fillStyle = getBadgeBgcolor()
       ctx.fill()
 
       ctx.textAlign = "center"
@@ -144,7 +145,7 @@ function createTrayPort(): TrayPort {
 
     ctx.beginPath()
     ctx.arc(x, y, arcSize, 0, 2 * Math.PI)
-    ctx.fillStyle = BADGE_BG_COLOR
+    ctx.fillStyle = getBadgeBgcolor()
     ctx.fill()
 
     favicon.element.setAttribute("href", canvas.toDataURL())
