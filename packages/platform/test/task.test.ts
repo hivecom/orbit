@@ -17,7 +17,7 @@ describe("Task queing system", () => {
     vi.useRealTimers()
   })
 
-  it("Should run tasks sequentially and in order", async () => {
+  it("Should run tasks sequentially", async () => {
     const tasks = new TaskQueue()
 
     const spyOne = vi.fn(() => createPromise(100, "one"))
