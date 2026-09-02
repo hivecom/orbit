@@ -1,4 +1,5 @@
 import { createMockPlatform } from "./mock"
+import { TaskQueue } from "./task"
 import type { AudioDevice, AudioDevicePort, FileTransferPort, NotificationPort, Platform, TrayPort } from "./types"
 
 function createNotificationPort(): NotificationPort {
@@ -77,6 +78,8 @@ function createTrayPort(): TrayPort {
   const BADGE_TEXT_COLOR = "rgb(255, 255, 255)"
 
   const getBadgeBgcolor = () => window.getComputedStyle(document.body).getPropertyValue("--color-text-red")
+
+  const tasks = new TaskQueue()
 
   // Returns the favicon object based on the initial favicon.
   async function getCurrentFavicon(): Promise<FaviconData | null> {
@@ -166,29 +169,29 @@ function createTrayPort(): TrayPort {
 
   // Initialize the canvas. Fetch the clean favicon and store it
   async function initializeCanvas() {
-    if (!favicon) {
-      const res = await getCurrentFavicon()
+    if (favicon) return
 
-      if (!res) {
-        throw new TypeError("Could not initialize favicon")
-      }
-
-      favicon = res
-      const img = document.createElement("img")
-      img.src = favicon.url
-
-      // Get the natural size. We don't expect to encounter errors at this
-      // stage, because if we get here, a successful load of the favicon file
-      // has already occurred
-      size = await new Promise<number>((resolve) => {
-        img.onload = (event) => {
-          resolve((event.target as HTMLImageElement).naturalWidth)
-        }
-      })
-
-      canvas.width = size
-      canvas.height = size
+    const res = await getCurrentFavicon()
+    if (!res) {
+      throw new TypeError("Could not initialize favicon")
     }
+
+    favicon = res
+    const img = document.createElement("img")
+    img.src = favicon.url
+
+    // Get the natural size. We don't expect to encounter errors at this
+    // stage, because if we get here, a successful load of the favicon file
+    // has already occurred
+    size = await new Promise<number>((resolve, reject) => {
+      img.onload = (event) => {
+        resolve((event.target as HTMLImageElement).naturalWidth)
+      }
+      img.onerror = () => reject(new Error("Failed to load favicon bitmap data"))
+    })
+
+    canvas.width = size
+    canvas.height = size
   }
 
   // Methods are async, because tauri might perform actual file oprations,
@@ -198,20 +201,25 @@ function createTrayPort(): TrayPort {
       document.title = title
     },
     async setBadgeCount(count) {
-      await initializeCanvas()
+      void tasks.queue(async () => {
+        await initializeCanvas()
 
-      if (count > 0) {
-        drawBadgeCount(count)
-      } else {
-        void this.removeBadge()
-      }
+        if (count > 0) {
+          drawBadgeCount(count)
+        } else {
+          void this.removeBadge()
+        }
+      })
     },
     async addBadgeAlert() {
-      await initializeCanvas()
-      drawBadgeAlert()
+      void tasks.queue(async () => {
+        await initializeCanvas()
+        drawBadgeAlert()
+      })
     },
     async removeBadge() {
-      // Ignore if favicon is not initialized = badge hasn't been used
+      // Ignore if favicon is not initialized = badge hasn't been used and does
+      // not need to be reset
       if (!favicon) return
 
       resetFavicon(true)
