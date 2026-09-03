@@ -50,6 +50,16 @@ macro_rules! dbg {
     };
 }
 
+macro_rules! cmd_resp {
+    ($e:expr, $p:path) => {
+        match $e {
+            $p(value) => Ok(value),
+            CommandResponse::Error(e) => Err(e),
+            _ => unreachable!("expected {}, got: {:?}", stringify!($p), $e),
+        }
+    };
+}
+
 use tracing_subscriber::prelude::*;
 use tracing_subscriber_wasm::MakeConsoleWriter;
 
@@ -146,9 +156,7 @@ impl IrcConnection {
             .context("Failed to send ActorMessage")?;
 
         let resp = rx.await.context("Failed to await actor state message")?;
-        let CommandResponse::GetState(server) = resp else {
-            unreachable!("expected state, got: {:?}", resp);
-        };
+        let server = cmd_resp!(resp, CommandResponse::GetState)?;
 
         Ok((*server).into())
     }
@@ -262,11 +270,9 @@ impl IrcConnection {
             .context("Failed to send ActorMessage")?;
 
         let resp = rx.await.context("Failed to await actor sign in message")?;
-        let CommandResponse::SignIn(result) = resp else {
-            unreachable!("expected sign in, got: {:?}", resp);
-        };
+        let result = cmd_resp!(resp, CommandResponse::SignIn)?;
 
-        Ok(result?)
+        Ok(result)
     }
 
     #[wasm_bindgen]
@@ -291,11 +297,9 @@ impl IrcConnection {
 
         let resp = rx.await.context("Failed to await actor sign in message")?;
 
-        let CommandResponse::SignIn(result) = resp else {
-            unreachable!("expected sign in, got: {:?}", resp);
-        };
+        let result = cmd_resp!(resp, CommandResponse::SignIn)?;
 
-        Ok(result?)
+        Ok(result)
     }
 
     #[wasm_bindgen]
@@ -314,9 +318,7 @@ impl IrcConnection {
             .context("Failed to send ActorMessage")?;
 
         let resp = rx.await.context("Failed to await actor join message")?;
-        let CommandResponse::Join(channel) = resp else {
-            unreachable!("expected join, got: {:?}", resp);
-        };
+        let channel = cmd_resp!(resp, CommandResponse::Join)?;
 
         Ok(IrcChannel {
             name: channel.metadata.name,
@@ -343,9 +345,7 @@ impl IrcConnection {
             .context("Failed to send ActorMessage")?;
 
         let resp = rx.await.context("Failed to await actor history message")?;
-        let CommandResponse::History(history) = resp else {
-            unreachable!("expected history, got: {:?}", resp);
-        };
+        let history = cmd_resp!(resp, CommandResponse::History)?;
 
         Ok(history.into())
     }
@@ -371,9 +371,7 @@ impl IrcChannel {
             .context("Failed to send ActorMessage")?;
 
         let resp = rx.await.context("Failed to await actor state message")?;
-        let CommandResponse::GetChannelState(channel) = resp else {
-            unreachable!("expected state, got: {:?}", resp);
-        };
+        let channel = cmd_resp!(resp, CommandResponse::GetChannelState)?;
 
         Ok((*channel).map(Into::into))
     }
@@ -393,9 +391,7 @@ impl IrcChannel {
             .context("Failed to send ActorMessage")?;
 
         let resp = rx.await.context("Failed to await actor privmessage")?;
-        let CommandResponse::Privmsg(message) = resp else {
-            unreachable!("expected privmsg, got: {:?}", resp);
-        };
+        let message = cmd_resp!(resp, CommandResponse::Privmsg)?;
 
         Ok((*message).into())
     }
@@ -453,7 +449,7 @@ impl SendCommand for OutgoingSink {
     type Error = WebSocketError;
     async fn message(&mut self, message: irc_proto::Message) -> Result<(), Self::Error> {
         self.inner
-            .send(websocket::Message::Text(message.to_string()))
+            .send(websocket::Message::Text(dbg!(message).to_string()))
             .await?;
 
         Ok(())
