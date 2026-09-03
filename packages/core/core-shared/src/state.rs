@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use time::OffsetDateTime;
 use time::format_description::well_known::Iso8601;
-use tracing::{error, warn};
+use tracing::{debug, error, warn};
 #[cfg(feature = "web")]
 use tsify::Tsify;
 #[cfg(feature = "web")]
@@ -535,7 +535,7 @@ impl Support {
             "VLIST" => self.vlist = value.map(ToOwned::to_owned),
             "WATCH" => self.watch = value.map(|v| i64::from_str(v).unwrap()),
             "WHOX" => self.whox = true,
-            _ => unimplemented!("isupport: {key}, {value:?}"),
+            _ => debug!("ignored isupport: {key}, {value:?}"),
         };
     }
 }
