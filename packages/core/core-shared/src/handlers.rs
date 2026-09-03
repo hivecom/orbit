@@ -808,10 +808,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                 .map_err(|e| anyhow!("Failed to send server event {e:?}"))?,
             Response::RPL_SASLSUCCESS => {
                 self.response_channels
-                    .reply(
-                        &CommandKey::SignIn,
-                        CommandResponse::SignIn(Ok(SignedIn::User)),
-                    )
+                    .reply(&CommandKey::SignIn, CommandResponse::SignIn(SignedIn::User))
                     .map_err(|e| anyhow!("Failed to reply to sign in command {e:?}"))?;
 
                 self.cap_end().await.context("Failed to send CAP END")?;
@@ -820,7 +817,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                 self.response_channels
                     .reply(
                         &CommandKey::SignIn,
-                        CommandResponse::SignIn(Ok(SignedIn::Guest)),
+                        CommandResponse::SignIn(SignedIn::Guest),
                     )
                     .map_err(|e| anyhow!("Failed to reply to sign in command {e:?}"))?;
             }
@@ -831,7 +828,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                 self.response_channels
                     .reply(
                         &CommandKey::SignIn,
-                        CommandResponse::SignIn(Err(OrbitError::SaslFailed(params[1].to_string()))),
+                        CommandResponse::Error(OrbitError::SaslFailed(params[1].to_string())),
                     )
                     .map_err(|e| anyhow!("Failed to reply to sign in command {e:?}"))?;
             }
@@ -839,7 +836,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                 self.response_channels
                     .reply(
                         &CommandKey::SignIn,
-                        CommandResponse::SignIn(Err(OrbitError::NickTaken)),
+                        CommandResponse::Error(OrbitError::NickTaken),
                     )
                     .map_err(|e| anyhow!("Failed to reply to sign in command {e:?}"))?;
             }

@@ -31,11 +31,12 @@ pub enum CommandResponse {
     GetState(Box<Server>),
     GetChannelState(Box<Option<Channel>>),
     Capabilities,
-    SignIn(Result<SignedIn, OrbitError>),
+    SignIn(SignedIn),
     Join(Box<Channel>),
     Privmsg(Box<Message>),
     ChannelList(Vec<ChannelInfo>),
     History(History),
+    Error(OrbitError),
 }
 
 const LABEL_CHARSET: &str = "abcdefghijklmnopqrstuvwxyz\
