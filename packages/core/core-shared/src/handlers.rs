@@ -875,7 +875,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
             }
             Response::RPL_ISUPPORT => {
                 for option in &params[1..(params.len() - 1)] {
-                    let (key, value) = option.split_once('=').unzip();
+                    let (key, value) = option.trim().split_once('=').unzip();
                     self.state.support.set(key.unwrap_or(option), value);
                 }
                 self.state.metadata.name = self.state.support.network.clone();
