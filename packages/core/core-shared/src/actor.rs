@@ -12,7 +12,7 @@ use crate::dbg;
 use crate::{
     SendCommand,
     database::Database,
-    response_channels::{CommandKey, CommandResponse, ResponseChannels},
+    response_channels::{CommandResponse, ResponseChannels},
     state::{Channel, Message, OrbitError, Server, ServerEvent, User},
 };
 use anyhow::Context;
@@ -188,15 +188,9 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
             sasl_state: Default::default(),
         };
 
-        let (tx, rx) = oneshot::channel();
-        actor
-            .response_channels
-            .register(CommandKey::RequestCaps, tx);
         actor.init_cap_request().await?;
 
         spawn(actor);
-
-        rx.await.unwrap();
 
         Ok(cmd_tx)
     }
@@ -337,11 +331,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
             }
         }
 
-        if enable.is_empty() {
-            self.response_channels
-                .reply(&CommandKey::RequestCaps, CommandResponse::Capabilities)
-                .unwrap();
-        } else {
+        if !enable.is_empty() {
             self.cap_req(&enable)
                 .await
                 .context("Failed to send CAP REQ")?;
@@ -357,7 +347,6 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
         username: String,
         realname: String,
     ) -> Result<(), OrbitError> {
-        self.cap_end().await.context("Failed to send CAP END")?;
         self.nick(nickname.clone())
             .await
             .context("Failed to send NICK")?;
