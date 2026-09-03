@@ -626,6 +626,7 @@ impl From<state::OrbitError> for OrbitError {
         let kind = match error {
             state::OrbitError::NickTaken => OrbitErrorKind::NickTaken,
             state::OrbitError::SaslFailed(_) => OrbitErrorKind::SaslFailed,
+            state::OrbitError::CapabilityDisabled(_) => OrbitErrorKind::CapabilityDisabled,
             state::OrbitError::Generic(_) => OrbitErrorKind::Generic,
             state::OrbitError::Unknown(_) => OrbitErrorKind::Unknown,
         };
@@ -642,6 +643,7 @@ impl From<state::OrbitError> for OrbitError {
 pub enum OrbitErrorKind {
     NickTaken,
     SaslFailed,
+    CapabilityDisabled,
     Generic,
     Unknown,
 }

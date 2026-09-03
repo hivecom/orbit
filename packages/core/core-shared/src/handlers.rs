@@ -1028,6 +1028,16 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                 channel,
                 before_msgid,
             } => {
+                if !self.state.capabilities.history.enabled {
+                    cmd.reply_tx
+                        .unwrap()
+                        .send(CommandResponse::Error(OrbitError::CapabilityDisabled(
+                            "chathistory",
+                        )))
+                        .unwrap();
+                    return Ok(());
+                }
+
                 let label = if self.state.capabilities.labeled_response.enabled {
                     Some(
                         self.response_channels
