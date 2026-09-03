@@ -17,7 +17,6 @@ use crate::dbg;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CommandKey {
-    RequestCaps,
     SignIn,
     Join(String),
     Privmsg { target: String, text: String },

@@ -115,9 +115,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                 for cap in param.split_whitespace() {
                     self.state.capabilities.set_from_name(cap, Some(true));
                 }
-                self.response_channels
-                    .reply(&CommandKey::RequestCaps, CommandResponse::Capabilities)
-                    .unwrap();
+                self.cap_end().await.context("Failed to send CAP END")?;
             }
             _ => {
                 debug!("unhandled caps message");
@@ -790,8 +788,6 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                 self.response_channels
                     .reply(&CommandKey::SignIn, CommandResponse::SignIn(SignedIn::User))
                     .map_err(|e| anyhow!("Failed to reply to sign in command {e:?}"))?;
-
-                self.cap_end().await.context("Failed to send CAP END")?;
             }
             Response::RPL_WELCOME => {
                 self.response_channels

@@ -704,6 +704,9 @@ pub enum OrbitError {
     #[error("{0}")]
     SaslFailed(String),
 
+    #[error("Capability '{0}' is not enabled on this server")]
+    CapabilityDisabled(&'static str),
+
     #[error("{0}")]
     Generic(String),
 
