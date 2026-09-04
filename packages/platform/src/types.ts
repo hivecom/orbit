@@ -85,15 +85,15 @@ interface CachedMessage {
 }
 
 export interface HistoryCachePort {
-  seed(target: string, limit: number): Promise<CachedMessage[]>
-  pageBefore(target: string, beforeMsgid: string, limit: number): Promise<CachedMessage[]>
-  pageAfter(target: string, afterMsgid: string, limit: number): Promise<CachedMessage[]>
-  upsert(messages: CachedMessage[]): Promise<void> // batched, dedupes by msgid
-  markRedacted(msgid: string): Promise<void> // tombstone overlay
-  bufferStats(): Promise<BufferStats[]> // Storage management surface
-  prune(target: string, keepCount: number): Promise<void>
-  export(target: string): Promise<CachedMessage[]>
-  clear(): Promise<void> // wipe this account's cache
+  seed: (target: string, limit: number) => Promise<CachedMessage[]>
+  pageBefore: (target: string, beforeMsgid: string, limit: number) => Promise<CachedMessage[]>
+  pageAfter: (target: string, afterMsgid: string, limit: number) => Promise<CachedMessage[]>
+  upsert: (messages: CachedMessage[]) => Promise<void> // batched, dedupes by msgid
+  markRedacted: (msgid: string) => Promise<void> // tombstone overlay
+  bufferStats: () => Promise<BufferStats[]> // Storage management surface
+  prune: (target: string, keepCount: number) => Promise<void>
+  export: (target: string) => Promise<CachedMessage[]>
+  clear: () => Promise<void> // wipe this account's cache
 }
 
 export interface BufferStats {

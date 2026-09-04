@@ -62,38 +62,38 @@ export function createMockPlatform(target: Platform["target"]): Platform {
             },
           },
     historyCache: {
-      seed(target: string, limit: number) {
+      seed: (target: string, limit: number) => {
         void target
         void limit
         return Promise.resolve([])
       },
-      pageBefore(target, beforeMsgid, limit) {
+      pageBefore: (target, beforeMsgid, limit) => {
         void target
         void beforeMsgid
         void limit
         return Promise.resolve([])
       },
-      pageAfter(target, afterMsgid, limit) {
+      pageAfter: (target, afterMsgid, limit) => {
         void target
         void afterMsgid
         void limit
         return Promise.resolve([])
       },
-      upsert(messages) {
+      upsert: (messages) => {
         void messages
         return Promise.resolve()
       },
-      markRedacted(msgid) {
+      markRedacted: (msgid) => {
         void msgid
         return Promise.resolve()
       },
       bufferStats: () => Promise.resolve([]),
-      prune(target, keepCount) {
+      prune: (target, keepCount) => {
         void target
         void keepCount
         return Promise.resolve()
       },
-      export(target) {
+      export: (target) => {
         void target
         return Promise.resolve([])
       },
