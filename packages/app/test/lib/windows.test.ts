@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vite-plus/test"
-import { deserializeState, deserializeWindow, getDefaultState, serializeState, serializeWindow, WindowChat, WindowEmpty, WindowState, WindowVoice } from "../../src/lib/windows.ts"
+import { deserializeState, deserializeWindow, getDefaultState, serializeState, serializeWindow } from "../../src/lib/windows.ts"
+import type { WindowChat, WindowEmpty, WindowState, WindowVoice } from "../../src/lib/windows.ts"
 import { createPinia, setActivePinia } from "pinia"
 
 // TODO: test the composable itself - requires jsdom context setup because it uses URL and localStorage

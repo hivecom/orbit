@@ -28,7 +28,7 @@ const appState = useAppStateStore()
 
   <Flex x-center y-center v-else class="o-fullscreen-loading" column gap="s">
     <h3>Initializing Orbit</h3>
-    <p class="text-color-light mb-l">Orbit was conceptualized in 2022 and since then, 2 failed versions have been developed. This is the third and final one.</p>
+    <p class="text-color-light mb-l">Spinning up the core</p>
     <Spinner />
   </Flex>
 </template>
