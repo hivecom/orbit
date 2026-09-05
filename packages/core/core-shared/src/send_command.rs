@@ -6,6 +6,10 @@ use futures::{
 };
 use irc_proto::{CapSubCommand, Command::*, Message as IrcMessage, message::Tag};
 
+#[cfg(feature = "web")]
+#[allow(unused_imports)]
+use crate::dbg;
+
 pub trait SendCommand {
     type Error: std::error::Error + Send + Sync + 'static;
 
@@ -95,8 +99,9 @@ pub trait SendCommand {
         &mut self,
         channel: String,
         password: Option<String>,
+        label: Option<String>,
     ) -> impl std::future::Future<Output = Result<(), Self::Error>> {
-        async { self.command(JOIN(channel, password, None), None).await }
+        async { self.command(JOIN(channel, password, None), label).await }
     }
 
     fn privmsg(
