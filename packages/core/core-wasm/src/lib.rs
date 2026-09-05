@@ -433,7 +433,7 @@ impl actor::IrcConnection for WsConnection {
                     bail!("unexpected binary message");
                 };
 
-                Ok(irc_proto::Message::from_str(&msg)?)
+                Ok(dbg!(irc_proto::Message::from_str(&msg))?)
             })
             .boxed_local();
 
@@ -627,6 +627,7 @@ impl From<state::OrbitError> for OrbitError {
             state::OrbitError::NickTaken => OrbitErrorKind::NickTaken,
             state::OrbitError::SaslFailed(_) => OrbitErrorKind::SaslFailed,
             state::OrbitError::CapabilityDisabled(_) => OrbitErrorKind::CapabilityDisabled,
+            state::OrbitError::NotFound => OrbitErrorKind::NotFound,
             state::OrbitError::Generic(_) => OrbitErrorKind::Generic,
             state::OrbitError::Unknown(_) => OrbitErrorKind::Unknown,
         };
@@ -644,6 +645,7 @@ pub enum OrbitErrorKind {
     NickTaken,
     SaslFailed,
     CapabilityDisabled,
+    NotFound,
     Generic,
     Unknown,
 }
