@@ -1058,7 +1058,27 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                     },
                     Instant::now(),
                 ));
-                self.history_before(channel, format!("msgid={before_msgid}"), 5, label)
+
+                let start = if self.state.capabilities.message_tags.enabled {
+                    format!("msgid={before_msgid}")
+                } else {
+                    let (_, _, msg) = self
+                        .database
+                        .message(&before_msgid)
+                        .await?
+                        .ok_or(OrbitError::NotFound)?;
+                    format!(
+                        "timestamp={0}",
+                        OffsetDateTime::from_unix_timestamp_nanos(
+                            msg.metadata.server_time as i128 * 1_000_000
+                        )
+                        .expect("this number came from OffsetDateTime/SystemTime")
+                        .format(&Iso8601::DEFAULT)
+                        .expect("using a default format")
+                    )
+                };
+
+                self.history_before(channel, start, 5, label)
                     .await
                     .context("Failed to send history before")?;
             }

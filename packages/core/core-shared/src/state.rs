@@ -707,11 +707,13 @@ pub enum OrbitError {
     #[error("Capability '{0}' is not enabled on this server")]
     CapabilityDisabled(&'static str),
 
+    #[error("Not found")]
+    NotFound,
+
     #[error("{0}")]
     Generic(String),
 
     #[error("Unknown error: {0}")]
-    // FIXME: remove the Arc somehow
     Unknown(String),
 }
 
