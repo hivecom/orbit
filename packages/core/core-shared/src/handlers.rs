@@ -475,10 +475,17 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
         if let Some(id) = reference.strip_prefix('+') {
             match typ {
                 Some(BatchSubCommand::CUSTOM(c)) if c.as_str() == "CHATHISTORY" => {
+                    let target = &param.as_ref().unwrap()[0];
                     let idx = self
                         .requested_batches
                         .iter()
-                        .position(|b| b.0.label == tags.label)
+                        .position(|b| {
+                            if self.state.capabilities.labeled_response.enabled {
+                                b.0.label == tags.label
+                            } else {
+                                &b.0.target == target
+                            }
+                        })
                         .expect("Chat history was requested");
                     let request = self.requested_batches.remove(idx).0;
 
@@ -491,7 +498,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                                 BatchType::History => HistoryPurpose::History,
                             },
                             label: tags.label,
-                            target: request.target,
+                            target: target.clone(),
                             messages: Vec::new(),
                         },
                     });
