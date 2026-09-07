@@ -89,7 +89,10 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
         caps: Option<String>,
     ) -> Result<(), OrbitError> {
         match sub {
-            CapSubCommand::LS if let Some(caps) = caps => {
+            CapSubCommand::LS
+                if let Some(caps) = caps
+                    && param.as_deref() == Some("*") =>
+            {
                 for cap in caps.split_whitespace() {
                     let cap = cap
                         .split('=')
@@ -100,7 +103,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
             }
             CapSubCommand::LS if let Some(param) = param => {
                 if param == "*" {
-                    unreachable!("that should mean that caps is Some");
+                    unreachable!("this should mean that caps is Some");
                 }
                 for cap in param.split_whitespace() {
                     let cap = cap
@@ -116,7 +119,33 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                 for cap in param.split_whitespace() {
                     self.state.capabilities.set_from_name(cap, Some(true));
                 }
-                self.cap_end().await.context("Failed to send CAP END")?;
+
+                if let SaslState::Requested {
+                    nickname,
+                    realname,
+                    username,
+                    ..
+                } = &self.sasl_state
+                {
+                    if self.state.capabilities.sasl.enabled {
+                        self.sasl_plain()
+                            .await
+                            .context("Failed to send SASL PLAIN")?;
+                    } else {
+                        warn!("SASL capability not enabled, falling back to anonymous sign in");
+                        self.sign_in_anonymous(
+                            nickname.clone(),
+                            username.clone(),
+                            realname.clone(),
+                        )
+                        .await?;
+                    }
+                }
+
+                if self.sasl_state == SaslState::Authed || self.sasl_state == SaslState::Guest {
+                    self.cap_end().await.context("Failed to send CAP END")?;
+                    self.sasl_state = SaslState::CapsNegotiated;
+                }
             }
             _ => {
                 debug!("unhandled caps message");
@@ -736,6 +765,8 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                 profile_picture_url: None,
                 bot: false,
             });
+
+            self.sasl_state = SaslState::Authed;
         }
 
         Ok(())
@@ -910,6 +941,17 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
 
     #[tracing::instrument(err, skip(self))]
     pub(crate) async fn handle_command(&mut self, cmd: ActorMessage) -> Result<(), OrbitError> {
+        if !cmd.command.allowed_pre_signup() && self.sasl_state != SaslState::CapsNegotiated {
+            cmd.reply_tx
+                .unwrap()
+                .send(CommandResponse::Error(OrbitError::Generic(String::from(
+                    "invalid function called before sign up completed",
+                ))))
+                .unwrap();
+
+            return Ok(());
+        }
+
         match cmd.command {
             ActorCommand::GetState => {
                 let mut state = self.state.clone();

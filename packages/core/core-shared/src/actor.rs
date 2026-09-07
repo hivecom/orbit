@@ -71,6 +71,17 @@ pub enum ActorCommand {
     },
 }
 
+impl ActorCommand {
+    pub fn allowed_pre_signup(&self) -> bool {
+        matches!(self, ActorCommand::GetState)
+            || matches!(self, ActorCommand::SignIn { .. })
+            || matches!(self, ActorCommand::SignInAnonymous { .. })
+            || matches!(self, ActorCommand::AddEventHandler { .. })
+            || matches!(self, ActorCommand::AddErrorHandler { .. })
+            || matches!(self, ActorCommand::AddDisconectHandler { .. })
+    }
+}
+
 pub trait IrcConnection: fmt::Debug {
     type Incoming: FusedStream<Item = anyhow::Result<IrcMessage>> + Unpin;
     type Outgoing: SendCommand;
@@ -133,7 +144,7 @@ impl CurrentBatch {
     }
 }
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, PartialEq, Eq)]
 pub(crate) enum SaslState {
     #[default]
     Unauthed,
@@ -143,6 +154,9 @@ pub(crate) enum SaslState {
         username: String,
         password: String,
     },
+    Authed,
+    Guest,
+    CapsNegotiated,
 }
 
 pub struct IrcActor<C: IrcConnection, DB: Database> {
@@ -364,6 +378,8 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
             bot: false,
         });
 
+        self.sasl_state = SaslState::Guest;
+
         Ok(())
     }
 
@@ -375,20 +391,12 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
         realname: String,
         password: String,
     ) -> Result<(), OrbitError> {
-        if self.state.capabilities.sasl.enabled {
-            self.sasl_plain()
-                .await
-                .context("Failed to send SASL PLAIN")?;
-            self.sasl_state = SaslState::Requested {
-                nickname,
-                realname,
-                username,
-                password,
-            };
-        } else {
-            warn!("SASL capability not enabled, falling back to anonymous sign in");
-            self.sign_in_anonymous(nickname, username, realname).await?;
-        }
+        self.sasl_state = SaslState::Requested {
+            nickname,
+            realname,
+            username,
+            password,
+        };
 
         Ok(())
     }
