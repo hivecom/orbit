@@ -71,11 +71,72 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                 let target = target.remove(0);
                 self.handle_tagmsg(&message, target).await?;
             }
+            Raw(ref cmd, _) if cmd == "ACK" => {
+                let mut tags = Tags::default();
+                if let Some(ref t) = message.tags {
+                    tags = Tags::parse(t);
+                }
+                if let Some(index) = self.requested_batches.iter().position(|(b, _)| {
+                    matches!(b.typ, BatchType::Join { .. }) && b.label == tags.label
+                }) {
+                    let (RequestedBatch { typ, .. }, _) = self.requested_batches.remove(index);
+                    if let BatchType::Join { target } = typ {
+                        self.handle_self_join(target, tags.label).await?;
+                    } else {
+                        unreachable!("invalid join type");
+                    }
+                }
+            }
             Response(rpl, params) => self.handle_response(message.tags, rpl, params).await?,
             ERROR(msg) => self.on_error(OrbitError::Generic(msg)).await?,
             _ => {
                 warn!("unhandled message, {message:?}");
             }
+        }
+
+        Ok(())
+    }
+    #[tracing::instrument(err, skip(self))]
+    async fn handle_self_join(
+        &mut self,
+        target: String,
+        label: Option<String>,
+    ) -> Result<(), OrbitError> {
+        let channel = Channel::new(target.to_string());
+        self.state
+            .channels
+            .insert(target.to_string(), channel.clone());
+
+        if self.state.capabilities.history.enabled {
+            self.requested_batches.push((
+                RequestedBatch {
+                    label: label.clone(),
+                    typ: BatchType::JoinHistory {
+                        target: target.to_string(),
+                    },
+                },
+                Instant::now(),
+            ));
+
+            self.history_latest(target.to_string(), None, 5, label)
+                .await
+                .context("Failed to request latest history")?;
+        } else {
+            if !self.state.capabilities.labeled_response.enabled {
+                let channel = self
+                    .state
+                    .channels
+                    .get(&target)
+                    .expect("should exist after just joining");
+                self.response_channels
+                    .reply(
+                        &CommandKey::Join(target),
+                        CommandResponse::Join(Box::new(channel.clone())),
+                    )
+                    .map_err(|e| anyhow!("Failed to reply to JOIN command {e:?}"))?;
+            }
+
+            self.on_event(ServerEvent::Joined(channel)).await?;
         }
 
         Ok(())
