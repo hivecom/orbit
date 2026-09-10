@@ -225,10 +225,6 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
             tags = Tags::parse(t);
         }
 
-        if self.current_batches.iter().any(|b| b.is_chathistory()) {
-            assert!(tags.server_time.is_some());
-        }
-
         let state_message = Message {
             text: None,
             metadata: MessageMetadata {
