@@ -1,0 +1,39 @@
+name: Setup Rust
+description: Pinned Rust toolchain, a cargo cache keyed on Cargo.lock, and wasm-pack
+
+inputs:
+  targets:
+    description: Extra rustup targets, comma separated. Empty for host only.
+    default: wasm32-unknown-unknown
+  wasm-pack:
+    description: Install wasm-pack
+    default: "true"
+  workspaces:
+    description: Cargo workspaces to cache, one per line
+    default: packages/core
+
+runs:
+  using: composite
+  steps:
+    - uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: 1.98.0
+        targets: ${{ inputs.targets }}
+
+    # Registry, git checkouts, ~/.cargo/bin and the target dirs. The key
+    # includes the rustc version and a hash of the Cargo.lock files under
+    # the listed workspaces, so a lockfile change starts a fresh cache.
+    - uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: ${{ inputs.workspaces }}
+
+    # ~/.cargo/bin comes back from the cache, so a warm run skips the download.
+    - name: Install wasm-pack
+      if: inputs.wasm-pack == 'true'
+      shell: bash
+      run: |
+        if wasm-pack --version 2>/dev/null | grep -q "^wasm-pack 0.15.0$"; then
+          echo "wasm-pack 0.15.0 already installed"
+          exit 0
+        fi
+        curl https://wasm-bindgen.github.io/wasm-pack/installer/init.sh -sSf | VERSION="v0.15.0" sh

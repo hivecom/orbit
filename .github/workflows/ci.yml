@@ -4,7 +4,9 @@ on:
   push:
     branches:
       - main
+      - prototype
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -33,11 +35,17 @@ jobs:
           node-version: 24
           cache: pnpm
 
-      - name: install wasm-pack
-        shell: "bash"
-        run: |
-          rustup target add wasm32-unknown-unknown
-          curl https://wasm-bindgen.github.io/wasm-pack/installer/init.sh -sSf | VERSION="v0.15.0" sh
+      - uses: ./.github/actions/setup-rust
+
+      # Native target. The wasm build below never compiles the tests or the
+      # not(feature = "web") branches, so this is the only place they get checked.
+      - name: Cargo check
+        working-directory: packages/core
+        run: cargo check --workspace
+
+      - name: Cargo test
+        working-directory: packages/core
+        run: cargo test -p core-shared
 
       - run: pnpm install --frozen-lockfile
 
