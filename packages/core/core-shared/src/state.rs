@@ -3,9 +3,12 @@ use std::str::FromStr;
 
 #[cfg(feature = "web")]
 use crate::dbg;
-use ordermap::OrderMap;
+use irc_proto::message::Tag;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tracing::error;
+use time::OffsetDateTime;
+use time::format_description::well_known::Iso8601;
+use tracing::{error, warn};
 #[cfg(feature = "web")]
 use tsify::Tsify;
 #[cfg(feature = "web")]
@@ -75,7 +78,7 @@ impl ServerMetadata {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Channel {
     pub metadata: ChannelMetadata,
-    pub messages: OrderMap<String, Message>,
+    pub messages: Vec<Message>,
     pub users: Vec<ChannelUser>,
 }
 
@@ -466,7 +469,7 @@ pub enum ChannelRole {
     Operator,
     HalfOperator,
     Voice,
-    None,
+    Regular,
 }
 
 impl From<char> for ChannelRole {
@@ -490,7 +493,7 @@ pub struct ChannelUser {
     pub role: ChannelRole,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     pub text: Option<TextMessage>,
     pub metadata: MessageMetadata,
@@ -504,7 +507,7 @@ impl PartialEq for Message {
 
 impl Eq for Message {}
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "web", wasm_bindgen)]
 pub enum MessageType {
     Privmsg,
@@ -515,17 +518,17 @@ pub enum MessageType {
     Quit,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TextMessage {
     pub content: String,
-    pub reactions: OrderMap<String, Vec<String>>,
+    pub reactions: HashMap<String, Vec<String>>,
     pub reply: Option<MessageReference>,
     pub redacted: bool,
     pub edited: bool,
     pub relayed_by: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "web", derive(Tsify))]
 #[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone, inspectable))]
 pub struct MessageMetadata {
@@ -543,12 +546,14 @@ impl PartialEq for MessageMetadata {
 
 impl Eq for MessageMetadata {}
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "web", derive(Tsify))]
 #[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone, inspectable))]
 pub struct MessageReference {
-    pub username: String,
-    pub text: String,
+    /// Unset if message wasn't found or if reply wasn't to a text message
+    pub text: Option<String>,
+    /// Unset if message wasn't found
+    pub username: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -564,17 +569,18 @@ pub enum ServerEvent {
         channel: String,
         message: Message,
     },
-    React(React),
+    React {
+        target_message: String,
+        user: String,
+        text: String,
+        is_unreact: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "web", derive(Tsify))]
-#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone, inspectable))]
-pub struct React {
-    pub target_message: String,
-    pub user: String,
-    pub text: String,
-    pub is_unreact: bool,
+pub struct History {
+    pub channel: String,
+    pub messages: Vec<Message>,
 }
 
 #[derive(Debug, Clone)]
@@ -608,5 +614,84 @@ impl From<anyhow::Error> for OrbitError {
         error!("Unexpected Orbit error: {}", err);
 
         Self::Unknown(error.to_string())
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Tags {
+    pub server_time: Option<OffsetDateTime>,
+    pub msgid: Option<String>,
+    pub account: Option<String>,
+    pub relayed_by: Option<String>,
+    pub batch: Option<String>,
+    pub bot: Option<String>,
+    pub label: Option<String>,
+    pub reply: Option<String>,
+    pub react: Option<String>,
+    pub unreact: Option<String>,
+    pub typing: Option<String>,
+}
+
+impl Tags {
+    pub fn parse(tags: &Vec<Tag>) -> Self {
+        let mut out = Tags::default();
+
+        for Tag(key, value) in tags {
+            match key.as_str() {
+                "time" => {
+                    out.server_time = value
+                        .as_ref()
+                        .and_then(|v| OffsetDateTime::parse(v, &Iso8601::DEFAULT).ok())
+                }
+                "msgid" => out.msgid = value.clone(),
+                "account" => out.account = value.clone(),
+                "draft/relaymsg" => out.relayed_by = value.clone(),
+                "batch" => out.batch = value.clone(),
+                "bot" => out.bot = value.clone(),
+                "label" => out.label = value.clone(),
+                "+draft/reply" | "+reply" => out.reply = value.clone(),
+                "+draft/react" => out.react = value.clone(),
+                "+draft/unreact" => out.unreact = value.clone(),
+                "+typing" => out.typing = value.clone(),
+                _ => {
+                    warn!("unhandled tag: {key:?}: {value:?}");
+                }
+            }
+        }
+
+        out
+    }
+
+    #[cfg(feature = "web")]
+    pub fn server_time_with_fallback(&self) -> i64 {
+        self.server_time
+            .map(|t| (t.unix_timestamp_nanos() / 1_000_000) as i64)
+            .unwrap_or_else(|| {
+                web_time::SystemTime::now()
+                    .duration_since(web_time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis() as i64
+            })
+    }
+
+    #[cfg(not(feature = "web"))]
+    pub fn server_time_with_fallback(&self) -> i64 {
+        (self
+            .server_time
+            .unwrap_or_else(OffsetDateTime::now_utc)
+            .unix_timestamp_nanos()
+            / 1_000_000) as i64
+    }
+
+    pub fn msgid_with_fallback(&self, hash_extras: &[&str]) -> String {
+        self.msgid.clone().unwrap_or_else(|| {
+            let mut hasher = blake3::Hasher::new();
+            hasher.update(&self.server_time_with_fallback().to_ne_bytes());
+            for extra in hash_extras {
+                hasher.update(extra.as_bytes());
+            }
+
+            hasher.finalize().to_string()
+        })
     }
 }
