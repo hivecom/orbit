@@ -593,6 +593,17 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                                 data: BatchData::Join { target },
                             });
                         }
+                        BatchType::JoinHistory { target } => {
+                            self.current_batches.push(CurrentBatch {
+                                id: id.to_string(),
+                                label,
+                                data: BatchData::History {
+                                    purpose: HistoryPurpose::Join,
+                                    target,
+                                    messages: Vec::new(),
+                                },
+                            })
+                        }
                         BatchType::ChannelList => {
                             self.current_batches.push(CurrentBatch {
                                 id: id.to_string(),
