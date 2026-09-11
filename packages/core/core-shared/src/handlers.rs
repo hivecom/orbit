@@ -595,16 +595,24 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                     let RequestedBatch { target, label, typ } =
                         self.requested_batches.remove(idx).0;
 
-                    if typ == BatchType::Join {
-                        self.current_batches.push(CurrentBatch {
+                    match typ {
+                        BatchType::Join => self.current_batches.push(CurrentBatch {
                             id: id.to_string(),
                             data: BatchData::Join {
                                 label: label.expect("a labeled response should have a label"),
                                 target,
                             },
-                        });
-                    } else {
-                        debug!("Unhandled: {:?}", typ);
+                        }),
+                        BatchType::JoinHistory => self.current_batches.push(CurrentBatch {
+                            id: id.to_string(),
+                            data: BatchData::History {
+                                purpose: HistoryPurpose::Join,
+                                label,
+                                target,
+                                messages: Vec::new(),
+                            },
+                        }),
+                        _ => debug!("Unhandled: {:?}", typ),
                     }
                 }
                 _ => {
