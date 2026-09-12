@@ -247,7 +247,6 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                 _ = timeout => {
                     self.response_channels.check_timeouts();
 
-
                     assert!(
                         self.requested_batches
                             .iter()
@@ -320,6 +319,11 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
         Ok(())
     }
     pub(crate) async fn request_caps(&mut self) -> Result<(), OrbitError> {
+        // XXX: The spec only describes `batch` as a soft dependency of `chathistory` but it is
+        // unclear to me how to handle `chathistory` without `batch` and whether servers like that
+        // actually exist.
+        assert!(!self.state.capabilities.history.has || self.state.capabilities.batch.has);
+
         let mut enable = Vec::new();
         for cap in [
             "echo-message",
