@@ -1,11 +1,10 @@
 name: CI
 
+# The merge gate. Runs on its own for PRs and as the first job of CD, so a
+# failure here blocks both the web deploy and the desktop builds.
 on:
-  push:
-    branches:
-      - main
-      - prototype
   pull_request:
+  workflow_call:
   workflow_dispatch:
 
 concurrency:
@@ -18,22 +17,10 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
-    env:
-      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
-      # pnpm version comes from the "packageManager" field in package.json
-      - run: corepack enable
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 24
-          cache: pnpm
+      - uses: ./.github/actions/setup-pnpm
 
       - uses: ./.github/actions/setup-rust
 
@@ -46,8 +33,6 @@ jobs:
       - name: Cargo test
         working-directory: packages/core
         run: cargo test -p core-shared
-
-      - run: pnpm install --frozen-lockfile
 
       # The `ready` gate, split into steps for clearer failure attribution.
       - name: Check (format, lint, types)

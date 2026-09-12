@@ -1,42 +1,35 @@
 name: CD
 
+# Every trunk push ships web and desktop from the same commit. prototype
+# produces a pre-release, main a draft release. A manual dispatch runs the
+# whole pipeline but publishes nothing, so it can be tried on any branch.
 on:
   push:
     branches:
       - main
+      - prototype
+  workflow_dispatch:
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: true
 
 jobs:
-  build:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  web:
+    needs: test
     runs-on: ubuntu-latest
-    env:
-      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
+      - uses: ./.github/actions/setup-pnpm
 
       - uses: ./.github/actions/setup-rust
-
-      # pnpm version comes from the "packageManager" field in package.json
-      - run: corepack enable
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 24
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
 
       - run: pnpm --filter web build
 
@@ -45,11 +38,64 @@ jobs:
           path: apps/web/dist
 
   deploy:
-    needs: build
+    if: github.event_name == 'push'
+    needs: web
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
         uses: actions/deploy-pages@v5
+
+  desktop:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - ubuntu-22.04
+          - windows-latest
+          - macos-latest
+    runs-on: ${{ matrix.platform }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils
+
+      - uses: ./.github/actions/setup-pnpm
+
+      - uses: ./.github/actions/setup-rust
+        with:
+          workspaces: |
+            packages/core
+            apps/desktop/src-tauri
+
+      # The desktop front end bundles core-wasm through packages/app.
+      - run: pnpm exec vp run --filter core-wasm build
+
+      # Bundles upload to the run as <platform>-<arch>-<bundle> artifacts.
+      # Trunk pushes also attach them to a release: prototype gets a
+      # pre-release tagged v<version>-rc.<run>, main a draft v<version>.
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/desktop
+          tauriScript: pnpm exec tauri
+          uploadWorkflowArtifacts: true
+          tagName: ${{ github.event_name == 'push' && (github.ref_name == 'main' && 'v__VERSION__' || format('v__VERSION__-rc.{0}', github.run_number)) || '' }}
+          releaseName: ${{ github.event_name == 'push' && (github.ref_name == 'main' && 'Orbit v__VERSION__' || format('Orbit v__VERSION__-rc.{0}', github.run_number)) || '' }}
+          releaseDraft: ${{ github.ref_name == 'main' }}
+          prerelease: ${{ github.ref_name != 'main' }}
