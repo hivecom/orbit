@@ -1,10 +1,21 @@
 name: CD
 
-# Releases are driven by the app version, not by pushes. Bump the version in
-# tauri.conf.json and the next trunk push cuts desktop binaries: a pre-release
-# from prototype, a draft release from main. Pushes that don't touch the
-# version just run the gate. The web app is production only and deploys on
-# every main push. A manual dispatch builds everything and publishes nothing.
+# Deploys the web app and cuts desktop releases off trunk. The gate runs first,
+# so nothing ships from a commit that fails fmt, lint, types or the core tests.
+#
+# Releases are driven by the version in tauri.conf.json, and the gate is tag
+# existence: if v<version> is already tagged, nothing releases. Commits that
+# don't bump are no-ops and a failed run can be retried safely.
+#
+# A release candidate is the same version with a numeric semver prerelease
+# suffix (0.2.0-1). It builds and tags like any other version and publishes as
+# a GitHub prerelease. The suffix has to be numeric because WiX rejects
+# anything else, so `-rc.1` breaks the Windows installer and `-1` doesn't.
+# Cutting the release itself is then a bump to the bare version.
+#
+# Build jobs never touch the release. They upload workflow artifacts and one
+# job at the end creates the release with all of them at once, which is the
+# only shape that works with immutable releases.
 on:
   push:
     branches:
@@ -12,8 +23,6 @@ on:
       - prototype
   workflow_dispatch:
 
-# Trunk runs queue rather than cancel: a cancelled matrix would leave a
-# published pre-release missing platforms. Manual dry runs can be cancelled.
 concurrency:
   group: cd-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}
@@ -25,53 +34,39 @@ jobs:
   test:
     uses: ./.github/workflows/ci.yml
 
-  version:
+  check:
     runs-on: ubuntu-latest
     outputs:
-      changed: ${{ steps.check.outputs.changed }}
+      version: ${{ steps.version.outputs.version }}
+      release: ${{ steps.version.outputs.release }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v5
-        with:
-          # github.event.before is the previous trunk commit, which a shallow
-          # clone doesn't have. The repo is under 1 MB, so take the lot.
-          fetch-depth: 0
 
-      - id: check
+      - name: Decide whether this version needs a release
+        id: version
         env:
-          BEFORE: ${{ github.event.before }}
           CONF: apps/desktop/src-tauri/tauri.conf.json
         run: |
-          current=$(jq -r .version "$CONF")
-          echo "Version at this commit: $current"
+          version=$(jq -r .version "$CONF")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
-          if [ "$GITHUB_EVENT_NAME" != push ]; then
-            echo "Not a push, so nothing is released."
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+          # A hyphen is semver's prerelease marker.
+          case "$version" in
+            *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
 
-          if ! previous=$(git show "$BEFORE:$CONF" 2>/dev/null | jq -r .version); then
-            echo "No $CONF at $BEFORE, so treating the version as unchanged."
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo "Version at the previous commit: $previous"
-          if [ -z "$previous" ] || [ "$previous" = null ] || [ -z "$current" ] || [ "$current" = null ]; then
-            echo "Couldn't read a version on both sides, so no release from this push."
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if [ "$current" = "$previous" ]; then
-            echo "Unchanged, so no release from this push."
-            echo "changed=false" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null; then
+            echo "v$version is already tagged, so nothing to release."
+            echo "release=false" >> "$GITHUB_OUTPUT"
           else
-            echo "Bumped, so this push cuts a release."
-            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "v$version is not tagged yet, so this push cuts a release."
+            echo "release=true" >> "$GITHUB_OUTPUT"
           fi
 
-  # Production only. The gate already builds the web app on every push.
+  # Production only. The gate builds the web app on every push already, so
+  # this job exists to produce the Pages artifact rather than to catch breaks.
   web:
     if: github.ref_name == 'main' || github.event_name == 'workflow_dispatch'
     needs: test
@@ -110,8 +105,10 @@ jobs:
         uses: actions/deploy-pages@v5
 
   desktop:
-    if: needs.version.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
-    needs: [test, version]
+    # A dispatch builds regardless of the tag, which is the dry run: it
+    # produces the same artifacts on every platform and releases nothing.
+    if: needs.check.outputs.release == 'true' || github.event_name == 'workflow_dispatch'
+    needs: [test, check]
     strategy:
       fail-fast: false
       matrix:
@@ -120,13 +117,11 @@ jobs:
           - windows-latest
           - macos-latest
     runs-on: ${{ matrix.platform }}
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install Linux dependencies
-        if: matrix.platform == 'ubuntu-22.04'
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils
@@ -147,18 +142,54 @@ jobs:
         working-directory: packages/core/core-wasm
         run: wasm-pack build . --target web
 
-      # Bundles upload to the run as <platform>-<arch>-<bundle> artifacts.
-      # A version bump also attaches them to a release: prototype gets a
-      # pre-release tagged v<version>-rc.<run>, main a draft v<version>.
-      # A dispatch leaves tagName empty, which skips release creation.
+      # No tagName, so the action builds and uploads and never touches a
+      # release. The desktop- prefix keeps these separate from the Pages
+      # artifact when the release job collects them.
       - uses: tauri-apps/tauri-action@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: apps/desktop
           tauriScript: pnpm exec tauri
           uploadWorkflowArtifacts: true
-          tagName: ${{ github.event_name == 'push' && (github.ref_name == 'main' && 'v__VERSION__' || format('v__VERSION__-rc.{0}', github.run_number)) || '' }}
-          releaseName: ${{ github.event_name == 'push' && (github.ref_name == 'main' && 'Orbit v__VERSION__' || format('Orbit v__VERSION__-rc.{0}', github.run_number)) || '' }}
-          releaseDraft: ${{ github.ref_name == 'main' }}
-          prerelease: ${{ github.ref_name != 'main' }}
+          workflowArtifactNamePattern: desktop-[platform]-[arch]-[bundle]
+
+  release:
+    if: github.event_name == 'push' && needs.check.outputs.release == 'true'
+    needs: [check, desktop]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          path: artifacts
+          pattern: desktop-*
+          merge-multiple: true
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check.outputs.version }}
+          PRERELEASE: ${{ needs.check.outputs.prerelease }}
+        run: |
+          # Installers only. The bare .app rides inside the dmg, and it's a
+          # directory, which gh won't upload anyway.
+          mapfile -t assets < <(find artifacts -type f \
+            \( -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \
+            -o -name '*.msi' -o -name '*.exe' -o -name '*.dmg' \) | sort)
+
+          if [ ${#assets[@]} -eq 0 ]; then
+            echo "::error::no installers found to release"
+            exit 1
+          fi
+          printf 'Releasing %s\n' "${assets[@]}"
+
+          flags=()
+          if [ "$PRERELEASE" = true ]; then
+            flags+=(--prerelease)
+          fi
+
+          gh release create "v$VERSION" \
+            --target "$GITHUB_SHA" \
+            --title "Orbit v$VERSION" \
+            --generate-notes "${flags[@]}" \
+            "${assets[@]}"
