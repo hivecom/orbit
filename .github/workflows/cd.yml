@@ -1,8 +1,10 @@
 name: CD
 
-# Every trunk push ships web and desktop from the same commit. prototype
-# produces a pre-release, main a draft release. A manual dispatch runs the
-# whole pipeline but publishes nothing, so it can be tried on any branch.
+# Releases are driven by the app version, not by pushes. Bump the version in
+# tauri.conf.json and the next trunk push cuts desktop binaries: a pre-release
+# from prototype, a draft release from main. Pushes that don't touch the
+# version just run the gate. The web app is production only and deploys on
+# every main push. A manual dispatch builds everything and publishes nothing.
 on:
   push:
     branches:
@@ -10,9 +12,11 @@ on:
       - prototype
   workflow_dispatch:
 
+# Trunk runs queue rather than cancel: a cancelled matrix would leave a
+# published pre-release missing platforms. Manual dry runs can be cancelled.
 concurrency:
   group: cd-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}
 
 permissions:
   contents: read
@@ -21,7 +25,55 @@ jobs:
   test:
     uses: ./.github/workflows/ci.yml
 
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.check.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # github.event.before is the previous trunk commit, which a shallow
+          # clone doesn't have. The repo is under 1 MB, so take the lot.
+          fetch-depth: 0
+
+      - id: check
+        env:
+          BEFORE: ${{ github.event.before }}
+          CONF: apps/desktop/src-tauri/tauri.conf.json
+        run: |
+          current=$(jq -r .version "$CONF")
+          echo "Version at this commit: $current"
+
+          if [ "$GITHUB_EVENT_NAME" != push ]; then
+            echo "Not a push, so nothing is released."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! previous=$(git show "$BEFORE:$CONF" 2>/dev/null | jq -r .version); then
+            echo "No $CONF at $BEFORE, so treating the version as unchanged."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Version at the previous commit: $previous"
+          if [ -z "$previous" ] || [ "$previous" = null ] || [ -z "$current" ] || [ "$current" = null ]; then
+            echo "Couldn't read a version on both sides, so no release from this push."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$current" = "$previous" ]; then
+            echo "Unchanged, so no release from this push."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Bumped, so this push cuts a release."
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Production only. The gate already builds the web app on every push.
   web:
+    if: github.ref_name == 'main' || github.event_name == 'workflow_dispatch'
     needs: test
     runs-on: ubuntu-latest
     steps:
@@ -42,7 +94,7 @@ jobs:
           path: apps/web/dist
 
   deploy:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && github.ref_name == 'main'
     needs: web
     runs-on: ubuntu-latest
     permissions:
@@ -58,7 +110,8 @@ jobs:
         uses: actions/deploy-pages@v5
 
   desktop:
-    needs: test
+    if: needs.version.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
+    needs: [test, version]
     strategy:
       fail-fast: false
       matrix:
@@ -95,8 +148,9 @@ jobs:
         run: wasm-pack build . --target web
 
       # Bundles upload to the run as <platform>-<arch>-<bundle> artifacts.
-      # Trunk pushes also attach them to a release: prototype gets a
+      # A version bump also attaches them to a release: prototype gets a
       # pre-release tagged v<version>-rc.<run>, main a draft v<version>.
+      # A dispatch leaves tagName empty, which skips release creation.
       - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

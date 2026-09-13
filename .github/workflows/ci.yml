@@ -7,8 +7,10 @@ on:
   workflow_call:
   workflow_dispatch:
 
+# github.workflow is the caller's name when CD runs this, so a manual CI
+# dispatch on the same ref never cancels a CD run's gate.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -24,15 +26,16 @@ jobs:
 
       - uses: ./.github/actions/setup-rust
 
-      # Native target. The wasm build below never compiles the tests or the
-      # not(feature = "web") branches, so this is the only place they get checked.
+      # Native target, selected with -p so core-wasm's `web` feature isn't
+      # unified in. The wasm build below never compiles the tests or the
+      # not(feature = "web") branches, so these two steps are their only check.
       - name: Cargo check
         working-directory: packages/core
-        run: cargo check --workspace
+        run: cargo check -p core-shared --locked
 
       - name: Cargo test
         working-directory: packages/core
-        run: cargo test -p core-shared
+        run: cargo test -p core-shared --locked
 
       # The `ready` gate, split into steps for clearer failure attribution.
       - name: Check (format, lint, types)
