@@ -31,9 +31,20 @@ runs:
     - name: Install wasm-pack
       if: inputs.wasm-pack == 'true'
       shell: bash
+      env:
+        WASM_PACK_VERSION: 0.15.0
       run: |
-        if wasm-pack --version 2>/dev/null | grep -q "^wasm-pack 0.15.0$"; then
-          echo "wasm-pack 0.15.0 already installed"
+        if wasm-pack --version 2>/dev/null | grep -q "^wasm-pack $WASM_PACK_VERSION$"; then
+          echo "wasm-pack $WASM_PACK_VERSION already installed"
           exit 0
         fi
-        curl https://wasm-bindgen.github.io/wasm-pack/installer/init.sh -sSf | VERSION="v0.15.0" sh
+        if [ "$RUNNER_OS" = macOS ] && [ "$RUNNER_ARCH" = ARM64 ]; then
+          # The installer script forces x86_64 on Apple Silicon (wasm-pack#1088),
+          # which then runs under Rosetta. Fetch the native build instead.
+          name="wasm-pack-v$WASM_PACK_VERSION-aarch64-apple-darwin"
+          curl -sSfL "https://github.com/wasm-bindgen/wasm-pack/releases/download/v$WASM_PACK_VERSION/$name.tar.gz" \
+            | tar -xz -C "$HOME/.cargo/bin" --strip-components=1 "$name/wasm-pack"
+        else
+          curl https://wasm-bindgen.github.io/wasm-pack/installer/init.sh -sSf | VERSION="v$WASM_PACK_VERSION" sh
+        fi
+        wasm-pack --version

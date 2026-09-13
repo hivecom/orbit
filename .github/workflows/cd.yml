@@ -31,6 +31,10 @@ jobs:
 
       - uses: ./.github/actions/setup-rust
 
+      - name: Build core-wasm
+        working-directory: packages/core/core-wasm
+        run: wasm-pack build . --target web
+
       - run: pnpm --filter web build
 
       - uses: actions/upload-pages-artifact@v5
@@ -82,8 +86,13 @@ jobs:
             packages/core
             apps/desktop/src-tauri
 
-      # The desktop front end bundles core-wasm through packages/app.
-      - run: pnpm exec vp run --filter core-wasm build
+      # The desktop front end bundles core-wasm through packages/app. Same
+      # command as core-wasm's build script, without `vp run` in front: its
+      # task cache injects a preload library into child processes, and dyld
+      # aborts when that library and the child differ in architecture.
+      - name: Build core-wasm
+        working-directory: packages/core/core-wasm
+        run: wasm-pack build . --target web
 
       # Bundles upload to the run as <platform>-<arch>-<bundle> artifacts.
       # Trunk pushes also attach them to a release: prototype gets a
