@@ -88,9 +88,9 @@ export const useIrcStore = defineStore("irc", () => {
     })
 
     const state = await handler.state()
-    initializeServer(state, handler)
 
     await handler.sign_in_anonymous(user.me.displayName, user.me.accountName, user.me.accountName)
+    initializeServer(state, handler)
 
     registerServerEvents(state.id, handler)
 
@@ -175,7 +175,7 @@ export const useIrcStore = defineStore("irc", () => {
     if (!serverHandler || !channels) return
 
     const handler = await serverHandler.join_channel(channelId)
-    const data = await handler.state()
+    const data = (await handler.state())!
     channels.joined.push({ data, handler })
 
     return { data, handler }

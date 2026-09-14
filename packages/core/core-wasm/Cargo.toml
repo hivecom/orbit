@@ -23,7 +23,7 @@ gloo-net = "0.7.0"
 
 irc-proto = "1.1.0"
 core-shared = { version = "0.1.0", path = "../core-shared", features = ["web"], default-features = false }
-indexed_db_futures = { version = "0.6.4", features = ["async-upgrade", "serde"] }
+indexed_db_futures = { version = "0.6.4", features = ["async-upgrade", "cursors", "indices", "serde"] }
 serde = { version = "1.0.228", features = ["derive"] }
 anyhow = { version = "1.0.103", features = ["backtrace"] }
 tracing-wasm = "0.2.1"

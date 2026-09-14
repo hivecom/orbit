@@ -8,13 +8,13 @@ describe("web platform adapter", () => {
 
   it("nulls capabilities that require a native shell", () => {
     const platform = createWebPlatform()
-    expect(platform.tray).toBeNull()
     expect(platform.deepLinks).toBeNull()
     expect(platform.dns).toBeNull()
   })
 
   it("provides browser-backed capabilities", () => {
     const platform = createWebPlatform()
+    expect(platform.tray).not.toBeNull()
     expect(platform.notifications).not.toBeNull()
     expect(platform.audioDevices).not.toBeNull()
     expect(platform.fileTransfer).not.toBeNull()

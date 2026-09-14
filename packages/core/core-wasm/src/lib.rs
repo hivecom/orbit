@@ -3,7 +3,8 @@ use std::{fmt, str::FromStr};
 use anyhow::{Context, bail};
 use core_shared::{
     SendCommand,
-    actor::{self, ActorCommand, ActorMessage, CommandResponse, IrcActor},
+    actor::{self, ActorCommand, ActorMessage, IrcActor},
+    response_channels::CommandResponse,
     state::{
         self, Capabilities, ChannelInfo, ChannelMetadata, ChannelUser, MessageMetadata,
         MessageReference, ServerMetadata, SignedIn, User,
@@ -51,6 +52,12 @@ macro_rules! dbg {
 
 use tracing_subscriber::prelude::*;
 use tracing_subscriber_wasm::MakeConsoleWriter;
+
+use crate::database::IndexedDb;
+
+mod database;
+
+const DATABASE_NAME: &str = "orbit-core";
 
 fn init_tracing() {
     let fmt_layer = tracing_subscriber::fmt::layer()
@@ -118,7 +125,8 @@ pub struct IrcConnection {
 impl IrcConnection {
     async fn connect(id: i32, url: String) -> Result<Self, OrbitError> {
         let connection = WsConnection::new(url)?;
-        let address = IrcActor::start(id, connection, |actor| {
+        let database = IndexedDb::new(DATABASE_NAME).await?;
+        let address = IrcActor::start(id, connection, database, |actor| {
             spawn_local(async { actor.run().await })
         })
         .await?;
@@ -371,7 +379,7 @@ pub struct IrcChannel {
 #[wasm_bindgen]
 impl IrcChannel {
     #[wasm_bindgen]
-    pub async fn state(&mut self) -> Result<Channel, OrbitError> {
+    pub async fn state(&mut self) -> Result<Option<Channel>, OrbitError> {
         let (tx, rx) = oneshot::channel();
         self.address
             .send(ActorMessage {
@@ -386,7 +394,7 @@ impl IrcChannel {
             unreachable!("expected state, got: {:?}", resp);
         };
 
-        Ok(channel.unwrap().into())
+        Ok((*channel).map(Into::into))
     }
 
     #[wasm_bindgen]
@@ -523,7 +531,7 @@ impl From<state::Channel> for Channel {
     fn from(channel: state::Channel) -> Self {
         Self {
             metadata: channel.metadata,
-            messages: channel.messages.into_values().map(Into::into).collect(),
+            messages: channel.messages.into_iter().map(Into::into).collect(),
             users: channel.users,
         }
     }
