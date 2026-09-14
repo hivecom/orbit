@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { contains, createRule, createRuleArg, defineRules, minLength, not, required, useValidation } from "@dolanske/v-valid"
+import { createRule, defineRules, minLength, required, useValidation } from "@dolanske/v-valid"
 import { Button, Card, Flex, Input } from "@dolanske/vui"
 import { computed, reactive, ref } from "vue"
 import { useIrcStore } from "../../stores/irc"

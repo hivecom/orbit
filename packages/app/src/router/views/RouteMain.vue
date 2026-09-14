@@ -2,7 +2,7 @@
 import { Flex } from "@dolanske/vui"
 import ServerConnectDialog from "../../components/dialogs/ServerConnectDialog.vue"
 // import { useIrcStore } from "../../stores/irc.ts"
-import { onBeforeMount, onMounted, ref } from "vue"
+import { onMounted, ref } from "vue"
 import { useRouter } from "vue-router"
 import UsernameDialog from "../../components/dialogs/UsernameDialog.vue"
 import Stepper from "../../components/shared/Stepper.vue"
@@ -10,10 +10,10 @@ import type { Server } from "core-wasm"
 import { serializeWindow } from "../../lib/windows.ts"
 import { IRC_UNKNOWN_CHANNEL } from "../../lib/constants.ts"
 import { useUserStore } from "../../stores/user.ts"
-import { useIrcStore } from "../../stores/irc.ts"
+// import { useIrcStore } from "../../stores/irc.ts"
 
 const router = useRouter()
-const irc = useIrcStore()
+// const irc = useIrcStore()
 const user = useUserStore()
 
 // onBeforeMount(() => {
