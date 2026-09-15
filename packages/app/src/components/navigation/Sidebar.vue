@@ -126,8 +126,8 @@ const { join, loading } = useIRCJoinChannel()
         <Card class="o-sidebar-user" v-else>
           <Flex y-center gap="xs" expand>
             <!-- <Avatar url="https://github.com/dolanske.png"></Avatar> -->
-            <Avatar>{{ user.me.displayName[0].toUpperCase() }}</Avatar>
-            <strong class="flex-1">{{ user.me.displayName }}</strong>
+            <Avatar>{{ user.me.displayName ? user.me.displayName[0].toUpperCase() : user.me.accountName[0] }}</Avatar>
+            <strong class="flex-1">{{ user.me.displayName ?? user.me.accountName }}</strong>
             <RouterLink to="/settings">
               <Button square plain>
                 <IconSettingsLinear />

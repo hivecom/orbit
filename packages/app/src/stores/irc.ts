@@ -138,10 +138,10 @@ export const useIrcStore = defineStore("irc", () => {
     const messageId = `${serverId}:${channelId}`
 
     try {
-      const oldestId = serverMessages.value.get(messageId)?.[0].metadata.msgid
+      const oldestId = serverMessages.value.get(messageId)?.[0]
       if (!oldestId) return
 
-      const history = await serverHandlers.value.get(serverId)?.history_before(channelId, oldestId)
+      const history = await serverHandlers.value.get(serverId)?.history_before(channelId, oldestId.metadata.msgid)
       if (!history) return
 
       const messages = serverMessages.value.get(messageId)
