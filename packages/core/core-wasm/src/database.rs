@@ -10,6 +10,7 @@ use indexed_db_futures::{
 use indexed_db_futures::{BuildSerde, KeyRange};
 use serde::{Deserialize, Serialize};
 
+#[allow(unused_imports)]
 use crate::dbg;
 
 const MESSAGE_STORE: &str = "messages";
