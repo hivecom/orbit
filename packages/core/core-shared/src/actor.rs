@@ -1,3 +1,5 @@
+#[cfg(not(feature = "web"))]
+use std::pin::pin;
 use std::{fmt, time::Duration};
 
 use futures::{FutureExt, future::FusedFuture};
@@ -9,6 +11,7 @@ use web_time::Instant;
 
 #[cfg(feature = "web")]
 use crate::dbg;
+use crate::state::ChannelInfo;
 use crate::{
     SendCommand,
     database::Database,
@@ -69,6 +72,7 @@ pub enum ActorCommand {
         channel: String,
         before_msgid: String,
     },
+    GetChannelList,
 }
 
 pub trait IrcConnection: fmt::Debug {
@@ -87,19 +91,22 @@ pub(crate) struct RequestedHistory {
 #[derive(Debug)]
 pub(crate) struct CurrentBatch {
     pub id: String,
+    pub label: Option<String>,
     pub data: BatchData,
 }
 
 #[derive(Debug)]
 pub(crate) enum BatchData {
     History {
-        label: Option<String>,
         target: String,
         messages: Vec<Message>,
     },
     Multiline {
         target: String,
-        message: Message,
+        message: Box<Message>,
+    },
+    ChannelList {
+        list: Vec<ChannelInfo>,
     },
     Unhandled,
 }
@@ -107,6 +114,10 @@ pub(crate) enum BatchData {
 impl CurrentBatch {
     pub fn is_chathistory(&self) -> bool {
         matches!(self.data, BatchData::History { .. })
+    }
+
+    pub fn is_channellist(&self) -> bool {
+        matches!(self.data, BatchData::ChannelList { .. })
     }
 }
 

@@ -23,6 +23,7 @@ catalog:
   "@dolanske/v-valid": ^3.0.1
   "@vueuse/core": ^14.3.0
   "@iconify-prerendered/vue-solar": ^0.28.1754901129
+  dayjs: ^1.11.23
 overrides:
   vite: "catalog:"
   vitest: "catalog:"

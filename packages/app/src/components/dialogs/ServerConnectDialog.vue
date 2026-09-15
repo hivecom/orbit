@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { defineRules, minLength, required, useValidation } from "@dolanske/v-valid"
+import { createRule, defineRules, minLength, required, useValidation } from "@dolanske/v-valid"
 import { Button, Card, Flex, Input } from "@dolanske/vui"
-import { reactive, ref } from "vue"
+import { computed, reactive, ref } from "vue"
 import { useIrcStore } from "../../stores/irc"
 import { useRouter } from "vue-router"
-import type { Server } from "core-wasm"
+import type { OrbitError, Server } from "core-wasm"
 
 const irc = useIrcStore()
 const router = useRouter()
@@ -21,9 +21,16 @@ const emit = defineEmits<{
   error: [error: string]
 }>()
 
+const existingServers = computed(() => Array.from(irc.serverData.values()).map((item) => item.metadata.address))
+
+const noExistingServers = createRule(
+  (value: string) => !existingServers.value.includes(value.trim()),
+  () => "You are already connected to this server",
+)
+
 const rules = defineRules<typeof form>({
   name: [required, minLength(2)],
-  url: [required],
+  url: [required, noExistingServers],
 })
 
 const { validate, errors } = useValidation(form, rules, { autoclear: true })
@@ -41,8 +48,9 @@ function submit() {
 
       emit("success", state)
       router.push({ name: "RouteWindowManager" })
-    } catch (e) {
-      console.log("Error connecting to a server\n", e)
+    } catch (e: unknown) {
+      const error = e as OrbitError
+      console.log("Error connecting to a server\n", error)
       emit("error", e as string)
     }
 
@@ -58,7 +66,7 @@ function submit() {
       <slot name="stepper"></slot>
     </Flex>
     <form @submit.prevent="submit">
-      <Flex column>
+      <Flex column gap="l">
         <Input expand v-model="form.url" required :errors="errors.url.messages" placeholder="Enter server URL..." label="Address" />
         <Input expand v-model="form.name" required :errors="errors.name.messages" placeholder="Enter server name" label="Name" />
       </Flex>
