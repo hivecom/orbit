@@ -1,46 +1,86 @@
 name: CD
 
+# Deploys the web app and cuts desktop releases off trunk. The gate runs first,
+# so nothing ships from a commit that fails fmt, lint, types or the core tests.
+#
+# Releases are driven by the version in tauri.conf.json, and the gate is tag
+# existence: if v<version> is already tagged, nothing releases. Commits that
+# don't bump are no-ops and a failed run can be retried safely.
+#
+# A release candidate is the same version with a numeric semver prerelease
+# suffix (0.2.0-1). It builds and tags like any other version and publishes as
+# a GitHub prerelease. The suffix has to be numeric because WiX rejects
+# anything else, so `-rc.1` breaks the Windows installer and `-1` doesn't.
+# Cutting the release itself is then a bump to the bare version.
+#
+# Build jobs never touch the release. They upload workflow artifacts and one
+# job at the end creates the release with all of them at once, which is the
+# only shape that works with immutable releases.
 on:
   push:
     branches:
       - main
+      - prototype
+  workflow_dispatch:
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: true
 
 jobs:
-  build:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  check:
     runs-on: ubuntu-latest
-    env:
-      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release: ${{ steps.version.outputs.release }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
-      - name: install wasm-pack
-        shell: "bash"
+      - name: Decide whether this version needs a release
+        id: version
+        env:
+          CONF: apps/desktop/src-tauri/tauri.conf.json
         run: |
-          rustup target add wasm32-unknown-unknown
-          curl https://wasm-bindgen.github.io/wasm-pack/installer/init.sh -sSf | VERSION="v0.15.0" sh
+          version=$(jq -r .version "$CONF")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      # pnpm version comes from the "packageManager" field in package.json
-      - run: corepack enable
+          # A hyphen is semver's prerelease marker.
+          case "$version" in
+            *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
 
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 24
-          cache: pnpm
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null; then
+            echo "v$version is already tagged, so nothing to release."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "v$version is not tagged yet, so this push cuts a release."
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
 
-      - run: pnpm install --frozen-lockfile
+  # Production only. The gate builds the web app on every push already, so
+  # this job exists to produce the Pages artifact rather than to catch breaks.
+  web:
+    if: github.ref_name == 'main' || github.event_name == 'workflow_dispatch'
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/setup-pnpm
+
+      - uses: ./.github/actions/setup-rust
+
+      - name: Build core-wasm
+        working-directory: packages/core/core-wasm
+        run: wasm-pack build . --target web
 
       - run: pnpm --filter web build
 
@@ -49,11 +89,107 @@ jobs:
           path: apps/web/dist
 
   deploy:
-    needs: build
+    if: github.event_name == 'push' && github.ref_name == 'main'
+    needs: web
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
         uses: actions/deploy-pages@v5
+
+  desktop:
+    # A dispatch builds regardless of the tag, which is the dry run: it
+    # produces the same artifacts on every platform and releases nothing.
+    if: needs.check.outputs.release == 'true' || github.event_name == 'workflow_dispatch'
+    needs: [test, check]
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - ubuntu-22.04
+          - windows-latest
+          - macos-latest
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils
+
+      - uses: ./.github/actions/setup-pnpm
+
+      - uses: ./.github/actions/setup-rust
+        with:
+          workspaces: |
+            packages/core
+            apps/desktop/src-tauri
+
+      # The desktop front end bundles core-wasm through packages/app. Same
+      # command as core-wasm's build script, without `vp run` in front: its
+      # task cache injects a preload library into child processes, and dyld
+      # aborts when that library and the child differ in architecture.
+      - name: Build core-wasm
+        working-directory: packages/core/core-wasm
+        run: wasm-pack build . --target web
+
+      # No tagName, so the action builds and uploads and never touches a
+      # release. The desktop- prefix keeps these separate from the Pages
+      # artifact when the release job collects them.
+      - uses: tauri-apps/tauri-action@v1
+        with:
+          projectPath: apps/desktop
+          tauriScript: pnpm exec tauri
+          uploadWorkflowArtifacts: true
+          workflowArtifactNamePattern: desktop-[platform]-[arch]-[bundle]
+
+  release:
+    if: github.event_name == 'push' && needs.check.outputs.release == 'true'
+    needs: [check, desktop]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          path: artifacts
+          pattern: desktop-*
+          merge-multiple: true
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check.outputs.version }}
+          PRERELEASE: ${{ needs.check.outputs.prerelease }}
+        run: |
+          # Installers only. The bare .app rides inside the dmg, and it's a
+          # directory, which gh won't upload anyway.
+          mapfile -t assets < <(find artifacts -type f \
+            \( -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \
+            -o -name '*.msi' -o -name '*.exe' -o -name '*.dmg' \) | sort)
+
+          if [ ${#assets[@]} -eq 0 ]; then
+            echo "::error::no installers found to release"
+            exit 1
+          fi
+          printf 'Releasing %s\n' "${assets[@]}"
+
+          flags=()
+          if [ "$PRERELEASE" = true ]; then
+            flags+=(--prerelease)
+          fi
+
+          gh release create "v$VERSION" \
+            --target "$GITHUB_SHA" \
+            --title "Orbit v$VERSION" \
+            --generate-notes "${flags[@]}" \
+            "${assets[@]}"

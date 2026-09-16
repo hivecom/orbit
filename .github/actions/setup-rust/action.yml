@@ -1,0 +1,43 @@
+name: Setup Rust
+description: Pinned Rust toolchain, a cargo cache keyed on Cargo.lock, and wasm-pack
+
+inputs:
+  workspaces:
+    description: Cargo workspaces to cache, one per line
+    default: packages/core
+
+runs:
+  using: composite
+  steps:
+    - uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: 1.98.0
+        targets: wasm32-unknown-unknown
+
+    # Registry, git checkouts, ~/.cargo/bin and the target dirs. The key
+    # includes the rustc version and a hash of the Cargo.lock files under
+    # the listed workspaces, so a lockfile change starts a fresh cache.
+    - uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: ${{ inputs.workspaces }}
+
+    # ~/.cargo/bin comes back from the cache, so a warm run skips the download.
+    - name: Install wasm-pack
+      shell: bash
+      env:
+        WASM_PACK_VERSION: 0.15.0
+      run: |
+        if wasm-pack --version 2>/dev/null | grep -q "^wasm-pack $WASM_PACK_VERSION$"; then
+          echo "wasm-pack $WASM_PACK_VERSION already installed"
+          exit 0
+        fi
+        if [ "$RUNNER_OS" = macOS ] && [ "$RUNNER_ARCH" = ARM64 ]; then
+          # The installer script forces x86_64 on Apple Silicon (wasm-pack#1088),
+          # which then runs under Rosetta. Fetch the native build instead.
+          name="wasm-pack-v$WASM_PACK_VERSION-aarch64-apple-darwin"
+          curl -sSfL "https://github.com/wasm-bindgen/wasm-pack/releases/download/v$WASM_PACK_VERSION/$name.tar.gz" \
+            | tar -xz -C "${CARGO_HOME:-$HOME/.cargo}/bin" --strip-components=1 "$name/wasm-pack"
+        else
+          curl https://wasm-bindgen.github.io/wasm-pack/installer/init.sh -sSf | VERSION="v$WASM_PACK_VERSION" sh
+        fi
+        wasm-pack --version

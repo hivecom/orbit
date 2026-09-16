@@ -1,13 +1,16 @@
 name: CI
 
+# The merge gate. Runs on its own for PRs and as the first job of CD, so a
+# failure here blocks both the web deploy and the desktop builds.
 on:
-  push:
-    branches:
-      - main
   pull_request:
+  workflow_call:
+  workflow_dispatch:
 
+# github.workflow is the caller's name when CD runs this, so a manual CI
+# dispatch on the same ref never cancels a CD run's gate.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -16,30 +19,23 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
-    env:
-      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
+      - uses: ./.github/actions/setup-pnpm
 
-      # pnpm version comes from the "packageManager" field in package.json
-      - run: corepack enable
+      - uses: ./.github/actions/setup-rust
 
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 24
-          cache: pnpm
+      # Native target, selected with -p so core-wasm's `web` feature isn't
+      # unified in. The wasm build below never compiles the tests or the
+      # not(feature = "web") branches, so these two steps are their only check.
+      - name: Cargo check
+        working-directory: packages/core
+        run: cargo check -p core-shared --locked
 
-      - name: install wasm-pack
-        shell: "bash"
-        run: |
-          rustup target add wasm32-unknown-unknown
-          curl https://wasm-bindgen.github.io/wasm-pack/installer/init.sh -sSf | VERSION="v0.15.0" sh
-
-      - run: pnpm install --frozen-lockfile
+      - name: Cargo test
+        working-directory: packages/core
+        run: cargo test -p core-shared --locked
 
       # The `ready` gate, split into steps for clearer failure attribution.
       - name: Check (format, lint, types)
