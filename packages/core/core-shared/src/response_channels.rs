@@ -8,7 +8,7 @@ use web_time::Instant;
 
 #[cfg(feature = "web")]
 use crate::dbg;
-use crate::state::{Channel, History, Message, OrbitError, Server, SignedIn};
+use crate::state::{Channel, ChannelInfo, History, Message, OrbitError, Server, SignedIn};
 use futures::channel::oneshot;
 use tracing::warn;
 
@@ -19,6 +19,7 @@ pub(crate) enum CommandKey {
     Join(String),
     Privmsg { target: String, text: String },
     History,
+    ChannelList,
     Label(String),
 }
 
@@ -30,6 +31,7 @@ pub enum CommandResponse {
     SignIn(Result<SignedIn, OrbitError>),
     Join(String),
     Privmsg(Box<Message>),
+    ChannelList(Vec<ChannelInfo>),
     History(History),
 }
 

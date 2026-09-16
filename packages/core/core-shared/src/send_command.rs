@@ -165,6 +165,13 @@ pub trait SendCommand {
             .await
         }
     }
+
+    fn list(
+        &mut self,
+        label: Option<String>,
+    ) -> impl std::future::Future<Output = Result<(), Self::Error>> {
+        self.command(LIST(None, None), label)
+    }
 }
 
 impl SendCommand for UnboundedSender<IrcMessage> {

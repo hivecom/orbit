@@ -6,8 +6,8 @@ use crate::dbg;
 use irc_proto::message::Tag;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use time::OffsetDateTime;
 use time::format_description::well_known::Iso8601;
+use time::OffsetDateTime;
 use tracing::{error, warn};
 #[cfg(feature = "web")]
 use tsify::Tsify;
@@ -694,4 +694,13 @@ impl Tags {
             hasher.finalize().to_string()
         })
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "web", derive(Tsify))]
+#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone, inspectable))]
+pub struct ChannelInfo {
+    pub name: String,
+    pub user_count: i32,
+    pub topic: String,
 }

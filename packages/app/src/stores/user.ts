@@ -1,7 +1,6 @@
 import { defineStore } from "pinia"
 import { reactive, shallowRef, watchEffect } from "vue"
-
-const USER_STORAGE_KEY = "o-user-names"
+import { USER_STORAGE_KEY } from "../lib/constants"
 
 /**
  * User related data

@@ -7,6 +7,7 @@ import init, { initialize_orbit } from "core-wasm"
 import { useIrcStore } from "../stores/irc"
 import { useAppStateStore } from "../stores/app-state"
 import { useUserStore } from "../stores/user"
+import { useConfigStore } from "../stores/config"
 
 /**
  * Creates the Orbit application and initializes the UI & connectors.
@@ -34,15 +35,13 @@ export async function createOrbitApp(root: Component<any, any, any, any, any>, p
   //    2.1 Handle server capabilities
   //    2.2 Handle other server & channel state
 
-  // non-blocking operation, app receives a loading spinner while this is happening
   await init().then(async () => {
     return initialize_orbit()
       .then(async (controller) => {
-        const userStore = useUserStore()
-        userStore.init()
+        useUserStore().init()
+        useConfigStore().init()
 
-        const ircStore = useIrcStore(pinia)
-        await ircStore.init(controller)
+        await useIrcStore(pinia).init(controller)
       })
       .catch((e) => {
         const appState = useAppStateStore()

@@ -1,8 +1,11 @@
 import { useUrlSearchParams } from "@vueuse/core"
-import { computed, readonly, ref, unref, watch } from "vue"
-import { IRC_UNKNOWN, useIrcStore } from "../stores/irc"
+import { computed, ref, unref, watch } from "vue"
+import { useIrcStore } from "../stores/irc"
+import { IRC_UNKNOWN_CHANNEL } from "./constants"
+import { flags } from "../flags"
+import { useRouter } from "vue-router"
 
-type WindowLocation = "f" | "l" | "r" | "lt" | "lb" | "rt" | "rb"
+export type WindowLocation = "f" | "l" | "r" | "lt" | "lb" | "rt" | "rb"
 
 type WindowChatURLState = `c:${string}:${string}`
 type WindowVoiceURLState = `v:${string}`
@@ -28,6 +31,7 @@ export interface WindowEmpty {
 export type Window = WindowChat | WindowVoice | WindowEmpty
 export type WindowType = Window["type"]
 export type WindowState = Partial<Record<WindowLocation, Window>>
+export type WindowAndLocation<T = Window> = T & { location: WindowLocation }
 
 ////////////////////////////////////////////////////////////////////////
 
@@ -42,13 +46,11 @@ export function getDefaultState(): WindowState {
   const firstServer = irc.serverData.values().next().value
 
   if (firstServer) {
-    // const firstChannel = firstServer.channels.values().next().value
-
     return {
       f: {
         type: "chat",
         serverId: firstServer.id,
-        channelId: IRC_UNKNOWN,
+        channelId: IRC_UNKNOWN_CHANNEL,
       },
     }
   }
@@ -151,114 +153,129 @@ export function deserializeState(url: string): WindowState {
   return state
 }
 
-export function loadInitialState(urlValue?: string): WindowState {
-  if (urlValue) {
-    return deserializeState(urlValue)
+export function loadInitialState(): WindowState {
+  // Keep URL state between windows while app is open, but on initial load if
+  // persistence is disabled, URL state should be ignored as well
+  if (flags.WINDOWS_PERSIST) {
+    const urlValue = useUrlSearchParams("history")[WIN_URL_KEY]
+
+    if (urlValue) {
+      return deserializeState(urlValue.toString())
+    }
+
+    try {
+      const raw = localStorage.getItem(WIN_STORAGE_KEY)
+
+      if (raw) {
+        const parsed = deserializeState(raw)
+        return parsed
+      }
+    } catch {}
   }
 
-  try {
-    const raw = localStorage.getItem(WIN_STORAGE_KEY)
-
-    if (raw) {
-      const parsed = deserializeState(raw)
-      return parsed
-    }
-  } catch {}
   return getDefaultState()
 }
 
 // Main window state stored as JSON object in the URL search params. Where
 // location is the key (because it's always unique) and value is the
 // Window<Type> object.
-export function useWindowManager() {
-  const params = useUrlSearchParams<{ [WIN_URL_KEY]?: string }>("history", {
-    writeMode: "push",
-  })
 
-  const state = ref<WindowState>(loadInitialState(params[WIN_URL_KEY]))
+// Window manager is a global composable, so all its state must be defined
+// outside of it
+const params = useUrlSearchParams<{ [WIN_URL_KEY]?: string }>("history", { writeMode: "push" })
+const windows = ref<WindowState>({})
+const focusedWindow = ref<WindowAndLocation | null>(null)
+const isEmpty = computed(() => Object.values(windows.value).filter((item) => item && item.type !== "empty").length === 0)
+// const initialized = ref(false)
+
+export function useWindowManager() {
+  const router = useRouter()
 
   // Keep URL -> State in sync
   watch(
     () => params[WIN_URL_KEY],
     (newState) => {
       if (newState) {
-        state.value = deserializeState(newState)
+        windows.value = deserializeState(newState)
       }
     },
   )
 
   // // Keep State -> URL in sync
   watch(
-    state,
+    windows,
     (newState) => {
       const serialized = serializeState(newState)
       params[WIN_URL_KEY] = serialized
-      localStorage.setItem(WIN_STORAGE_KEY, serialized)
+
+      if (flags.WINDOWS_PERSIST) {
+        localStorage.setItem(WIN_STORAGE_KEY, serialized)
+      }
     },
-    { deep: true, immediate: true },
+    { deep: true },
   )
 
   /**
    * Closes a window at a location. The layout will automatically reflow
    */
   function close(location: WindowLocation) {
-    if (!state.value[location] || location === "f") return
+    if (!windows.value[location] || location === "f") return
 
-    delete state.value[location]
+    delete windows.value[location]
 
     switch (location) {
       case "lt": {
-        const current = state.value.lb
-        delete state.value.lb
-        state.value.l = current
+        const current = windows.value.lb
+        delete windows.value.lb
+        windows.value.l = current
         break
       }
 
       case "lb": {
-        const current = state.value.lt
-        delete state.value.lt
-        state.value.l = current
+        const current = windows.value.lt
+        delete windows.value.lt
+        windows.value.l = current
         break
       }
 
       case "rt": {
-        const current = state.value.rb
-        delete state.value.rb
-        state.value.r = current
+        const current = windows.value.rb
+        delete windows.value.rb
+        windows.value.r = current
         break
       }
 
       case "rb": {
-        const current = state.value.rt
-        delete state.value.rt
-        state.value.r = current
+        const current = windows.value.rt
+        delete windows.value.rt
+        windows.value.r = current
         break
       }
 
       case "l": {
-        if (state.value.r) {
-          state.value = { f: state.value.r }
+        if (windows.value.r) {
+          windows.value = { f: windows.value.r }
         } else {
-          const current = unref(state.value)
-          current.l = state.value.rt
-          current.r = state.value.rb
+          const current = unref(windows.value)
+          current.l = windows.value.rt
+          current.r = windows.value.rb
           delete current.rt
           delete current.rb
-          state.value = current
+          windows.value = current
         }
         break
       }
 
       case "r": {
-        if (state.value.l) {
-          state.value = { f: state.value.l }
+        if (windows.value.l) {
+          windows.value = { f: windows.value.l }
         } else {
-          const current = unref(state.value)
-          current.l = state.value.lt
-          current.r = state.value.lb
+          const current = unref(windows.value)
+          current.l = windows.value.lt
+          current.r = windows.value.lb
           delete current.lt
           delete current.lb
-          state.value = current
+          windows.value = current
         }
         break
       }
@@ -269,13 +286,13 @@ export function useWindowManager() {
    * Swaps two windows
    */
   function swap(from: WindowLocation, to: WindowLocation) {
-    const fromRaw = state.value[from]
-    const toRaw = state.value[to]
-    const current = state.value
+    const fromRaw = windows.value[from]
+    const toRaw = windows.value[to]
+    const current = windows.value
 
     current[from] = toRaw
     current[to] = fromRaw
-    state.value = current
+    windows.value = current
   }
 
   /**
@@ -286,29 +303,29 @@ export function useWindowManager() {
 
     switch (from) {
       case "f": {
-        const current = unref(state)
+        const current = unref(windows)
         current.l = split
         current.r = getDefaultState().f
         delete current.f
-        state.value = current
+        windows.value = current
         break
       }
 
       case "l": {
-        const current = unref(state)
+        const current = unref(windows)
         current.lt = split
         current.lb = getDefaultState().f
         delete current.l
-        state.value = current
+        windows.value = current
         break
       }
 
       case "r": {
-        const current = unref(state)
+        const current = unref(windows)
         current.rt = split
         current.rb = getDefaultState().f
         delete current.r
-        state.value = current
+        windows.value = current
         break
       }
     }
@@ -317,16 +334,46 @@ export function useWindowManager() {
   /**
    * Inserts a new window into a specific location
    */
-  function replace(location: WindowLocation, newState: Window) {
-    state.value[location] = newState
+  async function replace(location: WindowLocation, newState: Window) {
+    // If we are not in `/wm` instead of updating state, we push router with a
+    // URL and state will get synced automatically
+    if (!windows.value[location]) {
+      location = "f"
+    }
+
+    if (router.currentRoute.value.path !== "/wm") {
+      await router.push("/wm")
+    }
+
+    windows.value[location] = newState
+  }
+
+  /**
+   * Resets state to just a single empty window
+   */
+  function reset() {
+    // FIXME
+    windows.value = getDefaultState()
+  }
+
+  /**
+   * Called when app initializes, as default state requires pinia state
+   */
+  function init() {
+    // if (initialized.value) return
+    windows.value = loadInitialState()
+    // initialized.value = true
   }
 
   return {
-    windows: readonly(state),
-    empty: computed(() => Object.values(state.value).filter((item) => item && item.type !== "empty").length === 0),
+    windows,
+    focusedWindow,
+    isEmpty,
     close,
     split,
     swap,
     replace,
+    reset,
+    init,
   }
 }
