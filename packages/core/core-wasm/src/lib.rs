@@ -433,7 +433,7 @@ impl actor::IrcConnection for WsConnection {
                     bail!("unexpected binary message");
                 };
 
-                Ok(dbg!(irc_proto::Message::from_str(&msg))?)
+                Ok(irc_proto::Message::from_str(&msg)?)
             })
             .boxed_local();
 
