@@ -109,7 +109,7 @@ const { join, loading: loadingChannel } = useIRCJoinChannel()
     align-items: center;
     padding-inline: var(--space-s);
     border-bottom: 1px solid var(--color-border);
-    height: 52px;
+    height: 44px;
   }
 
   .o-window-composer {
@@ -161,6 +161,8 @@ const { join, loading: loadingChannel } = useIRCJoinChannel()
 
           &.msg-username {
             color: var(--color-text-light);
+            padding-right: var(--space-m);
+            padding-left: var(--space-xxs);
           }
 
           &.status {

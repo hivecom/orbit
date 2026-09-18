@@ -13,7 +13,7 @@ export function useDateFormatter() {
    * Formats IRC message timestamp
    */
   function chatTimestamp(unixInSeconds: number) {
-    return dayjs(unixInSeconds * 1000).format(config.options.appearance_chat_timestamps_format)
+    return dayjs(unixInSeconds).format(config.options.appearance_chat_timestamps_format)
   }
 
   // function chatDisplay() {}

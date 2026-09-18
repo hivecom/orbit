@@ -4,9 +4,18 @@ import { ref, shallowRef } from "vue"
 import { useUserStore } from "./user"
 import { useAppStateStore } from "./app-state"
 
-interface IrcChannelWithHandler {
+export interface IrcChannelWithHandler {
   handler: IrcChannel
   data: Channel
+}
+
+export interface IrcChannels {
+  joined: IrcChannelWithHandler[]
+  available: ChannelInfo[]
+}
+
+export type ServerWithGroupedChannels = Server & {
+  groupedChannels: IrcChannels
 }
 
 /**
@@ -23,7 +32,7 @@ export const useIrcStore = defineStore("irc", () => {
   const serverHandlers = ref<Map<number, IrcConnection>>(new Map())
 
   // Holds channel information per server
-  const serverChannels = ref<Map<number, { joined: IrcChannelWithHandler[]; available: ChannelInfo[] }>>(new Map())
+  const serverChannels = ref<Map<number, IrcChannels>>(new Map())
 
   // Holds references to messages per server where the id is `serverId:channelId`
   const serverMessages = ref<Map<string, Message[]>>(new Map())

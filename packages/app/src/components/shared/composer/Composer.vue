@@ -42,23 +42,28 @@ onMounted(() => {
   display: block;
   width: 100%;
   border-top: 1px solid var(--color-border);
-  background-color: var(--color-bg-raised);
+  background-color: var(--color-bg-medium);
   border-radius: var(--border-radius-m);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
   corner-shape: squircle;
-  /* border-top-left-radius: unset;
-  border-top-right-radius: unset; */
 
   input {
     border-radius: inherit;
     display: block;
     width: 100%;
     border: none;
-    height: 52px;
+    height: 44px;
     padding-inline: var(--space-m);
     padding-block: var(--space-xxxs);
     background-color: transparent;
     border: none;
     font-size: var(--font-size-m);
+
+    &:focus-within {
+      outline: none;
+      background-color: var(--color-bg-raised);
+    }
   }
 }
 </style>

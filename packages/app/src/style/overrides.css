@@ -75,3 +75,7 @@
 .vui-dropdown-item.lighter {
   --color-text: var(--color-text-lighter) !important;
 }
+
+.vui-avatar.vui-avatar-size-s {
+  --vui-avatar-size: 24px;
+}
