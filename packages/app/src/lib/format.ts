@@ -5,5 +5,5 @@ export function truncate(text: string, limit: number, append?: string) {
 }
 
 export function getServerInitials(metadata: Server["metadata"]) {
-  return (metadata.name?.charAt(0) ?? metadata.address.startsWith("wss://")) ? metadata.address.charAt(6).toUpperCase() : metadata.address.charAt(0)
+  return (metadata.name?.slice(0, 2) ?? metadata.address.startsWith("wss://")) ? metadata.address.slice(6, 8).toUpperCase() : metadata.address.slice(0, 2)
 }

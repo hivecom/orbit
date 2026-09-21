@@ -37,12 +37,6 @@ const route = useRoute()
 </template>
 
 <style>
-.vui-sidebar {
-  &.mini {
-    --vui-sidebar-width: 60px !important;
-  }
-}
-
 .o-main {
   height: 100%;
   width: 100%;

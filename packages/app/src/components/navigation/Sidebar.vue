@@ -23,10 +23,10 @@ const searchActive = ref(false)
 const search = ref("")
 const searchRef = useTemplateRef("search")
 
-const sidebar = useTemplateRef("sidebar")
+const sidebarRef = useTemplateRef("sidebar")
 
 // @ts-expect-error Doesn't seem to like receiving vue component
-onClickOutside(sidebar, () => (searchActive.value = false))
+onClickOutside(sidebarRef, () => (searchActive.value = false))
 watch(searchActive, (is) => {
   if (!is) {
     search.value = ""
@@ -53,16 +53,17 @@ const serversRaw = computed(() => {
   }) as ServerWithGroupedChannels[]
 })
 
-const filteredServers = computed(() =>
-  serversRaw.value.map((server) => {
-    return {
-      ...server,
-      groupedChannels: {
-        joined: server.groupedChannels.joined.filter((channel) => searchString(channel.data.metadata.name, search.value)),
-        available: server.groupedChannels.available.filter((channel) => searchString(channel.name, search.value)),
-      },
-    }
-  }),
+const filteredServers = computed(
+  () =>
+    serversRaw.value.map((server) => {
+      return {
+        ...server,
+        groupedChannels: {
+          joined: server.groupedChannels.joined.filter((channel) => searchString(channel.data.metadata.name, search.value)),
+          available: server.groupedChannels.available.filter((channel) => searchString(channel.name, search.value)),
+        },
+      }
+    }) as ServerWithGroupedChannels[],
 )
 
 // Join a channel and replace active window
@@ -83,11 +84,11 @@ const filteredServers = computed(() =>
 
 <template>
   <Sidebar :mini="mini" ref="sidebar">
-    <Flex column gap="xs" class="mb-m sidebar-header">
+    <Flex column gap="xs" class="mb-m sidebar-header" :y-center="mini">
       <Flex gap="s" :column="mini" y-center>
         <img :src="logo" />
         <ButtonGroup :vertical="mini">
-          <Tooltip>
+          <Tooltip v-bind="mini && { placement: 'right' }">
             <Button square @click="mini = !mini" aria-label="Toggle sidebar">
               <IconSidebarMinimalisticLinear />
             </Button>
@@ -95,7 +96,7 @@ const filteredServers = computed(() =>
               <p>Toggle sidebar</p>
             </template>
           </Tooltip>
-          <Tooltip>
+          <Tooltip v-bind="mini && { placement: 'right' }">
             <Button square aria-label="Search" @click="searchActive = true">
               <IconMagniferLinear />
             </Button>
@@ -103,7 +104,7 @@ const filteredServers = computed(() =>
               <p>Search</p>
             </template>
           </Tooltip>
-          <Tooltip>
+          <Tooltip v-bind="mini && { placement: 'right' }">
             <RouterLink to="/">
               <Button square aria-label="Connect">
                 <IconAddCircleLinear />
@@ -113,7 +114,7 @@ const filteredServers = computed(() =>
               <p>Connect to a server</p>
             </template>
           </Tooltip>
-          <Tooltip>
+          <Tooltip v-bind="mini && { placement: 'right' }">
             <RouterLink to="/settings">
               <Button aria-label="Settings" square>
                 <Avatar url="https://github.com/dolanske.png" size="s"></Avatar>
@@ -126,7 +127,7 @@ const filteredServers = computed(() =>
         </ButtonGroup>
       </Flex>
 
-      <div class="sidebar-search" :class="{ active: searchActive }">
+      <div class="sidebar-search" :class="{ active: searchActive, mini }">
         <Input type="text" placeholder="Search" expand v-model="search" ref="search">
           <template #end>
             <Button square plain size="s" @click="searchActive = false">
@@ -138,7 +139,7 @@ const filteredServers = computed(() =>
     </Flex>
 
     <div style="height: 1px" />
-    <Flex column gap="xs">
+    <Flex column gap="xs" :y-center="mini">
       <SidebarServerAccordion v-for="server in filteredServers" :key="server.metadata.name" :mini :server />
     </Flex>
   </Sidebar>
@@ -181,6 +182,14 @@ const filteredServers = computed(() =>
         --color-border: transparent;
       }
 
+      &.mini {
+        top: 64px;
+        left: 100%;
+        right: unset;
+        bottom: unset;
+        width: 192px;
+      }
+
       &.active {
         opacity: 1;
         z-index: 5;
@@ -192,13 +201,13 @@ const filteredServers = computed(() =>
 
   .vui-sidebar-content-wrap {
     padding-right: 0 !important;
+    overflow: unset !important;
   }
 
   .btn-square-override {
     padding-inline: var(--space-xs);
     max-width: unset;
     width: unset;
-    /* flex: 1; */
 
     .vui-button-slot-default {
       gap: var(--space-xxs);
