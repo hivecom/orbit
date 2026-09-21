@@ -65,10 +65,16 @@ jobs:
             echo "release=true" >> "$GITHUB_OUTPUT"
           fi
 
-  # Production only. The gate builds the web app on every push already, so
-  # this job exists to produce the Pages artifact rather than to catch breaks.
+  # The gate builds the web app on every push already, so this job exists to
+  # produce the Pages artifact rather than to catch breaks.
+  #
+  # main serves orbit.talk at the root and prototype serves orbit.talk/prototype.
+  # Pages replaces the whole site on every deployment, so these two clobber each
+  # other: whichever branch pushed last is the only one live. That's deliberate
+  # for now, since prototype is where the work is and main has nothing to lose.
+  # Serving both at once means one job building both refs into one artifact.
   web:
-    if: github.ref_name == 'main' || github.event_name == 'workflow_dispatch'
+    if: github.ref_name == 'main' || github.ref_name == 'prototype' || github.event_name == 'workflow_dispatch'
     needs: test
     runs-on: ubuntu-latest
     steps:
@@ -82,14 +88,46 @@ jobs:
         working-directory: packages/core/core-wasm
         run: wasm-pack build . --target web
 
+      # Baked into the bundle, so it has to be set before the build rather than
+      # fixed up after. vite rewrites the asset and index.html references, and
+      # the router reads it back through import.meta.env.BASE_URL.
+      - name: Pick the base path
+        id: base
+        run: |
+          if [ "$GITHUB_REF_NAME" = prototype ]; then
+            echo "base=/prototype/" >> "$GITHUB_OUTPUT"
+          else
+            echo "base=/" >> "$GITHUB_OUTPUT"
+          fi
+
       - run: pnpm --filter web build
+        env:
+          ORBIT_WEB_BASE: ${{ steps.base.outputs.base }}
+
+      # The artifact is the site root, so a subpath build has to be nested to
+      # match the base it was compiled with.
+      #
+      # Pages has no SPA rewrite, so a deep link like /prototype/settings is a
+      # real 404 on a static host. The root 404.html is what Pages serves for
+      # anything it can't find, and handing it the app lets the router take the
+      # route from there. Copied into the subdirectory too, since Pages also
+      # honours a 404.html alongside the files it didn't match.
+      - name: Stage the Pages artifact
+        env:
+          BASE: ${{ steps.base.outputs.base }}
+        run: |
+          mkdir -p "site$BASE"
+          cp -r apps/web/dist/. "site$BASE"
+          cp apps/web/dist/index.html site/404.html
+          cp apps/web/dist/index.html "site$BASE/404.html"
+          find site -type f | sort
 
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: apps/web/dist
+          path: site
 
   deploy:
-    if: github.event_name == 'push' && github.ref_name == 'main'
+    if: github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'prototype')
     needs: web
     runs-on: ubuntu-latest
     permissions:
@@ -168,6 +206,9 @@ jobs:
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
+          # This job never checks out, so gh has no git remote to infer the
+          # repo from and bails before it creates anything.
+          GH_REPO: ${{ github.repository }}
           VERSION: ${{ needs.check.outputs.version }}
           PRERELEASE: ${{ needs.check.outputs.prerelease }}
         run: |

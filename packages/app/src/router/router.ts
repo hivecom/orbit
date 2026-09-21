@@ -33,7 +33,10 @@ export const routes = [
 ]
 
 const router = createRouter({
-  history: createWebHistory(),
+  // Follows the build's base path. It's "/" for desktop and for the root web
+  // build, and "/prototype/" when Pages serves the prototype branch out of a
+  // subdirectory.
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes,
 })
 
