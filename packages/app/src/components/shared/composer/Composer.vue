@@ -40,13 +40,12 @@ onMounted(() => {
 <style scoped>
 .o-composer {
   display: block;
-  width: 100%;
-  border-top: 1px solid var(--color-border);
+  width: calc(100% - calc(var(--space-xs) * 2));
   background-color: var(--color-bg-medium);
   border-radius: var(--border-radius-m);
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
   corner-shape: squircle;
+  margin: var(--space-xs);
+  margin-top: 0;
 
   input {
     border-radius: inherit;

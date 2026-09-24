@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { Avatar, Divider, Flex, DropdownItem, Sidebar, Card, Button, PopoutHover, Input, searchString, ButtonGroup, Tooltip } from "@dolanske/vui"
-import { IconAddCircleLinear, IconCloseSquareLinear, IconMagniferLinear, IconSettingsLinear, IconSidebarMinimalisticLinear } from "@iconify-prerendered/vue-solar"
-import { onClickOutside, onKeyStroke, useMagicKeys, useStorage } from "@vueuse/core"
-import { useIrcStore, type IrcChannels, type ServerWithGroupedChannels } from "../../stores/irc"
-import { computed, nextTick, onMounted, ref, useTemplateRef, watch } from "vue"
+import { Avatar, Flex, Sidebar, Button, Input, searchString, ButtonGroup, Tooltip } from "@dolanske/vui"
+import { IconAddCircleLinear, IconCloseSquareLinear, IconMagniferLinear, IconSidebarMinimalisticLinear } from "@iconify-prerendered/vue-solar"
+import { onClickOutside, onKeyStroke, useStorage } from "@vueuse/core"
+import { useIrcStore, type ServerWithGroupedChannels } from "../../stores/irc"
+import { computed, ref, useTemplateRef, watch } from "vue"
 import { useConfigStore } from "../../stores/config.ts"
 import logo from "../../../public/logo-white-small.svg"
 import SidebarServerAccordion from "./SidebarServerAccordion.vue"
@@ -83,12 +83,12 @@ const filteredServers = computed(
 </script>
 
 <template>
-  <Sidebar :mini="mini" ref="sidebar">
+  <Sidebar :mini ref="sidebar" no-auto-transform variant="plain">
     <Flex column gap="xs" class="mb-m sidebar-header" :y-center="mini">
       <Flex gap="s" :column="mini" y-center>
         <img :src="logo" />
         <ButtonGroup :vertical="mini">
-          <Tooltip v-bind="mini && { placement: 'right' }">
+          <Tooltip v-bind="mini ? { placement: 'right' } : {}">
             <Button square @click="mini = !mini" aria-label="Toggle sidebar">
               <IconSidebarMinimalisticLinear />
             </Button>
@@ -96,7 +96,7 @@ const filteredServers = computed(
               <p>Toggle sidebar</p>
             </template>
           </Tooltip>
-          <Tooltip v-bind="mini && { placement: 'right' }">
+          <Tooltip v-bind="mini ? { placement: 'right' } : {}">
             <Button square aria-label="Search" @click="searchActive = true">
               <IconMagniferLinear />
             </Button>
@@ -104,7 +104,7 @@ const filteredServers = computed(
               <p>Search</p>
             </template>
           </Tooltip>
-          <Tooltip v-bind="mini && { placement: 'right' }">
+          <Tooltip v-bind="mini ? { placement: 'right' } : {}">
             <RouterLink to="/">
               <Button square aria-label="Connect">
                 <IconAddCircleLinear />
@@ -114,7 +114,7 @@ const filteredServers = computed(
               <p>Connect to a server</p>
             </template>
           </Tooltip>
-          <Tooltip v-bind="mini && { placement: 'right' }">
+          <Tooltip v-bind="mini ? { placement: 'right' } : {}">
             <RouterLink to="/settings">
               <Button aria-label="Settings" square>
                 <Avatar url="https://github.com/dolanske.png" size="s"></Avatar>
@@ -138,7 +138,6 @@ const filteredServers = computed(
       </div>
     </Flex>
 
-    <div style="height: 1px" />
     <Flex column gap="xs" :y-center="mini">
       <SidebarServerAccordion v-for="server in filteredServers" :key="server.metadata.name" :mini :server />
     </Flex>
@@ -159,8 +158,15 @@ const filteredServers = computed(
   }
 }
 
+.vui-sidebar-layout .vui-sidebar-outer,
+.vui-sidebar {
+  transition: none !important;
+}
+
 .vui-sidebar {
   border-right: 0;
+
+  --vui-sidebar-width-mini: 64px;
 
   .sidebar-header {
     position: relative;

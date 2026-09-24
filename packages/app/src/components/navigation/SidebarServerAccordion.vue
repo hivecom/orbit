@@ -23,9 +23,20 @@ const [Define, Reuse] = createReusableTemplate()
 </script>
 
 <template>
-  <PopoutHover :enter-delay="mini ? 300 : 1000" class="o-sidebar-server-info">
+  <Define>
+    <div class="o-sidebar-server-channels" :class="{ mini }">
+      <DropdownItem :inert="loading" v-for="item in server.groupedChannels.joined" @click="join(server.id, item.data.metadata.name)">
+        {{ item.data.metadata.name }}
+      </DropdownItem>
+      <DropdownItem class="lighter" :inert="loading" v-for="item in server.groupedChannels.available" @click="join(server.id, item.name)">
+        {{ item.name }}
+      </DropdownItem>
+    </div>
+  </Define>
+
+  <PopoutHover :enter-delay="mini ? 300 : 2000" class="o-sidebar-server-info" v-bind="mini ? { placement: 'right' } : {}">
     <template #trigger>
-      <Button class="o-server-btn" size="s" plain expand @mouseenter="hovering = true" @mouseleave="hovering = false" @click="open = !open" :square="mini">
+      <Button class="o-server-btn" :size="mini ? 'l' : 's'" plain expand @mouseenter="hovering = true" @mouseleave="hovering = false" @click="open = !open" :square="mini">
         <template #start>
           <Avatar size="s">
             {{ getServerInitials(server.metadata) }}
@@ -49,18 +60,9 @@ const [Define, Reuse] = createReusableTemplate()
       <Reuse />
     </Flex>
     <ListCapabilities v-else :capabilities="server.capabilities" />
-
-    <div class="o-sidebar-server-channels" v-if="!mini">
-      <DropdownItem :inert="loading" v-for="item in server.groupedChannels.joined" @click="join(server.id, item.data.metadata.name)">
-        {{ item.data.metadata.name }}
-      </DropdownItem>
-      <DropdownItem class="lighter" :inert="loading" v-for="item in server.groupedChannels.available" @click="join(server.id, item.name)">
-        {{ item.name }}
-      </DropdownItem>
-    </div>
   </PopoutHover>
 
-  <Reuse v-show="open" />
+  <Reuse v-if="!mini && open" />
 </template>
 
 <style>
@@ -89,5 +91,9 @@ const [Define, Reuse] = createReusableTemplate()
   width: stretch;
   padding-left: calc(var(--space-l) + 2px);
   /* margin-left: calc(var(--space-s) + 2px); */
+
+  &.mini {
+    padding: var(--space-s);
+  }
 }
 </style>

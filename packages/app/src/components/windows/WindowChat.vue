@@ -9,9 +9,11 @@ import { useEventListener, useThrottleFn } from "@vueuse/core"
 import { IRC_UNKNOWN_CHANNEL } from "../../lib/constants.ts"
 import { useIRCJoinChannel } from "../../composables/useIRCJoinChannel.ts"
 import { useDateFormatter } from "../../lib/date.ts"
+import { useConfigStore } from "../../stores/config.ts"
 
 const props = defineProps<WindowAndLocation<WindowChat>>()
 const irc = useIrcStore()
+const config = useConfigStore()
 
 const format = useDateFormatter()
 
@@ -24,6 +26,21 @@ function sendMessage(message: string) {
   if (!channel.value) return
   channel.value.handler.send_message(message)
 }
+
+// Chat width & position config
+const chatPositionStyle = computed(() => ({
+  width: config.options.appearance_chat_width + "%",
+  ...(config.options.appearance_chat_center_chat && { margin: "auto" }),
+}))
+
+const composerPositionStyle = computed(() => {
+  // Same as with chat, except composer width is only modified, if chat is centered
+  if (!config.options.appearance_chat_center_chat) return {}
+  return {
+    width: config.options.appearance_chat_width + "%",
+    margin: "auto",
+  }
+})
 
 // Automatic message fetching on scroll
 const scrollLoading = ref(false)
@@ -74,11 +91,11 @@ const { join, loading: loadingChannel } = useIRCJoinChannel()
         </div>
       </Flex>
     </div>
-    <div class="o-table-wrap" v-else>
+    <div class="o-table-wrap" v-else :style="chatPositionStyle">
       <div class="o-table-scroll-container" ref="chatScrollContainer">
         <table class="o-msg-table">
           <tr v-for="message in messages" :key="message.metadata.msgid">
-            <td class="msg-timestamp">{{ format.chatTimestamp(message.metadata.server_time) }}</td>
+            <td class="msg-timestamp" v-if="config.options.appearance_chat_timestamps_enabled">{{ format.chatTimestamp(message.metadata.server_time) }}</td>
             <td class="msg-username">{{ message.metadata.user }}</td>
             <td class="msg-content" :class="{ status: message.metadata.message_type !== MessageType.Privmsg }">
               <template v-if="message.metadata.message_type === MessageType.Privmsg">{{ message.text?.content }} </template>
@@ -92,7 +109,7 @@ const { join, loading: loadingChannel } = useIRCJoinChannel()
       </div>
     </div>
 
-    <div class="o-window-composer" v-if="props.channelId !== IRC_UNKNOWN_CHANNEL">
+    <div class="o-window-composer" v-if="props.channelId !== IRC_UNKNOWN_CHANNEL" :style="composerPositionStyle">
       <Composer @send="sendMessage" :placeholder="`Message ${props.channelId}`" />
     </div>
   </div>

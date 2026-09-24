@@ -3,8 +3,10 @@ import { Button, Counter, Divider, Flex, Input, Kbd, Switch } from "@dolanske/vu
 import { IconArrowLeftLinear } from "@iconify-prerendered/vue-solar"
 import { useConfigStore } from "../../stores/config"
 import { computed } from "vue"
+import { useRouter } from "vue-router"
 
 const config = useConfigStore()
+const router = useRouter()
 
 const MIN_WIDTH = 25
 const MAX_WIDTH = 100
@@ -19,7 +21,7 @@ const safeguardedWidth = computed({
   <div class="container-m settings-page">
     <div class="settings-title">
       <h2>Settings</h2>
-      <Button square plain class="settings-close-button">
+      <Button square plain class="settings-close-button" @click="router.back()">
         <IconArrowLeftLinear />
       </Button>
     </div>
@@ -29,7 +31,7 @@ const safeguardedWidth = computed({
       <h4>Global</h4>
       <Switch disabled reversed accent label="Zen mode" hint="Greatly simplifies the UI, removing distractions. Can be toggled on/off using the command palette." v-model="config.options.appearance_global_zen_enabled" />
       <h4>Chat</h4>
-      <Switch reversed accent label="Colored usernames" hint="Generate a random username color using the username as a seed" v-model="config.options.appearance_chat_colored_usernames" />
+      <Switch disabled reversed accent label="Colored usernames" hint="Generate a random username color using the username as a seed" v-model="config.options.appearance_chat_colored_usernames" />
       <Switch reversed accent label="Show timestamps" hint="Display timestampts in chat view" v-model="config.options.appearance_chat_timestamps_enabled" />
       <Input label="Timestamp format" v-model="config.options.appearance_chat_timestamps_format" :disabled="!config.options.appearance_chat_timestamps_enabled" />
       <h4>Layout</h4>
