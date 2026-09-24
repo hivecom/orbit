@@ -10,6 +10,10 @@ import SidebarServerAccordion from "./SidebarServerAccordion.vue"
 import type { Server } from "core-wasm"
 import { toJSON } from "../../lib/helpers.ts"
 
+// TODO: nested server channels once supported
+// TODO: mobile functionality & swipe - gets rid of the mini version and instead completely hides or opens it
+// TODO: any missing features I can't think about rn
+
 const irc = useIrcStore()
 const config = useConfigStore()
 
@@ -65,21 +69,6 @@ const filteredServers = computed(
       }
     }) as ServerWithGroupedChannels[],
 )
-
-// Join a channel and replace active window
-// const { replace, focusedWindow } = useWindowManager()
-
-// Replace active window with a channel we've already joined
-// async function openChannelWindow(serverId: number, channelId: string) {
-//   // FIXME: `f` is not good - location always needs to be set
-//   // TODO figure out - if we are not on /wm while replace or any API is called,
-//   // should we automatically redirect there? where should that happen?
-//   replace(focusedWindow.value?.location ?? "f", {
-//     type: "chat",
-//     serverId,
-//     channelId,
-//   })
-// }
 </script>
 
 <template>
