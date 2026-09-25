@@ -162,7 +162,7 @@ onScopeDispose(() => focusScope?.stop())
     height: 100%;
     border-radius: var(--border-radius-m);
     border: 1px solid var(--color-border-weak);
-    background-color: var(--color-bg-medium);
+    background-color: var(--color-bg-lowered);
     position: relative;
 
     &:has([aria-expanded="true"]),
@@ -178,7 +178,7 @@ onScopeDispose(() => focusScope?.stop())
       pointer-events: none;
       position: absolute;
       right: 8px;
-      top: 8px;
+      top: 6px;
     }
 
     &.wm-chat {

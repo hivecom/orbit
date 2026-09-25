@@ -1,142 +1,135 @@
 <script setup lang="ts">
-import { Avatar, Divider, Flex, DropdownItem, Sidebar, Card, Button, PopoutHover, Input, searchString } from "@dolanske/vui"
-import { IconAddCircleLinear, IconMagniferLinear, IconSettingsLinear, IconSidebarMinimalisticLinear } from "@iconify-prerendered/vue-solar"
-import { useStorage } from "@vueuse/core"
-import { useIrcStore } from "../../stores/irc"
-import ListCapabilities from "../shared/server/ListCapabilities.vue"
-import { getServerInitials, truncate } from "../../lib/format.ts"
-import { computed, ref } from "vue"
+import { Avatar, Flex, Sidebar, Button, Input, searchString, ButtonGroup, Tooltip } from "@dolanske/vui"
+import { IconAddCircleLinear, IconCloseSquareLinear, IconMagniferLinear, IconSidebarMinimalisticLinear } from "@iconify-prerendered/vue-solar"
+import { onClickOutside, onKeyStroke, useStorage } from "@vueuse/core"
+import { useIrcStore, type ServerWithGroupedChannels } from "../../stores/irc"
+import { computed, ref, useTemplateRef, watch } from "vue"
 import { useConfigStore } from "../../stores/config.ts"
-import { useIRCJoinChannel } from "../../composables/useIRCJoinChannel.ts"
-import { useUserStore } from "../../stores/user.ts"
-// import { useWindowManager } from "../../lib/windows.ts"
+import logo from "../../../public/logo-white-small.svg"
+import SidebarServerAccordion from "./SidebarServerAccordion.vue"
+import type { Server } from "core-wasm"
+import { toJSON } from "../../lib/helpers.ts"
+
+// TODO: nested server channels once supported
+// TODO: mobile functionality & swipe - gets rid of the mini version and instead completely hides or opens it
+// TODO: any missing features I can't think about rn
 
 const irc = useIrcStore()
-const user = useUserStore()
 const config = useConfigStore()
+
+const mini = useStorage("orbit-sidebar-state", true)
 
 config.onShortcut("global:navigation-toggle", () => {
   mini.value = !mini.value
 })
 
-const mini = useStorage("orbit-sidebar-state", true)
-
-// Search through servers
-// TODO: mini-sidebar search
-// TODO: mini-sidebar server peak
-
+const searchActive = ref(false)
 const search = ref("")
-const serversRaw = computed(() => Array.from(irc.serverData.values()))
-const filteredServers = computed(() => serversRaw.value.filter((server) => searchString([server.metadata.name, server.metadata.address], search.value)))
+const searchRef = useTemplateRef("search")
 
-// Join a channel and replace active window
-const { join, loading } = useIRCJoinChannel()
-// const { replace, focusedWindow } = useWindowManager()
+const sidebarRef = useTemplateRef("sidebar")
 
-// Replace active window with a channel we've already joined
-// async function openChannelWindow(serverId: number, channelId: string) {
-//   // FIXME: `f` is not good - location always needs to be set
-//   // TODO figure out - if we are not on /wm while replace or any API is called,
-//   // should we automatically redirect there? where should that happen?
-//   replace(focusedWindow.value?.location ?? "f", {
-//     type: "chat",
-//     serverId,
-//     channelId,
-//   })
-// }
+// @ts-expect-error Doesn't seem to like receiving vue component
+onClickOutside(sidebarRef, () => (searchActive.value = false))
+watch(searchActive, (is) => {
+  if (!is) {
+    search.value = ""
+  } else {
+    // Ambiguous but nextTick did not do the trick
+    setTimeout(() => {
+      if (searchRef.value) {
+        searchRef.value.focus()
+      }
+    }, 50)
+
+    onKeyStroke("Escape", () => (searchActive.value = false))
+  }
+})
+
+// Get server data and correlated channel data to it as well
+const serversRaw = computed(() => {
+  const servers: Server[] = Array.from(irc.serverData.values())
+  return servers.map((server) => {
+    return {
+      ...toJSON(server),
+      groupedChannels: irc.serverChannels.get(server.id),
+    }
+  }) as ServerWithGroupedChannels[]
+})
+
+const filteredServers = computed(
+  () =>
+    serversRaw.value.map((server) => {
+      return {
+        ...server,
+        groupedChannels: {
+          joined: server.groupedChannels.joined.filter((channel) => searchString(channel.data.metadata.name, search.value)),
+          available: server.groupedChannels.available.filter((channel) => searchString(channel.name, search.value)),
+        },
+      }
+    }) as ServerWithGroupedChannels[],
+)
 </script>
 
 <template>
-  <Sidebar :mini="mini">
-    <Flex column gap="xxs">
-      <!-- Minified -->
-      <template v-if="mini">
-        <DropdownItem @click="mini = !mini" aria-label="Expand sidebar">
-          <template #icon>
-            <IconSidebarMinimalisticLinear />
-          </template>
-        </DropdownItem>
-        <DropdownItem aria-label="Search servers">
-          <template #icon>
-            <IconMagniferLinear />
-          </template>
-        </DropdownItem>
-      </template>
-
-      <!-- Expanded -->
-      <template v-else>
-        <Flex gap="xs" class="p-xxxs">
-          <Button square @click="mini = !mini" aria-label="Collapse sidebar">
-            <IconSidebarMinimalisticLinear />
-          </Button>
-          <Input aria-label="Search servers" v-model="search" placeholder="Search" style="--vui-input-width: auto" />
-        </Flex>
-      </template>
-    </Flex>
-
-    <div style="height: 1px" />
-    <Divider type="dashed" class="my-m" />
-
-    <Flex column gap="xxs">
-      <RouterLink to="/" class="w-100">
-        <DropdownItem>
-          <template #icon>
-            <IconAddCircleLinear />
-          </template>
-          Connect
-        </DropdownItem>
-      </RouterLink>
-
-      <template v-for="server in filteredServers" :key="server.metadata.name">
-        <PopoutHover :enter-delay="1000" class="o-sidebar-server-info">
-          <template #trigger>
-            <DropdownItem class="o-sidebar-server-item">
-              <template #icon>
-                <Avatar :size="mini ? 'm' : 's'">
-                  {{ getServerInitials(server.metadata) }}
-                </Avatar>
-              </template>
-              {{ truncate(server.metadata.name ?? server.metadata.address, 20, "..") }}
-            </DropdownItem>
-          </template>
-          <ListCapabilities :capabilities="server.capabilities" />
-        </PopoutHover>
-
-        <div class="o-sidebar-server-channels">
-          <DropdownItem :inert="loading" v-for="item in irc.serverChannels.get(server.id)?.joined" @click="join(server.id, item.data.metadata.name)">
-            {{ item.data.metadata.name }}
-          </DropdownItem>
-          <DropdownItem class="lighter" :inert="loading" v-for="item in irc.serverChannels.get(server.id)?.available" @click="join(server.id, item.name)">
-            {{ item.name }}
-          </DropdownItem>
-        </div>
-      </template>
-    </Flex>
-
-    <template #footer>
-      <!-- Minified -->
-      <template v-if="user.me.accountName">
-        <DropdownItem v-if="mini" x-center expand>
-          <template #icon>
-            <Avatar url="https://github.com/dolanske.png" size="m"></Avatar>
-          </template>
-        </DropdownItem>
-
-        <!-- Expanded -->
-        <Card class="o-sidebar-user" v-else>
-          <Flex y-center gap="xs" expand>
-            <!-- <Avatar url="https://github.com/dolanske.png"></Avatar> -->
-            <Avatar>{{ user.me.displayName ? user.me.displayName[0].toUpperCase() : user.me.accountName[0] }}</Avatar>
-            <strong class="flex-1">{{ user.me.displayName ?? user.me.accountName }}</strong>
-            <RouterLink to="/settings">
-              <Button square plain>
-                <IconSettingsLinear />
+  <Sidebar :mini ref="sidebar" no-auto-transform variant="plain">
+    <Flex column gap="xs" class="mb-m sidebar-header" :y-center="mini">
+      <Flex gap="s" :column="mini" y-center>
+        <img :src="logo" />
+        <ButtonGroup :vertical="mini">
+          <Tooltip v-bind="mini ? { placement: 'right' } : {}">
+            <Button square @click="mini = !mini" aria-label="Toggle sidebar">
+              <IconSidebarMinimalisticLinear />
+            </Button>
+            <template #tooltip>
+              <p>Toggle sidebar</p>
+            </template>
+          </Tooltip>
+          <Tooltip v-bind="mini ? { placement: 'right' } : {}">
+            <Button square aria-label="Search" @click="searchActive = true">
+              <IconMagniferLinear />
+            </Button>
+            <template #tooltip>
+              <p>Search</p>
+            </template>
+          </Tooltip>
+          <Tooltip v-bind="mini ? { placement: 'right' } : {}">
+            <RouterLink to="/">
+              <Button square aria-label="Connect">
+                <IconAddCircleLinear />
               </Button>
             </RouterLink>
-          </Flex>
-        </Card>
-      </template>
-    </template>
+            <template #tooltip>
+              <p>Connect to a server</p>
+            </template>
+          </Tooltip>
+          <Tooltip v-bind="mini ? { placement: 'right' } : {}">
+            <RouterLink to="/settings">
+              <Button aria-label="Settings" square>
+                <Avatar url="https://github.com/dolanske.png" size="s"></Avatar>
+              </Button>
+            </RouterLink>
+            <template #tooltip>
+              <p>Settings</p>
+            </template>
+          </Tooltip>
+        </ButtonGroup>
+      </Flex>
+
+      <div class="sidebar-search" :class="{ active: searchActive, mini }">
+        <Input type="text" placeholder="Search" expand v-model="search" ref="search">
+          <template #end>
+            <Button square plain size="s" @click="searchActive = false">
+              <IconCloseSquareLinear />
+            </Button>
+          </template>
+        </Input>
+      </div>
+    </Flex>
+
+    <Flex column gap="xs" :y-center="mini">
+      <SidebarServerAccordion v-for="server in filteredServers" :key="server.metadata.name" :mini :server />
+    </Flex>
   </Sidebar>
 </template>
 
@@ -154,23 +147,66 @@ const { join, loading } = useIRCJoinChannel()
   }
 }
 
-.o-sidebar-server-item {
-  overflow: hidden;
+.vui-sidebar-layout .vui-sidebar-outer,
+.vui-sidebar {
+  transition: none !important;
 }
 
-.o-sidebar-server-info {
-  width: 256px;
-}
+.vui-sidebar {
+  border-right: 0;
 
-.o-sidebar-server-channels {
-  width: -webkit-fill-available;
-  width: stretch;
-  padding-left: var(--space-m);
-  border-left: 1px solid var(--color-border-weak);
-  margin-left: calc(var(--space-m) + 2px);
-  /* 
-  .o-server-channel-available {
-    --color-text: var(--color-text-lighter) !important;
-  } */
+  --vui-sidebar-width-mini: 64px;
+
+  .sidebar-header {
+    position: relative;
+
+    .sidebar-search {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      z-index: -1;
+      visibility: hidden;
+      transition: all var(--transition);
+      transform: scaleX(0);
+      padding-right: 2px;
+
+      .vui-input-container {
+        --vui-input-background-color: var(--color-button-gray);
+        --vui-input-color-border: transparent;
+        --border-radius-s: var(--border-radius-m);
+        --color-border: transparent;
+      }
+
+      &.mini {
+        top: 64px;
+        left: 100%;
+        right: unset;
+        bottom: unset;
+        width: 192px;
+      }
+
+      &.active {
+        opacity: 1;
+        z-index: 5;
+        visibility: visible;
+        transform: scaleX(1);
+      }
+    }
+  }
+
+  .vui-sidebar-content-wrap {
+    padding-right: 0 !important;
+    overflow: unset !important;
+  }
+
+  .btn-square-override {
+    padding-inline: var(--space-xs);
+    max-width: unset;
+    width: unset;
+
+    .vui-button-slot-default {
+      gap: var(--space-xxs);
+    }
+  }
 }
 </style>
