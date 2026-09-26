@@ -1172,6 +1172,10 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                         },
                     };
 
+                    self.database
+                        .insert_message(self.state.id, &target, state_message.clone())
+                        .await?;
+
                     cmd.reply_tx
                         .unwrap()
                         .send(CommandResponse::Privmsg(Box::new(state_message.clone())))
