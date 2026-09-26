@@ -841,6 +841,9 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                 .await
                 .map_err(|e| anyhow!("Failed to send server event {e:?}"))?,
             Response::RPL_SASLSUCCESS => {
+                self.cap_end().await.context("Failed to send cap end")?;
+                self.sasl_state = SaslState::CapsNegotiated;
+
                 self.response_channels
                     .reply(&CommandKey::SignIn, CommandResponse::SignIn(SignedIn::User))
                     .map_err(|e| anyhow!("Failed to reply to sign in command {e:?}"))?;
