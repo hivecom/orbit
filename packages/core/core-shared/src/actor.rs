@@ -344,7 +344,13 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
             "away-notify",
             "draft/read-marker",
         ] {
-            if self.state.capabilities.cap_by_name(cap).has {
+            if self
+                .state
+                .capabilities
+                .cap_by_name(cap)
+                .map(|c| c.has)
+                .unwrap_or(false)
+            {
                 enable.push(cap);
             }
         }

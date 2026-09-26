@@ -166,8 +166,8 @@ pub struct Capability {
 }
 
 impl Capabilities {
-    pub fn cap_by_name(&self, cap: &str) -> &Capability {
-        match cap {
+    pub fn cap_by_name(&self, cap: &str) -> Option<&Capability> {
+        let cap = match cap {
             "message-tags" => &self.message_tags,
             "draft/message-redaction" => &self.message_redaction,
             "draft/multiline" => &self.multiline,
@@ -204,157 +204,62 @@ impl Capabilities {
             "standard-replies" => &self.standard_replies,
             "tls" => &self.tls,
             "userhost-in-names" => &self.userhost_in_names,
-            _ => unimplemented!("cap: {cap}"),
-        }
+            _ => return None,
+        };
+
+        Some(cap)
     }
+
+    pub fn cap_by_name_mut(&mut self, cap: &str) -> Option<&mut Capability> {
+        let cap = match cap {
+            "message-tags" => &mut self.message_tags,
+            "draft/message-redaction" => &mut self.message_redaction,
+            "draft/multiline" => &mut self.multiline,
+            "draft/metadata-2" => &mut self.metadata,
+            "draft/webpush" => &mut self.webpush,
+
+            "echo-message" => &mut self.echo_messages,
+            "sasl" => &mut self.sasl,
+            "draft/chathistory" => &mut self.history,
+            "draft/event-playback" => &mut self.event_playback,
+            "draft/account-registration" => &mut self.account_registration,
+            "server-time" => &mut self.server_time,
+
+            "account-notify" => &mut self.account_notify,
+            "account-tag" => &mut self.account_tag,
+            "away-notify" => &mut self.away_notify,
+            "batch" => &mut self.batch,
+            "cap-notify" => &mut self.cap_notify,
+            "chghost" => &mut self.chghost,
+            "draft/channel-rename" => &mut self.channel_rename,
+            "draft/extended-isupport" => &mut self.extended_isupport,
+            "draft/languages" => &mut self.languages,
+            "no-implicit-names" | "draft/no-implicit-names" => &mut self.no_implicit_names,
+            "draft/persistence" => &mut self.persistence,
+            "draft/pre-away" => &mut self.pre_away,
+            "draft/read-marker" => &mut self.read_marker,
+            "draft/relaymsg" => &mut self.relaymsg,
+            "extended-join" => &mut self.extended_join,
+            "extended-monitor" => &mut self.extended_monitor,
+            "invite-notify" => &mut self.invite_notify,
+            "labeled-response" => &mut self.labeled_response,
+            "multi-prefix" => &mut self.multi_prefix,
+            "setname" => &mut self.setname,
+            "standard-replies" => &mut self.standard_replies,
+            "tls" => &mut self.tls,
+            "userhost-in-names" => &mut self.userhost_in_names,
+            _ => return None,
+        };
+
+        Some(cap)
+    }
+
     pub fn set_from_name(&mut self, cap: &str, enabled: Option<bool>) {
         #[allow(clippy::option_map_unit_fn)]
-        match cap {
-            "message-tags" => {
-                self.message_tags.has = true;
-                enabled.map(|e| self.message_tags.enabled = e);
-            }
-            "draft/message-redaction" => {
-                self.message_redaction.has = true;
-                enabled.map(|e| self.message_redaction.enabled = e);
-            }
-            "draft/multiline" => {
-                self.multiline.has = true;
-                enabled.map(|e| self.multiline.enabled = e);
-            }
-            "draft/metadata-2" => {
-                self.metadata.has = true;
-                enabled.map(|e| self.metadata.enabled = e);
-            }
-            "draft/webpush" => {
-                self.webpush.has = true;
-                enabled.map(|e| self.webpush.enabled = e);
-            }
-
-            "echo-message" => {
-                self.echo_messages.has = true;
-                enabled.map(|e| self.echo_messages.enabled = e);
-            }
-            "sasl" => {
-                self.sasl.has = true;
-                enabled.map(|e| self.sasl.enabled = e);
-            }
-            "draft/chathistory" => {
-                self.history.has = true;
-                enabled.map(|e| self.history.enabled = e);
-            }
-            "draft/event-playback" => {
-                self.event_playback.has = true;
-                enabled.map(|e| self.event_playback.enabled = e);
-            }
-            "draft/account-registration" => {
-                self.account_registration.has = true;
-                enabled.map(|e| self.account_registration.enabled = e);
-            }
-            "server-time" => {
-                self.server_time.has = true;
-                enabled.map(|e| self.server_time.enabled = e);
-            }
-
-            "account-notify" => {
-                self.account_notify.has = true;
-                enabled.map(|e| self.account_notify.enabled = e);
-            }
-            "account-tag" => {
-                self.account_tag.has = true;
-                enabled.map(|e| self.account_tag.enabled = e);
-            }
-            "away-notify" => {
-                self.away_notify.has = true;
-                enabled.map(|e| self.away_notify.enabled = e);
-            }
-            "batch" => {
-                self.batch.has = true;
-                enabled.map(|e| self.batch.enabled = e);
-            }
-            "cap-notify" => {
-                self.cap_notify.has = true;
-                enabled.map(|e| self.cap_notify.enabled = e);
-            }
-            "chghost" => {
-                self.chghost.has = true;
-                enabled.map(|e| self.chghost.enabled = e);
-            }
-            "draft/channel-rename" => {
-                self.channel_rename.has = true;
-                enabled.map(|e| self.channel_rename.enabled = e);
-            }
-            "draft/extended-isupport" => {
-                self.extended_isupport.has = true;
-                enabled.map(|e| self.extended_isupport.enabled = e);
-            }
-            "draft/languages" => {
-                self.languages.has = true;
-                enabled.map(|e| self.languages.enabled = e);
-            }
-            "no-implicit-names" | "draft/no-implicit-names" => {
-                self.no_implicit_names.has = true;
-                enabled.map(|e| self.no_implicit_names.enabled = e);
-            }
-            "draft/persistence" => {
-                self.persistence.has = true;
-                enabled.map(|e| self.persistence.enabled = e);
-            }
-            "draft/pre-away" => {
-                self.pre_away.has = true;
-                enabled.map(|e| self.pre_away.enabled = e);
-            }
-            "draft/read-marker" => {
-                self.read_marker.has = true;
-                enabled.map(|e| self.read_marker.enabled = e);
-            }
-            "draft/relaymsg" => {
-                self.relaymsg.has = true;
-                enabled.map(|e| self.relaymsg.enabled = e);
-            }
-            "extended-join" => {
-                self.extended_join.has = true;
-                enabled.map(|e| self.extended_join.enabled = e);
-            }
-            "extended-monitor" => {
-                self.extended_monitor.has = true;
-                enabled.map(|e| self.extended_monitor.enabled = e);
-            }
-            "invite-notify" => {
-                self.invite_notify.has = true;
-                enabled.map(|e| self.invite_notify.enabled = e);
-            }
-            "labeled-response" => {
-                self.labeled_response.has = true;
-                enabled.map(|e| self.labeled_response.enabled = e);
-            }
-            "multi-prefix" => {
-                self.multi_prefix.has = true;
-                enabled.map(|e| self.multi_prefix.enabled = e);
-            }
-            "setname" => {
-                self.setname.has = true;
-                enabled.map(|e| self.setname.enabled = e);
-            }
-            "standard-replies" => {
-                self.standard_replies.has = true;
-                enabled.map(|e| self.standard_replies.enabled = e);
-            }
-            "tls" => {
-                self.tls.has = true;
-                enabled.map(|e| self.tls.enabled = e);
-            }
-            "userhost-in-names" => {
-                self.userhost_in_names.has = true;
-                enabled.map(|e| self.userhost_in_names.enabled = e);
-            }
-            _ if cap.starts_with("soju.im")
-                || cap.starts_with("znc.in")
-                || cap.starts_with("inspircd.org")
-                || cap.starts_with("ergo.chat")
-                || cap.starts_with("solanum.chat") => {}
-            _ => unimplemented!("cap: {cap}"),
-        };
+        if let Some(cap) = self.cap_by_name_mut(cap) {
+            cap.has = true;
+            enabled.map(|e| cap.enabled = e);
+        }
     }
 }
 
