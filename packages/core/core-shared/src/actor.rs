@@ -25,7 +25,6 @@ use futures::{
     stream::FusedStream,
 };
 use irc_proto::Message as IrcMessage;
-use tracing::warn;
 
 #[derive(Debug)]
 pub struct ActorMessage {

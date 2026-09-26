@@ -19,7 +19,8 @@ use crate::{
     response_channels::{CommandKey, CommandResponse},
     state::{
         Channel, ChannelRole, ChannelUser, History, Message, MessageMetadata, MessageReference,
-        MessageType, OrbitError, ServerEvent, SignedIn, Tags, TextMessage, User,
+        MessageType, OrbitError, ServerEvent, SignedIn, TIME_FORMAT_CONFIG, Tags, TextMessage,
+        User,
     },
 };
 
@@ -1139,7 +1140,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                             msg.metadata.server_time as i128 * 1_000_000
                         )
                         .expect("this number came from OffsetDateTime/SystemTime")
-                        .format(&Iso8601::DEFAULT)
+                        .format(&Iso8601::<TIME_FORMAT_CONFIG>)
                         .expect("using a default format")
                     )
                 };

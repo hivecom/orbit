@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, num::NonZeroU8};
 
 use std::str::FromStr;
 
@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use time::OffsetDateTime;
 use time::format_description::well_known::Iso8601;
+use time::format_description::well_known::iso8601::{
+    Config, EncodedConfig, FormattedComponents, TimePrecision,
+};
 use tracing::{debug, error, warn};
 #[cfg(feature = "web")]
 use tsify::Tsify;
@@ -16,6 +19,12 @@ use wasm_bindgen::prelude::*;
 #[cfg(feature = "web")]
 #[allow(unused_imports)]
 use crate::dbg;
+
+pub const TIME_FORMAT_CONFIG: EncodedConfig = Config::DEFAULT
+    .set_time_precision(TimePrecision::Second {
+        decimal_digits: NonZeroU8::new(3),
+    })
+    .encode();
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Server {
@@ -657,7 +666,7 @@ impl Tags {
                 "time" => {
                     out.server_time = value
                         .as_ref()
-                        .and_then(|v| OffsetDateTime::parse(v, &Iso8601::DEFAULT).ok())
+                        .and_then(|v| OffsetDateTime::parse(v, &Iso8601::<TIME_FORMAT_CONFIG>).ok())
                 }
                 "msgid" => out.msgid = value.clone(),
                 "account" => out.account = value.clone(),
