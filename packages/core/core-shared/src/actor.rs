@@ -365,7 +365,9 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
             }
         }
 
-        if !enable.is_empty() {
+        if enable.is_empty() {
+            self.cap_end().await.context("Failed to send CAP END")?;
+        } else {
             self.cap_req(&enable)
                 .await
                 .context("Failed to send CAP REQ")?;
