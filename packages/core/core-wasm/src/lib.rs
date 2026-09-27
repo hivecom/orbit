@@ -468,7 +468,7 @@ impl SendCommand for OutgoingSink {
     type Error = WebSocketError;
     async fn message(&mut self, message: irc_proto::Message) -> Result<(), Self::Error> {
         self.inner
-            .send(websocket::Message::Text(dbg!(message).to_string()))
+            .send(websocket::Message::Text(message.to_string()))
             .await?;
 
         Ok(())
