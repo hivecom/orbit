@@ -3,19 +3,19 @@ use std::pin::pin;
 use std::{fmt, time::Duration};
 
 use futures::{FutureExt, future::FusedFuture};
-use rand::{SeedableRng, rngs::SmallRng};
 #[cfg(not(feature = "web"))]
 use std::time::Instant;
 #[cfg(feature = "web")]
 use web_time::Instant;
 
 #[cfg(feature = "web")]
+#[allow(unused_imports)]
 use crate::dbg;
 use crate::state::ChannelInfo;
 use crate::{
     SendCommand,
     database::Database,
-    response_channels::{CommandKey, CommandResponse, ResponseChannels},
+    response_channels::{CommandResponse, ResponseChannels},
     state::{Channel, Message, OrbitError, Server, ServerEvent, User},
 };
 use anyhow::Context;
@@ -28,7 +28,6 @@ use futures::{
     stream::FusedStream,
 };
 use irc_proto::Message as IrcMessage;
-use tracing::warn;
 
 #[derive(Debug)]
 pub struct ActorMessage {
@@ -75,6 +74,17 @@ pub enum ActorCommand {
     GetChannelList,
 }
 
+impl ActorCommand {
+    pub fn allowed_pre_signup(&self) -> bool {
+        matches!(self, ActorCommand::GetState)
+            || matches!(self, ActorCommand::SignIn { .. })
+            || matches!(self, ActorCommand::SignInAnonymous { .. })
+            || matches!(self, ActorCommand::AddEventHandler { .. })
+            || matches!(self, ActorCommand::AddErrorHandler { .. })
+            || matches!(self, ActorCommand::AddDisconectHandler { .. })
+    }
+}
+
 pub trait IrcConnection: fmt::Debug {
     type Incoming: FusedStream<Item = anyhow::Result<IrcMessage>> + Unpin;
     type Outgoing: SendCommand;
@@ -83,9 +93,24 @@ pub trait IrcConnection: fmt::Debug {
     fn address(&self) -> &str;
 }
 
-pub(crate) struct RequestedHistory {
-    pub target: String,
+#[derive(Debug)]
+pub(crate) struct RequestedBatch {
     pub label: Option<String>,
+    pub typ: BatchType,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum BatchType {
+    Join { target: String },
+    JoinHistory { target: String },
+    History { target: String },
+    ChannelList,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum HistoryPurpose {
+    Join,
+    History,
 }
 
 #[derive(Debug)]
@@ -98,6 +123,7 @@ pub(crate) struct CurrentBatch {
 #[derive(Debug)]
 pub(crate) enum BatchData {
     History {
+        purpose: HistoryPurpose,
         target: String,
         messages: Vec<Message>,
     },
@@ -107,6 +133,9 @@ pub(crate) enum BatchData {
     },
     ChannelList {
         list: Vec<ChannelInfo>,
+    },
+    Join {
+        target: String,
     },
     Unhandled,
 }
@@ -119,9 +148,13 @@ impl CurrentBatch {
     pub fn is_channellist(&self) -> bool {
         matches!(self.data, BatchData::ChannelList { .. })
     }
+
+    pub fn is_join(&self) -> bool {
+        matches!(self.data, BatchData::Join { .. })
+    }
 }
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, PartialEq, Eq)]
 pub(crate) enum SaslState {
     #[default]
     Unauthed,
@@ -131,6 +164,9 @@ pub(crate) enum SaslState {
         username: String,
         password: String,
     },
+    Authed,
+    Guest,
+    CapsNegotiated,
 }
 
 pub struct IrcActor<C: IrcConnection, DB: Database> {
@@ -145,9 +181,8 @@ pub struct IrcActor<C: IrcConnection, DB: Database> {
     pub(crate) disconnect_handlers: Vec<UnboundedSender<String>>,
 
     pub(crate) current_batches: Vec<CurrentBatch>,
-    pub(crate) requested_history_batches: Vec<(RequestedHistory, Instant)>,
+    pub(crate) requested_batches: Vec<(RequestedBatch, Instant)>,
     pub(crate) sasl_state: SaslState,
-    pub(crate) rng: SmallRng,
 }
 
 impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
@@ -173,20 +208,13 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
             error_handlers: Default::default(),
             disconnect_handlers: Default::default(),
             current_batches: Default::default(),
-            requested_history_batches: Default::default(),
+            requested_batches: Default::default(),
             sasl_state: Default::default(),
-            rng: SmallRng::from_seed([1; 32]),
         };
 
-        let (tx, rx) = oneshot::channel();
-        actor
-            .response_channels
-            .register(CommandKey::RequestCaps, tx);
-        actor.request_caps().await?;
+        actor.init_cap_request().await?;
 
         spawn(actor);
-
-        rx.await.unwrap();
 
         Ok(cmd_tx)
     }
@@ -229,9 +257,8 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                 _ = timeout => {
                     self.response_channels.check_timeouts();
 
-
                     assert!(
-                        self.requested_history_batches
+                        self.requested_batches
                             .iter()
                             .all(|(_, creation)| creation.elapsed() < Duration::from_secs(5))
                     );
@@ -293,12 +320,22 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
     }
 
     #[tracing::instrument(err, skip(self))]
-    pub(crate) async fn request_caps(&mut self) -> Result<(), OrbitError> {
+    pub(crate) async fn init_cap_request(&mut self) -> Result<(), OrbitError> {
         let irc_version = String::from("302");
         self.cap_ls(irc_version)
             .await
             .context("Failed to send CAPS LS")?;
-        self.cap_req(&[
+
+        Ok(())
+    }
+    pub(crate) async fn request_caps(&mut self) -> Result<(), OrbitError> {
+        // XXX: The spec only describes `batch` as a soft dependency of `chathistory` but it is
+        // unclear to me how to handle `chathistory` without `batch` and whether servers like that
+        // actually exist.
+        assert!(!self.state.capabilities.history.has || self.state.capabilities.batch.has);
+
+        let mut enable = Vec::new();
+        for cap in [
             "echo-message",
             "labeled-response",
             "message-tags",
@@ -309,11 +346,32 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
             "draft/event-playback",
             "draft/account-registration",
             "draft/multiline",
+            "draft/extended-isupport",
             "server-time",
             "batch",
-        ])
-        .await
-        .context("Failed to send CAP REQ")?;
+            "draft/webpush",
+            "extended-monitor",
+            "away-notify",
+            "draft/read-marker",
+        ] {
+            if self
+                .state
+                .capabilities
+                .cap_by_name(cap)
+                .map(|c| c.has)
+                .unwrap_or(false)
+            {
+                enable.push(cap);
+            }
+        }
+
+        if enable.is_empty() {
+            self.cap_end().await.context("Failed to send CAP END")?;
+        } else {
+            self.cap_req(&enable)
+                .await
+                .context("Failed to send CAP REQ")?;
+        }
 
         Ok(())
     }
@@ -325,7 +383,6 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
         username: String,
         realname: String,
     ) -> Result<(), OrbitError> {
-        self.cap_end().await.context("Failed to send CAP END")?;
         self.nick(nickname.clone())
             .await
             .context("Failed to send NICK")?;
@@ -343,6 +400,8 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
             bot: false,
         });
 
+        self.sasl_state = SaslState::Guest;
+
         Ok(())
     }
 
@@ -354,20 +413,12 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
         realname: String,
         password: String,
     ) -> Result<(), OrbitError> {
-        if self.state.capabilities.sasl.enabled {
-            self.sasl_plain()
-                .await
-                .context("Failed to send SASL PLAIN")?;
-            self.sasl_state = SaslState::Requested {
-                nickname,
-                realname,
-                username,
-                password,
-            };
-        } else {
-            warn!("SASL capability not enabled, falling back to anonymous sign in");
-            self.sign_in_anonymous(nickname, username, realname).await?;
-        }
+        self.sasl_state = SaslState::Requested {
+            nickname,
+            realname,
+            username,
+            password,
+        };
 
         Ok(())
     }

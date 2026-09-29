@@ -6,20 +6,22 @@ use std::time::Instant;
 #[cfg(feature = "web")]
 use web_time::Instant;
 
-#[cfg(feature = "web")]
-use crate::dbg;
-use crate::state::{Channel, ChannelInfo, History, Message, OrbitError, Server, SignedIn};
 use futures::channel::oneshot;
 use tracing::warn;
 
+use crate::state::{Channel, ChannelInfo, History, Message, OrbitError, Server, SignedIn};
+
+#[cfg(feature = "web")]
+#[allow(unused_imports)]
+use crate::dbg;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CommandKey {
-    RequestCaps,
     SignIn,
     Join(String),
     Privmsg { target: String, text: String },
-    History,
     ChannelList,
+    History(String),
     Label(String),
 }
 
@@ -28,11 +30,12 @@ pub enum CommandResponse {
     GetState(Box<Server>),
     GetChannelState(Box<Option<Channel>>),
     Capabilities,
-    SignIn(Result<SignedIn, OrbitError>),
-    Join(String),
+    SignIn(SignedIn),
+    Join(Box<Channel>),
     Privmsg(Box<Message>),
     ChannelList(Vec<ChannelInfo>),
     History(History),
+    Error(OrbitError),
 }
 
 const LABEL_CHARSET: &str = "abcdefghijklmnopqrstuvwxyz\
@@ -106,6 +109,6 @@ impl ResponseChannels {
 
     pub fn check_timeouts(&mut self) {
         self.channels
-            .retain(|(_, creation, _)| creation.elapsed() < Duration::from_secs(1));
+            .retain(|(_, creation, _)| creation.elapsed() < Duration::from_secs(5));
     }
 }

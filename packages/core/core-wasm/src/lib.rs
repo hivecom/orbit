@@ -50,6 +50,16 @@ macro_rules! dbg {
     };
 }
 
+macro_rules! cmd_resp {
+    ($e:expr, $p:path) => {
+        match $e {
+            $p(value) => Ok(value),
+            CommandResponse::Error(e) => Err(e),
+            _ => unreachable!("expected {}, got: {:?}", stringify!($p), $e),
+        }
+    };
+}
+
 use tracing_subscriber::prelude::*;
 use tracing_subscriber_wasm::MakeConsoleWriter;
 
@@ -146,9 +156,7 @@ impl IrcConnection {
             .context("Failed to send ActorMessage")?;
 
         let resp = rx.await.context("Failed to await actor state message")?;
-        let CommandResponse::GetState(server) = resp else {
-            unreachable!("expected state, got: {:?}", resp);
-        };
+        let server = cmd_resp!(resp, CommandResponse::GetState)?;
 
         Ok((*server).into())
     }
@@ -281,11 +289,9 @@ impl IrcConnection {
             .context("Failed to send ActorMessage")?;
 
         let resp = rx.await.context("Failed to await actor sign in message")?;
-        let CommandResponse::SignIn(result) = resp else {
-            unreachable!("expected sign in, got: {:?}", resp);
-        };
+        let result = cmd_resp!(resp, CommandResponse::SignIn)?;
 
-        Ok(result?)
+        Ok(result)
     }
 
     #[wasm_bindgen]
@@ -310,11 +316,9 @@ impl IrcConnection {
 
         let resp = rx.await.context("Failed to await actor sign in message")?;
 
-        let CommandResponse::SignIn(result) = resp else {
-            unreachable!("expected sign in, got: {:?}", resp);
-        };
+        let result = cmd_resp!(resp, CommandResponse::SignIn)?;
 
-        Ok(result?)
+        Ok(result)
     }
 
     #[wasm_bindgen]
@@ -333,12 +337,10 @@ impl IrcConnection {
             .context("Failed to send ActorMessage")?;
 
         let resp = rx.await.context("Failed to await actor join message")?;
-        let CommandResponse::Join(name) = resp else {
-            unreachable!("expected join, got: {:?}", resp);
-        };
+        let channel = cmd_resp!(resp, CommandResponse::Join)?;
 
         Ok(IrcChannel {
-            name,
+            name: channel.metadata.name,
             address: self.address.clone(),
         })
     }
@@ -362,9 +364,7 @@ impl IrcConnection {
             .context("Failed to send ActorMessage")?;
 
         let resp = rx.await.context("Failed to await actor history message")?;
-        let CommandResponse::History(history) = resp else {
-            unreachable!("expected history, got: {:?}", resp);
-        };
+        let history = cmd_resp!(resp, CommandResponse::History)?;
 
         Ok(history.into())
     }
@@ -390,9 +390,7 @@ impl IrcChannel {
             .context("Failed to send ActorMessage")?;
 
         let resp = rx.await.context("Failed to await actor state message")?;
-        let CommandResponse::GetChannelState(channel) = resp else {
-            unreachable!("expected state, got: {:?}", resp);
-        };
+        let channel = cmd_resp!(resp, CommandResponse::GetChannelState)?;
 
         Ok((*channel).map(Into::into))
     }
@@ -411,10 +409,8 @@ impl IrcChannel {
             .await
             .context("Failed to send ActorMessage")?;
 
-        let resp = rx.await.context("Failed to await actor message")?;
-        let CommandResponse::Privmsg(message) = resp else {
-            unreachable!("expected privmsg, got: {:?}", resp);
-        };
+        let resp = rx.await.context("Failed to await actor privmessage")?;
+        let message = cmd_resp!(resp, CommandResponse::Privmsg)?;
 
         Ok((*message).into())
     }
@@ -649,6 +645,8 @@ impl From<state::OrbitError> for OrbitError {
         let kind = match error {
             state::OrbitError::NickTaken => OrbitErrorKind::NickTaken,
             state::OrbitError::SaslFailed(_) => OrbitErrorKind::SaslFailed,
+            state::OrbitError::CapabilityDisabled(_) => OrbitErrorKind::CapabilityDisabled,
+            state::OrbitError::NotFound => OrbitErrorKind::NotFound,
             state::OrbitError::Generic(_) => OrbitErrorKind::Generic,
             state::OrbitError::Unknown(_) => OrbitErrorKind::Unknown,
         };
@@ -665,6 +663,8 @@ impl From<state::OrbitError> for OrbitError {
 pub enum OrbitErrorKind {
     NickTaken,
     SaslFailed,
+    CapabilityDisabled,
+    NotFound,
     Generic,
     Unknown,
 }
@@ -697,7 +697,7 @@ pub struct History {
 impl From<state::History> for History {
     fn from(history: state::History) -> Self {
         Self {
-            channel: history.channel,
+            channel: history.target,
             messages: history.messages.into_iter().map(Into::into).collect(),
         }
     }

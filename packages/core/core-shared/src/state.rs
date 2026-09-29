@@ -1,18 +1,28 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, num::NonZeroU8};
+
 use std::str::FromStr;
 
-#[cfg(feature = "web")]
-use crate::dbg;
 use irc_proto::message::Tag;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use time::format_description::well_known::Iso8601;
 use time::OffsetDateTime;
-use tracing::{error, warn};
+use time::format_description::well_known::Iso8601;
+use time::format_description::well_known::iso8601::{Config, EncodedConfig, TimePrecision};
+use tracing::{debug, error, warn};
 #[cfg(feature = "web")]
 use tsify::Tsify;
 #[cfg(feature = "web")]
 use wasm_bindgen::prelude::*;
+
+#[cfg(feature = "web")]
+#[allow(unused_imports)]
+use crate::dbg;
+
+pub const TIME_FORMAT_CONFIG: EncodedConfig = Config::DEFAULT
+    .set_time_precision(TimePrecision::Second {
+        decimal_digits: NonZeroU8::new(3),
+    })
+    .encode();
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Server {
@@ -142,14 +152,15 @@ pub struct Capabilities {
     pub(crate) pre_away: Capability,
     pub(crate) read_marker: Capability,
     pub(crate) relaymsg: Capability,
-    pub(crate) ergo_nope: Capability,
     pub(crate) extended_join: Capability,
     pub(crate) extended_monitor: Capability,
     pub(crate) invite_notify: Capability,
+    // Depends on batch
     pub(crate) labeled_response: Capability,
     pub(crate) multi_prefix: Capability,
     pub(crate) setname: Capability,
     pub(crate) standard_replies: Capability,
+    pub(crate) tls: Capability,
     pub(crate) userhost_in_names: Capability,
 }
 
@@ -162,196 +173,177 @@ pub struct Capability {
 }
 
 impl Capabilities {
+    pub fn cap_by_name(&self, cap: &str) -> Option<&Capability> {
+        let cap = match cap {
+            "message-tags" => &self.message_tags,
+            "draft/message-redaction" => &self.message_redaction,
+            "draft/multiline" => &self.multiline,
+            "draft/metadata-2" => &self.metadata,
+            "draft/webpush" => &self.webpush,
+
+            "echo-message" => &self.echo_messages,
+            "sasl" => &self.sasl,
+            "draft/chathistory" => &self.history,
+            "draft/event-playback" => &self.event_playback,
+            "draft/account-registration" => &self.account_registration,
+            "server-time" => &self.server_time,
+
+            "account-notify" => &self.account_notify,
+            "account-tag" => &self.account_tag,
+            "away-notify" => &self.away_notify,
+            "batch" => &self.batch,
+            "cap-notify" => &self.cap_notify,
+            "chghost" => &self.chghost,
+            "draft/channel-rename" => &self.channel_rename,
+            "draft/extended-isupport" => &self.extended_isupport,
+            "draft/languages" => &self.languages,
+            "no-implicit-names" | "draft/no-implicit-names" => &self.no_implicit_names,
+            "draft/persistence" => &self.persistence,
+            "draft/pre-away" => &self.pre_away,
+            "draft/read-marker" => &self.read_marker,
+            "draft/relaymsg" => &self.relaymsg,
+            "extended-join" => &self.extended_join,
+            "extended-monitor" => &self.extended_monitor,
+            "invite-notify" => &self.invite_notify,
+            "labeled-response" => &self.labeled_response,
+            "multi-prefix" => &self.multi_prefix,
+            "setname" => &self.setname,
+            "standard-replies" => &self.standard_replies,
+            "tls" => &self.tls,
+            "userhost-in-names" => &self.userhost_in_names,
+            _ => return None,
+        };
+
+        Some(cap)
+    }
+
+    pub fn cap_by_name_mut(&mut self, cap: &str) -> Option<&mut Capability> {
+        let cap = match cap {
+            "message-tags" => &mut self.message_tags,
+            "draft/message-redaction" => &mut self.message_redaction,
+            "draft/multiline" => &mut self.multiline,
+            "draft/metadata-2" => &mut self.metadata,
+            "draft/webpush" => &mut self.webpush,
+
+            "echo-message" => &mut self.echo_messages,
+            "sasl" => &mut self.sasl,
+            "draft/chathistory" => &mut self.history,
+            "draft/event-playback" => &mut self.event_playback,
+            "draft/account-registration" => &mut self.account_registration,
+            "server-time" => &mut self.server_time,
+
+            "account-notify" => &mut self.account_notify,
+            "account-tag" => &mut self.account_tag,
+            "away-notify" => &mut self.away_notify,
+            "batch" => &mut self.batch,
+            "cap-notify" => &mut self.cap_notify,
+            "chghost" => &mut self.chghost,
+            "draft/channel-rename" => &mut self.channel_rename,
+            "draft/extended-isupport" => &mut self.extended_isupport,
+            "draft/languages" => &mut self.languages,
+            "no-implicit-names" | "draft/no-implicit-names" => &mut self.no_implicit_names,
+            "draft/persistence" => &mut self.persistence,
+            "draft/pre-away" => &mut self.pre_away,
+            "draft/read-marker" => &mut self.read_marker,
+            "draft/relaymsg" => &mut self.relaymsg,
+            "extended-join" => &mut self.extended_join,
+            "extended-monitor" => &mut self.extended_monitor,
+            "invite-notify" => &mut self.invite_notify,
+            "labeled-response" => &mut self.labeled_response,
+            "multi-prefix" => &mut self.multi_prefix,
+            "setname" => &mut self.setname,
+            "standard-replies" => &mut self.standard_replies,
+            "tls" => &mut self.tls,
+            "userhost-in-names" => &mut self.userhost_in_names,
+            _ => return None,
+        };
+
+        Some(cap)
+    }
+
     pub fn set_from_name(&mut self, cap: &str, enabled: Option<bool>) {
         #[allow(clippy::option_map_unit_fn)]
-        match cap {
-            "message-tags" => {
-                self.message_tags.has = true;
-                enabled.map(|e| self.message_tags.enabled = e);
-            }
-            "draft/message-redaction" => {
-                self.message_redaction.has = true;
-                enabled.map(|e| self.message_redaction.enabled = e);
-            }
-            "draft/multiline" => {
-                self.multiline.has = true;
-                enabled.map(|e| self.multiline.enabled = e);
-            }
-            "draft/metadata-2" => {
-                self.metadata.has = true;
-                enabled.map(|e| self.metadata.enabled = e);
-            }
-            "draft/webpush" => {
-                self.webpush.has = true;
-                enabled.map(|e| self.webpush.enabled = e);
-            }
-
-            "echo-message" => {
-                self.echo_messages.has = true;
-                enabled.map(|e| self.echo_messages.enabled = e);
-            }
-            "sasl" => {
-                self.sasl.has = true;
-                enabled.map(|e| self.sasl.enabled = e);
-            }
-            "draft/chathistory" => {
-                self.history.has = true;
-                enabled.map(|e| self.history.enabled = e);
-            }
-            "draft/event-playback" => {
-                self.event_playback.has = true;
-                enabled.map(|e| self.event_playback.enabled = e);
-            }
-            "draft/account-registration" => {
-                self.account_registration.has = true;
-                enabled.map(|e| self.account_registration.enabled = e);
-            }
-            "server-time" => {
-                self.server_time.has = true;
-                enabled.map(|e| self.server_time.enabled = e);
-            }
-
-            "account-notify" => {
-                self.account_notify.has = true;
-                enabled.map(|e| self.account_notify.enabled = e);
-            }
-            "account-tag" => {
-                self.account_tag.has = true;
-                enabled.map(|e| self.account_tag.enabled = e);
-            }
-            "away-notify" => {
-                self.away_notify.has = true;
-                enabled.map(|e| self.away_notify.enabled = e);
-            }
-            "batch" => {
-                self.batch.has = true;
-                enabled.map(|e| self.batch.enabled = e);
-            }
-            "cap-notify" => {
-                self.cap_notify.has = true;
-                enabled.map(|e| self.cap_notify.enabled = e);
-            }
-            "chghost" => {
-                self.chghost.has = true;
-                enabled.map(|e| self.chghost.enabled = e);
-            }
-            "draft/channel-rename" => {
-                self.channel_rename.has = true;
-                enabled.map(|e| self.channel_rename.enabled = e);
-            }
-            "draft/extended-isupport" => {
-                self.extended_isupport.has = true;
-                enabled.map(|e| self.extended_isupport.enabled = e);
-            }
-            "draft/languages" => {
-                self.languages.has = true;
-                enabled.map(|e| self.languages.enabled = e);
-            }
-            "draft/no-implicit-names" => {
-                self.no_implicit_names.has = true;
-                enabled.map(|e| self.no_implicit_names.enabled = e);
-            }
-            "draft/persistence" => {
-                self.persistence.has = true;
-                enabled.map(|e| self.persistence.enabled = e);
-            }
-            "draft/pre-away" => {
-                self.pre_away.has = true;
-                enabled.map(|e| self.pre_away.enabled = e);
-            }
-            "draft/read-marker" => {
-                self.read_marker.has = true;
-                enabled.map(|e| self.read_marker.enabled = e);
-            }
-            "draft/relaymsg" => {
-                self.relaymsg.has = true;
-                enabled.map(|e| self.relaymsg.enabled = e);
-            }
-            "ergo.chat/nope" => {
-                self.ergo_nope.has = true;
-                enabled.map(|e| self.ergo_nope.enabled = e);
-            }
-            "extended-join" => {
-                self.extended_join.has = true;
-                enabled.map(|e| self.extended_join.enabled = e);
-            }
-            "extended-monitor" => {
-                self.extended_monitor.has = true;
-                enabled.map(|e| self.extended_monitor.enabled = e);
-            }
-            "invite-notify" => {
-                self.invite_notify.has = true;
-                enabled.map(|e| self.invite_notify.enabled = e);
-            }
-            "labeled-response" => {
-                self.labeled_response.has = true;
-                enabled.map(|e| self.labeled_response.enabled = e);
-            }
-            "multi-prefix" => {
-                self.multi_prefix.has = true;
-                enabled.map(|e| self.multi_prefix.enabled = e);
-            }
-            "setname" => {
-                self.setname.has = true;
-                enabled.map(|e| self.setname.enabled = e);
-            }
-            "standard-replies" => {
-                self.standard_replies.has = true;
-                enabled.map(|e| self.standard_replies.enabled = e);
-            }
-            "userhost-in-names" => {
-                self.userhost_in_names.has = true;
-                enabled.map(|e| self.userhost_in_names.enabled = e);
-            }
-            _ if cap.starts_with("soju.im") || cap.starts_with("znc.in") => (),
-            _ => unimplemented!("cap: {cap}"),
-        };
+        if let Some(cap) = self.cap_by_name_mut(cap) {
+            cap.has = true;
+            enabled.map(|e| cap.enabled = e);
+        }
     }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Support {
+    pub accept: Option<i64>,
+    pub account_extended_ban: Option<Vec<String>>,
     pub away_length: Option<i64>,
     pub bot: Option<char>,
+    pub caller_id: Option<char>,
     pub case_mapping: Option<String>,
     pub channel_limit: Option<HashMap<char, i64>>,
     pub channel_modes: Option<Vec<String>>,
     pub channel_length: Option<i64>,
     pub channel_types: Option<String>,
     pub chat_history: Option<i64>,
+    pub client_tag_deny: Option<Vec<String>>,
+    pub deaf: Option<char>,
     // search extensions for list command
     pub elist: Option<String>,
+    pub esilence: Option<String>,
+    pub etrace: bool,
     pub excepts: bool,
     pub extban: Option<String>,
+    pub host_length: Option<i64>,
+    pub fnc: bool,
     pub forward: Option<String>,
     pub invex: bool,
+    pub key_length: Option<i64>,
+    pub knock: bool,
     pub kick_length: Option<i64>,
+    pub line_length: Option<i64>,
     pub max_list: Option<HashMap<String, i64>>,
     pub max_targets: Option<i64>,
-    pub modes: bool,
+    pub modes: Option<i64>,
     pub monitor: Option<i64>,
+    pub name_length: Option<i64>,
+    pub namesx: bool,
     pub message_ref_types: Option<Vec<String>>,
+    pub max_nick_length: Option<i64>,
     pub network: Option<String>,
     pub nick_length: Option<i64>,
     pub prefix: Option<Vec<(char, char)>>,
     pub rp_channel: Option<char>,
     pub rp_user: Option<char>,
+    pub remove: bool,
     pub safe_list: bool,
     pub safe_rate: bool,
+    pub secure_list: Option<i64>,
+    pub silence: Option<i64>,
     pub status_message: Option<String>,
     pub target_max: Option<Vec<(String, Option<i64>)>>,
     pub topic_length: Option<i64>,
+    pub uhnames: bool,
+    pub user_ip: bool,
+    pub user_length: Option<i64>,
+    pub user_modes: Option<Vec<String>>,
     pub utf8_mapping: Option<String>,
     pub utf8_only: bool,
     pub vapid: Option<String>,
+    pub vbanlist: bool,
+    pub vlist: Option<String>,
+    pub watch: Option<i64>,
     pub whox: bool,
 }
 
 impl Support {
     pub fn set(&mut self, key: &str, value: Option<&str>) {
         match key.trim() {
+            "ACCEPT" => self.accept = value.map(|v| i64::from_str(v).unwrap()),
+            "ACCOUNTEXTBAN" => {
+                self.account_extended_ban =
+                    value.map(|v| v.split(',').map(ToOwned::to_owned).collect())
+            }
             "AWAYLEN" => self.away_length = value.map(|v| i64::from_str(v).unwrap()),
             "BOT" => self.bot = value.map(|v| v.chars().nth(0).unwrap()),
+            "CALLERID" => self.caller_id = value.map(|v| v.chars().nth(0).unwrap_or('g')),
             "CASEMAPPING" => self.case_mapping = value.map(ToOwned::to_owned),
             "CHANLIMIT" => {
                 self.channel_limit = value.map(|v| {
@@ -374,12 +366,23 @@ impl Support {
             "draft/CHATHISTORY" | "CHATHISTORY" => {
                 self.chat_history = value.map(|v| i64::from_str(v).unwrap())
             }
+            "CLIENTTAGDENY" => {
+                self.client_tag_deny = value.map(|v| v.split(',').map(ToOwned::to_owned).collect())
+            }
+            "DEAF" => self.deaf = value.map(|v| v.chars().nth(0).unwrap()),
             "ELIST" => self.elist = value.map(ToOwned::to_owned),
+            "ESILENCE" => self.esilence = value.map(ToOwned::to_owned),
+            "ETRACE" => self.etrace = true,
             "EXCEPTS" => self.excepts = true,
             "EXTBAN" => self.extban = value.map(ToOwned::to_owned),
+            "HOSTLEN" => self.host_length = value.map(|v| i64::from_str(v).unwrap()),
+            "FNC" => self.fnc = true,
             "FORWARD" => self.forward = value.map(ToOwned::to_owned),
             "INVEX" => self.invex = true,
+            "KEYLEN" => self.key_length = value.map(|v| i64::from_str(v).unwrap()),
+            "KNOCK" => self.knock = true,
             "KICKLEN" => self.kick_length = value.map(|v| i64::from_str(v).unwrap()),
+            "LINELEN" => self.line_length = value.map(|v| i64::from_str(v).unwrap()),
             "MAXLIST" => {
                 self.max_list = value.map(|v| {
                     v.split(',')
@@ -392,12 +395,15 @@ impl Support {
                 })
             }
             "MAXTARGETS" => self.max_targets = value.map(|v| i64::from_str(v).unwrap()),
-            "MODES" => self.modes = true,
+            "MODES" => self.modes = value.map(|v| i64::from_str(v).unwrap()),
             "MONITOR" => self.monitor = value.map(|v| i64::from_str(v).unwrap()),
+            "NAMELEN" => self.name_length = value.map(|v| i64::from_str(v).unwrap()),
+            "NAMESX" => self.namesx = true,
             "MSGREFTYPES" => {
                 self.message_ref_types =
                     value.map(|v| v.split(',').map(ToOwned::to_owned).collect())
             }
+            "MAXNICKLEN" => self.max_nick_length = value.map(|v| i64::from_str(v).unwrap()),
             "NETWORK" => self.network = value.map(ToOwned::to_owned),
             "NICKLEN" => self.nick_length = value.map(|v| i64::from_str(v).unwrap()),
             "PREFIX" => {
@@ -410,8 +416,11 @@ impl Support {
             }
             "RPCHAN" => self.rp_channel = value.map(|v| v.chars().nth(0).unwrap()),
             "RPUSER" => self.rp_user = value.map(|v| v.chars().nth(0).unwrap()),
+            "REMOVE" => self.remove = true,
             "SAFELIST" => self.safe_list = true,
             "SAFERATE" => self.safe_rate = true,
+            "SECURELIST" => self.secure_list = value.map(|v| i64::from_str(v).unwrap()),
+            "SILENCE" => self.silence = value.map(|v| i64::from_str(v).unwrap()),
             "STATUSMSG" => self.status_message = value.map(ToOwned::to_owned),
             "TARGMAX" => {
                 self.target_max = value.map(|v| {
@@ -425,11 +434,20 @@ impl Support {
                 })
             }
             "TOPICLEN" => self.topic_length = value.map(|v| i64::from_str(v).unwrap()),
+            "UHNAMES" => self.uhnames = true,
+            "USERIP" => self.user_ip = true,
+            "USERLEN" => self.user_length = value.map(|v| i64::from_str(v).unwrap()),
+            "USERMODES" => {
+                self.user_modes = value.map(|v| v.split(',').map(ToOwned::to_owned).collect())
+            }
             "UTF8MAPPING" => self.utf8_mapping = value.map(ToOwned::to_owned),
             "UTF8ONLY" => self.utf8_only = true,
             "VAPID" => self.vapid = value.map(ToOwned::to_owned),
+            "VBANLIST" => self.vbanlist = true,
+            "VLIST" => self.vlist = value.map(ToOwned::to_owned),
+            "WATCH" => self.watch = value.map(|v| i64::from_str(v).unwrap()),
             "WHOX" => self.whox = true,
-            _ => unimplemented!("isupport: {key}, {value:?}"),
+            _ => debug!("ignored isupport: {key}, {value:?}"),
         };
     }
 }
@@ -518,7 +536,7 @@ pub enum MessageType {
     Quit,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TextMessage {
     pub content: String,
     pub reactions: HashMap<String, Vec<String>>,
@@ -579,7 +597,7 @@ pub enum ServerEvent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct History {
-    pub channel: String,
+    pub target: String,
     pub messages: Vec<Message>,
 }
 
@@ -598,11 +616,16 @@ pub enum OrbitError {
     #[error("{0}")]
     SaslFailed(String),
 
+    #[error("Capability '{0}' is not enabled on this server")]
+    CapabilityDisabled(&'static str),
+
+    #[error("Not found")]
+    NotFound,
+
     #[error("{0}")]
     Generic(String),
 
     #[error("Unknown error: {0}")]
-    // FIXME: remove the Arc somehow
     Unknown(String),
 }
 
@@ -641,7 +664,7 @@ impl Tags {
                 "time" => {
                     out.server_time = value
                         .as_ref()
-                        .and_then(|v| OffsetDateTime::parse(v, &Iso8601::DEFAULT).ok())
+                        .and_then(|v| OffsetDateTime::parse(v, &Iso8601::<TIME_FORMAT_CONFIG>).ok())
                 }
                 "msgid" => out.msgid = value.clone(),
                 "account" => out.account = value.clone(),
