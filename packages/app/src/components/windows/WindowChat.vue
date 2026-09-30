@@ -3,10 +3,10 @@ import { MessageType } from "core-wasm"
 import { type WindowAndLocation, type WindowChat } from "../../lib/windows"
 import { useIrcStore } from "../../stores/irc"
 import Composer from "../shared/composer/Composer.vue"
-import { DropdownItem, Flex, Grid } from "@dolanske/vui"
-import { computed, nextTick, ref, useTemplateRef } from "vue"
+import { Accordion, DropdownItem, Flex, Grid } from "@dolanske/vui"
+import { computed, nextTick, onMounted, ref, useTemplateRef } from "vue"
 import { useEventListener, useThrottleFn } from "@vueuse/core"
-import { IRC_UNKNOWN_CHANNEL } from "../../lib/constants.ts"
+import { IRC_UNKNOWN_CHANNEL, IRC_UNKNOWN_SERVER } from "../../lib/constants.ts"
 import { useIRCJoinChannel } from "../../composables/useIRCJoinChannel.ts"
 import { useDateFormatter } from "../../lib/date.ts"
 import { useConfigStore } from "../../stores/config.ts"
@@ -18,8 +18,8 @@ const config = useConfigStore()
 const format = useDateFormatter()
 
 const messages = computed(() => irc.getChannelMessages(props.serverId, props.channelId))
-const state = computed(() => irc.getServerState(props.serverId))
-const channels = computed(() => irc.getServerChannels(props.serverId))
+// const state = computed(() => irc.getServerState(props.serverId))
+// const channels = computed(() => irc.getServerChannels(props.serverId))
 const channel = computed(() => irc.getServerChannel(props.serverId, props.channelId))
 
 function sendMessage(message: string) {
@@ -70,24 +70,50 @@ useEventListener(scrollContainer, "scroll", debouncedScrollCheck)
 // If user opens a window on a server where they haven't joined any channels, we
 // must give them a choice to join one
 const { join, loading: loadingChannel } = useIRCJoinChannel()
+
+const accordions = useTemplateRef("accordionRef")
+
+onMounted(() => {
+  // For whatever reason it will open the channel list partially unless we add a
+  // short delay. My guess is that the channel list isn't rendered yet but that
+  // behavior is still weird.
+  setTimeout(() => {
+    if (props.serverId !== IRC_UNKNOWN_SERVER) {
+      const index = irc.serversWithChannels.findIndex((item) => item.id === props.serverId)
+      accordions.value?.[index]?.open()
+    } else {
+      accordions.value?.[0]?.open()
+    }
+  }, 50)
+})
 </script>
 
 <template>
-  <div class="o-window-chat" v-if="state">
+  <div class="o-window-chat">
     <div class="o-window-meta" v-if="props.channelId !== IRC_UNKNOWN_CHANNEL">
       <p>{{ props.channelId }}</p>
     </div>
-    <div class="o-channel-list" v-if="props.channelId === IRC_UNKNOWN_CHANNEL">
+    <div class="o-channel-list" v-if="props.channelId === IRC_UNKNOWN_CHANNEL || props.serverId === IRC_UNKNOWN_SERVER">
+      <!-- <pre>
+        {{ props }}
+      </pre> -->
+      <!-- 
+    Render all servers
+      1. if server id is -1 we open first accordion
+      2. if server is id real, we open accordion of that server -->
       <Flex column x-center y-center class="h-100">
-        <div>
-          <Grid :columns="4">
-            <DropdownItem :disabled="loadingChannel" v-for="channel in channels?.joined" :key="channel.data.metadata.name" @click="join(props.serverId, channel.data.metadata.name, props.location)">
-              {{ channel.data.metadata.name }}
-            </DropdownItem>
-            <DropdownItem class="lighter" :disabled="loadingChannel" v-for="channel in channels?.available" :key="channel.name" @click="join(props.serverId, channel.name, props.location)">
-              {{ channel.name }}
-            </DropdownItem>
-          </Grid>
+        <div class="container-s">
+          <Accordion card ref="accordionRef" v-for="server in irc.serversWithChannels" :data-server="server.id" :key="server.id" :label="server.metadata.name ?? server.metadata.address">
+            <Grid :columns="4">
+              <DropdownItem :disabled="loadingChannel" v-for="channel in server.groupedChannels.joined" :key="channel.data.metadata.name" @click="join(server.id, channel.data.metadata.name, { forceLocation: props.location })">
+                {{ channel.data.metadata.name }}
+              </DropdownItem>
+              <DropdownItem class="lighter" :disabled="loadingChannel" v-for="channel in server.groupedChannels.available" :key="channel.name" @click="join(server.id, channel.name, { forceLocation: props.location })">
+                {{ channel.name }}
+              </DropdownItem>
+            </Grid>
+          </Accordion>
+          <!-- </AccordionGroup> -->
         </div>
       </Flex>
     </div>

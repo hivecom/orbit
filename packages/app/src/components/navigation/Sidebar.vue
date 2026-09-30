@@ -1,18 +1,17 @@
 <script setup lang="ts">
-import { Avatar, Flex, Sidebar, Button, Input, searchString, ButtonGroup, Tooltip } from "@dolanske/vui"
+import { Avatar, Flex, Sidebar, Button, Input, ButtonGroup, Tooltip } from "@dolanske/vui"
 import { IconAddCircleLinear, IconCloseSquareLinear, IconMagniferLinear, IconSidebarMinimalisticLinear } from "@iconify-prerendered/vue-solar"
 import { onClickOutside, onKeyStroke, useStorage } from "@vueuse/core"
-import { useIrcStore, type ServerWithGroupedChannels } from "../../stores/irc"
+import { useIrcStore } from "../../stores/irc"
 import { computed, ref, useTemplateRef, watch } from "vue"
 import { useConfigStore } from "../../stores/config.ts"
 import logo from "../../../public/logo-white-small.svg"
 import SidebarServerAccordion from "./SidebarServerAccordion.vue"
-import type { Server } from "core-wasm"
-import { toJSON } from "../../lib/helpers.ts"
 
 // TODO: nested server channels once supported
 // TODO: mobile functionality & swipe - gets rid of the mini version and instead completely hides or opens it
 // TODO: any missing features I can't think about rn
+// TODO: we should track how many messages were in each channel when users last visited them and somehow display if the channel received new messages - or we could track which channels are open and if channel receives new message that is _not_ in the window manager, we show it. Might be simpler that way
 
 const irc = useIrcStore()
 const config = useConfigStore()
@@ -46,29 +45,7 @@ watch(searchActive, (is) => {
   }
 })
 
-// Get server data and correlated channel data to it as well
-const serversRaw = computed(() => {
-  const servers: Server[] = Array.from(irc.serverData.values())
-  return servers.map((server) => {
-    return {
-      ...toJSON(server),
-      groupedChannels: irc.serverChannels.get(server.id),
-    }
-  }) as ServerWithGroupedChannels[]
-})
-
-const filteredServers = computed(
-  () =>
-    serversRaw.value.map((server) => {
-      return {
-        ...server,
-        groupedChannels: {
-          joined: server.groupedChannels.joined.filter((channel) => searchString(channel.data.metadata.name, search.value)),
-          available: server.groupedChannels.available.filter((channel) => searchString(channel.name, search.value)),
-        },
-      }
-    }) as ServerWithGroupedChannels[],
-)
+const filteredServers = computed(() => irc.filterServersWithChannels(search.value))
 </script>
 
 <template>
@@ -154,6 +131,7 @@ const filteredServers = computed(
 
 .vui-sidebar {
   border-right: 0;
+  user-select: none;
 
   --vui-sidebar-width-mini: 64px;
 

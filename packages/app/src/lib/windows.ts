@@ -1,17 +1,10 @@
-import { useUrlSearchParams } from "@vueuse/core"
-import { computed, ref, unref, watch } from "vue"
+import { computed, ref, watch } from "vue"
 import { useIrcStore } from "../stores/irc"
 import { IRC_UNKNOWN_CHANNEL } from "./constants"
 import { flags } from "../flags"
 import { useRouter } from "vue-router"
 
 export type WindowLocation = "f" | "l" | "r" | "lt" | "lb" | "rt" | "rb"
-
-type WindowChatURLState = `c:${string}:${string}`
-type WindowVoiceURLState = `v:${string}`
-type WindowEmptyURLState = `e`
-
-type WindowURLState = WindowChatURLState | WindowVoiceURLState | WindowEmptyURLState
 
 export interface WindowChat {
   type: "chat"
@@ -33,16 +26,28 @@ export type WindowType = Window["type"]
 export type WindowState = Partial<Record<WindowLocation, Window>>
 export type WindowAndLocation<T = Window> = T & { location: WindowLocation }
 
+export interface SplitResult {
+  state: WindowState
+  // Location of the newly created, empty pane
+  focus: WindowLocation
+}
+
 ////////////////////////////////////////////////////////////////////////
 
-const WIN_STORAGE_KEY = "o-wm-state"
-const WIN_URL_KEY = "w1" // Includes a number for versioning
+const WIN_STORAGE_KEY = "o-wm-state-v2"
 const WIN_LOCATIONS: WindowLocation[] = ["f", "l", "r", "lt", "lb", "rt", "rb"]
 
 export function getDefaultState(): WindowState {
   const irc = useIrcStore()
 
-  // If we're getting default state, it means there is no previous manager state.
+  // FIXME: check this before pushing
+  // NOTE: this depends on the irc store already being hydrated with a
+  // server list at the moment this runs. If setup() below runs before
+  // servers have loaded, this falls through to the empty window even
+  // though servers exist, and nothing currently re-evaluates it
+  // afterwards. init() is now idempotent-safe to call again, so if this
+  // turns out to matter in practice, the fix is to call init() once more
+  // when the server list first becomes non-empty.
   const firstServer = irc.serverData.values().next().value
 
   if (firstServer) {
@@ -56,313 +61,297 @@ export function getDefaultState(): WindowState {
   }
 
   return {
-    f: {
-      type: "empty",
-    },
-  } as const
+    f: { type: "empty" },
+  }
 }
 
 ////////////////////////////////////////////////////////////////////////
 
-// Converts window object into a URL search param value
-export function serializeWindow(window: Window): WindowURLState {
-  switch (window?.type) {
+function isWindow(value: unknown): value is Window {
+  if (!value || typeof value !== "object") return false
+  const v = value as Record<string, unknown>
+
+  switch (v.type) {
     case "chat":
-      return `c:${window.serverId}:${window.channelId}` satisfies WindowChatURLState
-
+      return typeof v.serverId === "number" && typeof v.channelId === "string"
     case "voice":
-      return `v:${window.channelId}` satisfies WindowVoiceURLState
-
-    default:
+      return typeof v.channelId === "string"
     case "empty":
-      return `e` satisfies WindowEmptyURLState
+      return true
+    default:
+      return false
   }
 }
 
-// Convers a single window into a state object
-export function deserializeWindow(encoded: string): Window | undefined {
-  if (!encoded || !encoded.includes(":")) {
-    return getDefaultState().f
-  }
+function isWindowState(value: unknown): value is WindowState {
+  if (!value || typeof value !== "object") return false
 
-  const [type, ...params] = encoded.split(":")
+  return Object.entries(value as Record<string, unknown>).every(([location, window]) => WIN_LOCATIONS.includes(location as WindowLocation) && isWindow(window))
+}
 
-  switch (type) {
-    case "c":
-      if (params.length !== 2) return
-      return {
-        type: "chat",
-        serverId: Number(params[0]),
-        channelId: params[1]!,
-      }
-
-    case "v":
-      if (params.length !== 1) return
-      return {
-        type: "voice",
-        channelId: params[0]!,
-      }
-
-    case "e":
-      return getDefaultState().f
+// Deserializes stored windows from localStorage
+export function deserializeState(raw: string): WindowState | undefined {
+  try {
+    const parsed = JSON.parse(raw)
+    if (!isWindowState(parsed) || Object.keys(parsed).length === 0) return undefined
+    return parsed
+  } catch {
+    return undefined
   }
 }
 
-// Converts the entire state into a single URL search param value
-export function serializeState(state: WindowState): string {
-  if (!state || Object.keys(state).length === 0) {
-    return "f:e"
-  }
-
-  const entries: string[] = []
+// Checks whether current state matches with the servers we are connected to.
+export function sanitizeState(state: WindowState): WindowState {
+  const irc = useIrcStore()
+  const sanitized: WindowState = {}
 
   for (const location of WIN_LOCATIONS) {
     const window = state[location]
     if (!window) continue
 
-    entries.push(`${location}:${serializeWindow(window)}`)
+    if (window.type === "chat" && !irc.serverData.has(window.serverId)) {
+      sanitized[location] = { type: "empty" }
+      continue
+    }
+
+    sanitized[location] = window
   }
 
-  return entries.join(";")
-}
-
-// Turns a raw URL search param into the state object
-export function deserializeState(url: string): WindowState {
-  if (!url) return getDefaultState()
-
-  const windows = url.split(";")
-  const state: WindowState = {}
-
-  for (const windowRaw of windows) {
-    const separatorIndex = windowRaw.indexOf(":")
-
-    if (separatorIndex === -1) continue
-
-    const location = windowRaw.slice(0, separatorIndex) as WindowLocation
-    const windowState = deserializeWindow(windowRaw.slice(separatorIndex + 1))
-
-    if (!windowState) continue
-
-    state[location] = windowState
-  }
-
-  if (Object.keys(state).length === 0) {
-    return getDefaultState()
-  }
-
-  return state
+  return sanitized
 }
 
 export function loadInitialState(): WindowState {
-  // Keep URL state between windows while app is open, but on initial load if
-  // persistence is disabled, URL state should be ignored as well
-  if (flags.WINDOWS_PERSIST) {
-    const urlValue = useUrlSearchParams("history")[WIN_URL_KEY]
+  if (!flags.WINDOWS_PERSIST) return getDefaultState()
 
-    if (urlValue) {
-      return deserializeState(urlValue.toString())
+  try {
+    const raw = localStorage.getItem(WIN_STORAGE_KEY)
+    if (raw) {
+      const parsed = deserializeState(raw)
+      if (parsed) return sanitizeState(parsed)
     }
-
-    try {
-      const raw = localStorage.getItem(WIN_STORAGE_KEY)
-
-      if (raw) {
-        const parsed = deserializeState(raw)
-        return parsed
-      }
-    } catch {}
+  } catch {
+    // TODO: handle errors where localStorage is missing
   }
 
   return getDefaultState()
 }
 
-// Main window state stored as JSON object in the URL search params. Where
-// location is the key (because it's always unique) and value is the
-// Window<Type> object.
+////////////////////////////////////////////////////////////////////////
 
-// Window manager is a global composable, so all its state must be defined
-// outside of it
-const params = useUrlSearchParams<{ [WIN_URL_KEY]?: string }>("history", { writeMode: "push" })
+// Closes a window at a location and cascades windows into proper place
+export function applyClose(state: WindowState, location: WindowLocation): WindowState {
+  if (!state[location] || location === "f") return state
+
+  const next: WindowState = { ...state }
+  delete next[location]
+
+  switch (location) {
+    case "lt":
+      next.l = next.lb
+      delete next.lb
+      break
+    case "lb":
+      next.l = next.lt
+      delete next.lt
+      break
+    case "rt":
+      next.r = next.rb
+      delete next.rb
+      break
+    case "rb":
+      next.r = next.rt
+      delete next.rt
+      break
+    case "l":
+      if (next.r) return { f: next.r }
+      next.l = next.rt
+      next.r = next.rb
+      delete next.rt
+      delete next.rb
+      break
+    case "r":
+      if (next.l) return { f: next.l }
+      next.l = next.lt
+      next.r = next.lb
+      delete next.lt
+      delete next.lb
+      break
+  }
+
+  return next
+}
+
+// Swaps two window positions
+export function applySwap(state: WindowState, from: WindowLocation, to: WindowLocation): WindowState {
+  const next: WindowState = { ...state }
+  const fromWindow = state[from]
+  const toWindow = state[to]
+
+  if (toWindow) next[from] = toWindow
+  else delete next[from]
+
+  if (fromWindow) next[to] = fromWindow
+  else delete next[to]
+
+  return next
+}
+
+// Splits a window into two. Moving the active window to the left and creating an empty window next to it
+export function applySplit(state: WindowState, from: WindowLocation, newWindow: Window): SplitResult | undefined {
+  const next: WindowState = { ...state }
+  // TODO: refactor so that
+  // the window we're deleting will b the current _content_
+  // and add a param (replacing content) which if provided, will repalce the empty window
+  switch (from) {
+    case "f":
+      delete next.f
+      next.l = newWindow
+      next.r = { type: "empty" }
+      return { state: next, focus: "r" }
+    case "l":
+      delete next.l
+      next.lt = newWindow
+      next.lb = { type: "empty" }
+      return { state: next, focus: "lb" }
+    case "r":
+      delete next.r
+      next.rt = newWindow
+      next.rb = { type: "empty" }
+      return { state: next, focus: "rb" }
+    default:
+      // lt/lb/rt/rb are already as deep as the 4-pane layout goes.
+      return undefined
+  }
+}
+
+// Replaces a window with the provided one
+export function applyReplace(state: WindowState, location: WindowLocation, content: Window): WindowState {
+  return { ...state, [location]: content }
+}
+
+// Finds where a specific window object ended up after a transition by reference
+function locate(state: WindowState, window: Window | undefined): WindowLocation | null {
+  if (!window) return null
+  for (const location of WIN_LOCATIONS) {
+    if (state[location] === window) return location
+  }
+  return null
+}
+
+// Returns the closest empty location
+function firstAvailableLocation(state: WindowState): WindowLocation | null {
+  for (const location of WIN_LOCATIONS) {
+    if (state[location]) return location
+  }
+  return null
+}
+
+////////////////////////////////////////////////////////////////////////
+
 const windows = ref<WindowState>({})
 const focusedWindow = ref<WindowAndLocation | null>(null)
 const isEmpty = computed(() => Object.values(windows.value).filter((item) => item && item.type !== "empty").length === 0)
-// const initialized = ref(false)
 
-export function useWindowManager() {
-  const router = useRouter()
+// Focuses the provided location. This means that if user clicks on a window, it
+// will be placed in this location
+export function setFocus(location: WindowLocation | null) {
+  if (!location) {
+    focusedWindow.value = null
+    return
+  }
+  const window = windows.value[location]
+  focusedWindow.value = window ? { ...window, location } : null
+}
 
-  // Keep URL -> State in sync
-  watch(
-    () => params[WIN_URL_KEY],
-    (newState) => {
-      if (newState) {
-        windows.value = deserializeState(newState)
-      }
-    },
-  )
+// Ensure that focused window is followed if it was mutated or fallback to default location
+function followFocus(previousWindow: Window | undefined) {
+  const followedLocation = locate(windows.value, previousWindow)
+  setFocus(followedLocation ?? firstAvailableLocation(windows.value))
+}
 
-  // // Keep State -> URL in sync
+let setupDone = false
+
+export function setupWindows() {
+  if (setupDone) return
+
+  setupDone = true
+
+  windows.value = loadInitialState()
+  setFocus(firstAvailableLocation(windows.value))
+
   watch(
     windows,
-    (newState) => {
-      const serialized = serializeState(newState)
-      params[WIN_URL_KEY] = serialized
-
-      if (flags.WINDOWS_PERSIST) {
-        localStorage.setItem(WIN_STORAGE_KEY, serialized)
+    (newWindows) => {
+      if (!flags.WINDOWS_PERSIST) return
+      try {
+        localStorage.setItem(WIN_STORAGE_KEY, JSON.stringify(newWindows))
+      } catch {
+        // TODO: handle localStorage errors (if we care)
       }
     },
     { deep: true },
   )
+}
+
+export function useWindowManager() {
+  const router = useRouter()
 
   /**
    * Closes a window at a location. The layout will automatically reflow
    */
   function close(location: WindowLocation) {
-    if (!windows.value[location] || location === "f") return
-
-    delete windows.value[location]
-
-    switch (location) {
-      case "lt": {
-        const current = windows.value.lb
-        delete windows.value.lb
-        windows.value.l = current
-        break
-      }
-
-      case "lb": {
-        const current = windows.value.lt
-        delete windows.value.lt
-        windows.value.l = current
-        break
-      }
-
-      case "rt": {
-        const current = windows.value.rb
-        delete windows.value.rb
-        windows.value.r = current
-        break
-      }
-
-      case "rb": {
-        const current = windows.value.rt
-        delete windows.value.rt
-        windows.value.r = current
-        break
-      }
-
-      case "l": {
-        if (windows.value.r) {
-          windows.value = { f: windows.value.r }
-        } else {
-          const current = unref(windows.value)
-          current.l = windows.value.rt
-          current.r = windows.value.rb
-          delete current.rt
-          delete current.rb
-          windows.value = current
-        }
-        break
-      }
-
-      case "r": {
-        if (windows.value.l) {
-          windows.value = { f: windows.value.l }
-        } else {
-          const current = unref(windows.value)
-          current.l = windows.value.lt
-          current.r = windows.value.lb
-          delete current.lt
-          delete current.lb
-          windows.value = current
-        }
-        break
-      }
-    }
+    const previous = focusedWindow.value ? windows.value[focusedWindow.value.location] : undefined
+    windows.value = applyClose(windows.value, location)
+    followFocus(previous)
   }
 
   /**
    * Swaps two windows
    */
   function swap(from: WindowLocation, to: WindowLocation) {
-    const fromRaw = windows.value[from]
-    const toRaw = windows.value[to]
-    const current = windows.value
+    windows.value = applySwap(windows.value, from, to)
 
-    current[from] = toRaw
-    current[to] = fromRaw
-    windows.value = current
+    if (focusedWindow.value && (focusedWindow.value.location === from || focusedWindow.value.location === to)) {
+      setFocus(focusedWindow.value.location)
+    }
   }
 
   /**
    * Splits a window into two if possible
    */
-  function split(from: WindowLocation, split?: Window) {
-    if (!split) return
+  function split(from: WindowLocation, content?: Window) {
+    if (!content) return
 
-    switch (from) {
-      case "f": {
-        const current = unref(windows)
-        current.l = split
-        current.r = getDefaultState().f
-        delete current.f
-        windows.value = current
-        break
-      }
+    const result = applySplit(windows.value, from, content)
 
-      case "l": {
-        const current = unref(windows)
-        current.lt = split
-        current.lb = getDefaultState().f
-        delete current.l
-        windows.value = current
-        break
-      }
+    if (!result) return
 
-      case "r": {
-        const current = unref(windows)
-        current.rt = split
-        current.rb = getDefaultState().f
-        delete current.r
-        windows.value = current
-        break
-      }
-    }
+    windows.value = result.state
+    setFocus(result.focus)
   }
 
   /**
-   * Inserts a new window into a specific location
+   * Inserts a new window into a specific location. Fallsback to current focus,
+   * then to `f`
    */
-  async function replace(location: WindowLocation, newState: Window) {
-    // If we are not in `/wm` instead of updating state, we push router with a
-    // URL and state will get synced automatically
-    if (!windows.value[location]) {
-      location = "f"
-    }
+  async function replace(location: WindowLocation, content: Window) {
+    const target = windows.value[location] ? location : (focusedWindow.value?.location ?? "f")
 
     if (router.currentRoute.value.path !== "/wm") {
       await router.push("/wm")
     }
 
-    windows.value[location] = newState
+    windows.value = applyReplace(windows.value, target, content)
+    setFocus(target)
   }
 
   /**
-   * Resets state to just a single empty window
+   * Resets state to just a single window (chat with the first available
+   * server, or empty if there are none).
    */
   function reset() {
-    // FIXME
     windows.value = getDefaultState()
-  }
-
-  /**
-   * Called when app initializes, as default state requires pinia state
-   */
-  function init() {
-    // if (initialized.value) return
-    windows.value = loadInitialState()
-    // initialized.value = true
+    setFocus(firstAvailableLocation(windows.value))
   }
 
   return {
@@ -374,6 +363,7 @@ export function useWindowManager() {
     swap,
     replace,
     reset,
-    init,
+    setup: setupWindows,
+    setFocus,
   }
 }

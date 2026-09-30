@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { Button, Dropdown, DropdownItem } from "@dolanske/vui"
-import { useWindowManager, type Window, type WindowLocation } from "../../lib/windows"
-import { IconHamburgerMenuLinear } from "@iconify-prerendered/vue-solar"
+import { ContextMenu, Divider, DropdownItem, Flex } from "@dolanske/vui"
+import { setFocus, setupWindows, useWindowManager, type Window, type WindowLocation } from "../../lib/windows"
 import { useIrcStore } from "../../stores/irc"
 import { EffectScope, effectScope, onBeforeMount, onScopeDispose, useTemplateRef, watch } from "vue"
 import { useRouter } from "vue-router"
@@ -9,7 +8,7 @@ import WindowEmpty from "../../components/windows/WindowEmpty.vue"
 import WindowChat from "../../components/windows/WindowChat.vue"
 import { useEventListener, useFocusWithin, whenever } from "@vueuse/core"
 
-const { windows, split, close, swap, focusedWindow, init } = useWindowManager()
+const { windows, split, close, swap } = useWindowManager()
 
 const router = useRouter()
 const irc = useIrcStore()
@@ -18,7 +17,7 @@ const windowRef = useTemplateRef("window")
 
 // Redirect back to main route (username / server setup) if no servers are available
 onBeforeMount(() => {
-  init()
+  setupWindows()
 
   if (irc.serverData.size === 0) {
     router.replace({ path: "/" })
@@ -45,7 +44,6 @@ let focusScope: EffectScope | undefined
 watch(
   () => Object.keys(windows.value).length,
   () => {
-    // Reset previous scope and insert new one
     focusScope?.stop()
     focusScope = effectScope()
 
@@ -55,31 +53,17 @@ watch(
       for (const window of windowRef.value) {
         const { focused } = useFocusWithin(window)
 
-        // If user focuses OR clicks within a window, we set it as focused
         const changeFocusedElement = () => {
-          console.log("Called focused updatr")
           const location = window.dataset.location as WindowLocation
-          const windowObject = windows.value[location]
-
-          if (!windowObject) return
-
-          focusedWindow.value = {
-            ...windowObject,
-            location,
-          }
+          setFocus(location)
         }
 
-        // These should properly dispose their listeners on each watch rerun
         whenever(focused, changeFocusedElement)
         useEventListener(window, "click", changeFocusedElement)
       }
     })
   },
-  {
-    flush: "post",
-    immediate: true,
-    // deep: true,
-  },
+  { flush: "post", immediate: true },
 )
 
 onScopeDispose(() => focusScope?.stop())
@@ -88,28 +72,25 @@ onScopeDispose(() => focusScope?.stop())
 <template>
   <div class="o-wm">
     <div v-for="(window, location) in windows" :data-location="location" :class="[`wm-${location}`, `wm-${window?.type}`, 'wm-window']" ref="window">
-      <div class="wm-window-actions">
-        <Dropdown>
-          <template #trigger="{ toggle }">
-            <Button @click="toggle" square plain>
-              <IconHamburgerMenuLinear />
-            </Button>
-          </template>
+      <ContextMenu class="w-100 h-100">
+        <WindowChat v-if="window?.type === 'chat'" v-bind="{ ...window, location }" />
+        <WindowEmpty v-else-if="window?.type === 'empty'" :location />
 
-          <DropdownItem @click="split(location, window)">Split</DropdownItem>
-
-          <template v-for="(w, l) in windows" :key="w?.type">
-            <DropdownItem v-if="l !== location" @click="swap(location, l)">
-              {{ getSwapMessage(w, l) }}
-            </DropdownItem>
-          </template>
-
-          <DropdownItem v-if="Object.keys(windows).length > 1" @click="close(location)">Close</DropdownItem>
-        </Dropdown>
-      </div>
-
-      <WindowChat v-if="window?.type === 'chat'" v-bind="{ ...window, location }" />
-      <WindowEmpty v-else-if="window?.type === 'empty'" />
+        <template #menu="{ close: closeContext }">
+          <Flex class="p-xxs" :gap="0" column @click="closeContext">
+            <DropdownItem size="s" @click="split(location, window)">Split to the side</DropdownItem>
+            <template v-for="(w, l) in windows" :key="w?.type">
+              <DropdownItem size="s" v-if="l !== location" @click="swap(location, l)">
+                {{ getSwapMessage(w, l) }}
+              </DropdownItem>
+            </template>
+            <template v-if="Object.keys(windows).length > 1">
+              <Divider class="my-xxs" />
+              <DropdownItem size="s" @click="close(location)">Close</DropdownItem>
+            </template>
+          </Flex>
+        </template>
+      </ContextMenu>
     </div>
   </div>
 </template>

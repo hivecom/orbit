@@ -7,6 +7,9 @@ import ListCapabilities from "../shared/server/ListCapabilities.vue"
 import { IconAltArrowDownLinear } from "@iconify-prerendered/vue-solar"
 import { ref } from "vue"
 import { createReusableTemplate, useLocalStorage } from "@vueuse/core"
+import { ContextMenu } from "@dolanske/vui"
+import { Divider } from "@dolanske/vui"
+import { useWindowManager } from "../../lib/windows.ts"
 
 interface Props {
   server: ServerWithGroupedChannels
@@ -15,24 +18,36 @@ interface Props {
 
 const { server, mini } = defineProps<Props>()
 const { join, loading } = useIRCJoinChannel()
+const { close } = useWindowManager()
 
 const hovering = ref(false)
 const open = useLocalStorage(() => `sidebar-${server.id}`, true)
 
-const [Define, Reuse] = createReusableTemplate()
+const [DefineChannelList, ReuseChannelList] = createReusableTemplate()
 </script>
 
 <template>
-  <Define>
+  <DefineChannelList>
     <div class="o-sidebar-server-channels" :class="{ mini }">
-      <DropdownItem :inert="loading" v-for="item in server.groupedChannels.joined" @click="join(server.id, item.data.metadata.name)">
-        {{ item.data.metadata.name }}
-      </DropdownItem>
+      <ContextMenu v-for="item in server.groupedChannels.joined" :key="item.data.metadata.name">
+        <DropdownItem :inert="loading" @click="join(server.id, item.data.metadata.name)">
+          {{ item.data.metadata.name }}
+        </DropdownItem>
+        <template #menu="{ close: closeMenu }">
+          <Flex class="p-xxs" :gap="0" column @click="closeMenu">
+            <DropdownItem size="s" @click="join(server.id, item.data.metadata.name)">Open</DropdownItem>
+            <DropdownItem size="s" @click="join(server.id, item.data.metadata.name, { split: true })">Open in split view</DropdownItem>
+            <Divider class="my-xxs" />
+            <!-- <DropdownItem size="s" @close="close()">Close</DropdownItem> -->
+            <!-- <DropdownItem size="s">Leave</DropdownItem> -->
+          </Flex>
+        </template>
+      </ContextMenu>
       <DropdownItem class="lighter" :inert="loading" v-for="item in server.groupedChannels.available" @click="join(server.id, item.name)">
         {{ item.name }}
       </DropdownItem>
     </div>
-  </Define>
+  </DefineChannelList>
 
   <PopoutHover :enter-delay="mini ? 300 : 2000" class="o-sidebar-server-info" v-bind="mini ? { placement: 'right' } : {}">
     <template #trigger>
@@ -57,12 +72,12 @@ const [Define, Reuse] = createReusableTemplate()
     </template>
 
     <Flex expand column v-if="mini">
-      <Reuse />
+      <ReuseChannelList />
     </Flex>
     <ListCapabilities v-else :capabilities="server.capabilities" />
   </PopoutHover>
 
-  <Reuse v-if="!mini && open" />
+  <ReuseChannelList v-if="!mini && open" />
 </template>
 
 <style>
