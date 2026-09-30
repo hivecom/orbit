@@ -340,8 +340,6 @@ export function useWindowManager() {
    * Splits a window into two if possible
    */
   function split(from: WindowLocation, content?: Window) {
-    // if (!content) return
-
     const result = applySplit(windows.value, from, content)
 
     if (!result) return
