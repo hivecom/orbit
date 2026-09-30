@@ -7,6 +7,7 @@ import { computed, ref, useTemplateRef, watch } from "vue"
 import { useConfigStore } from "../../stores/config.ts"
 import logo from "../../../public/logo-white-small.svg"
 import SidebarServerAccordion from "./SidebarServerAccordion.vue"
+import { useWindowManager } from "../../lib/windows.ts"
 
 // TODO: nested server channels once supported
 // TODO: mobile functionality & swipe - gets rid of the mini version and instead completely hides or opens it
@@ -15,7 +16,7 @@ import SidebarServerAccordion from "./SidebarServerAccordion.vue"
 
 const irc = useIrcStore()
 const config = useConfigStore()
-
+const { windows } = useWindowManager()
 const mini = useStorage("orbit-sidebar-state", true)
 
 config.onShortcut("global:navigation-toggle", () => {

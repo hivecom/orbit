@@ -4,7 +4,7 @@ import { type WindowAndLocation, type WindowChat } from "../../lib/windows"
 import { useIrcStore } from "../../stores/irc"
 import Composer from "../shared/composer/Composer.vue"
 import { Accordion, DropdownItem, Flex, Grid } from "@dolanske/vui"
-import { computed, nextTick, onMounted, ref, useTemplateRef } from "vue"
+import { computed, nextTick, onMounted, ref, useTemplateRef, watch } from "vue"
 import { useEventListener, useThrottleFn } from "@vueuse/core"
 import { IRC_UNKNOWN_CHANNEL, IRC_UNKNOWN_SERVER } from "../../lib/constants.ts"
 import { useIRCJoinChannel } from "../../composables/useIRCJoinChannel.ts"
@@ -86,6 +86,16 @@ onMounted(() => {
     }
   }, 50)
 })
+
+// On initial load, scroll to the bottom in case messages aren't loaded synchronously
+// TODO: need to make sure that if we scrolled up even a little bit, this must not scroll us down on new message
+watch(
+  messages,
+  () => {
+    scrollContainer.value?.scrollTo({ top: scrollContainer.value.scrollHeight })
+  },
+  { flush: "post" },
+)
 </script>
 
 <template>
@@ -94,9 +104,6 @@ onMounted(() => {
       <p>{{ props.channelId }}</p>
     </div>
     <div class="o-channel-list" v-if="props.channelId === IRC_UNKNOWN_CHANNEL || props.serverId === IRC_UNKNOWN_SERVER">
-      <!-- <pre>
-        {{ props }}
-      </pre> -->
       <!-- 
     Render all servers
       1. if server id is -1 we open first accordion
@@ -153,8 +160,10 @@ onMounted(() => {
     padding-inline: var(--space-s);
     border-bottom: 1px solid var(--color-border);
     height: 44px;
-    background: var(--color-bg-lowered);
+    background-color: var(--color-bg-lowered);
     z-index: 5;
+    border-top-left-radius: var(--border-radius-m);
+    border-top-right-radius: var(--border-radius-m);
   }
 
   .o-window-composer {
@@ -171,23 +180,23 @@ onMounted(() => {
     position: relative;
 
     .o-table-scroll-container {
-      overflow-anchor: none;
       position: absolute;
       bottom: 0;
       left: 0;
       right: 0;
       max-height: 100%;
-      padding-bottom: var(--space-s);
+      padding-bottom: var(--space-xs);
       overflow-y: auto;
 
-      /* FIXME: this doesnt't automatically scroll when window is rendered */
       #scroll-anchor {
+        display: block;
         overflow-anchor: auto;
         height: 1px;
       }
 
       .o-msg-table {
         table-layout: auto;
+        overflow-anchor: none;
 
         td {
           font-family: var(--font-mono);

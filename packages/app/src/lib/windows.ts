@@ -197,26 +197,24 @@ export function applySwap(state: WindowState, from: WindowLocation, to: WindowLo
 }
 
 // Splits a window into two. Moving the active window to the left and creating an empty window next to it
-export function applySplit(state: WindowState, from: WindowLocation, newWindow: Window): SplitResult | undefined {
+export function applySplit(state: WindowState, from: WindowLocation, newWindow?: Window): SplitResult | undefined {
   const next: WindowState = { ...state }
-  // TODO: refactor so that
-  // the window we're deleting will b the current _content_
-  // and add a param (replacing content) which if provided, will repalce the empty window
+
   switch (from) {
     case "f":
+      next.l = next.f
+      next.r = newWindow ?? { type: "empty" }
       delete next.f
-      next.l = newWindow
-      next.r = { type: "empty" }
       return { state: next, focus: "r" }
     case "l":
+      next.lt = next.l
+      next.lb = newWindow ?? { type: "empty" }
       delete next.l
-      next.lt = newWindow
-      next.lb = { type: "empty" }
       return { state: next, focus: "lb" }
     case "r":
+      next.rt = next.r
+      next.rb = newWindow ?? { type: "empty" }
       delete next.r
-      next.rt = newWindow
-      next.rb = { type: "empty" }
       return { state: next, focus: "rb" }
     default:
       // lt/lb/rt/rb are already as deep as the 4-pane layout goes.
@@ -246,11 +244,33 @@ function firstAvailableLocation(state: WindowState): WindowLocation | null {
   return null
 }
 
+/**
+ * Search for an active window via its IDs.
+ */
+export function findById({ serverId, channelId }: { serverId?: number; channelId?: string } = {}) {
+  if (!serverId && !channelId) return null
+
+  let data: WindowAndLocation | null = null
+
+  for (const [location, item] of Object.entries(windows.value)) {
+    if (("serverId" in item && item.serverId === serverId) || ("channelId" in item && item.channelId === channelId)) {
+      data = {
+        ...item,
+        location,
+      } as WindowAndLocation
+      break
+    }
+  }
+
+  return data
+}
+
 ////////////////////////////////////////////////////////////////////////
 
 const windows = ref<WindowState>({})
 const focusedWindow = ref<WindowAndLocation | null>(null)
 const isEmpty = computed(() => Object.values(windows.value).filter((item) => item && item.type !== "empty").length === 0)
+const windowsCount = computed(() => Object.keys(windows.value).length)
 
 // Focuses the provided location. This means that if user clicks on a window, it
 // will be placed in this location
@@ -320,7 +340,7 @@ export function useWindowManager() {
    * Splits a window into two if possible
    */
   function split(from: WindowLocation, content?: Window) {
-    if (!content) return
+    // if (!content) return
 
     const result = applySplit(windows.value, from, content)
 
@@ -356,6 +376,7 @@ export function useWindowManager() {
 
   return {
     windows,
+    windowsCount,
     focusedWindow,
     isEmpty,
     close,

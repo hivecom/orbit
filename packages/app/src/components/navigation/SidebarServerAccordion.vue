@@ -9,7 +9,7 @@ import { ref } from "vue"
 import { createReusableTemplate, useLocalStorage } from "@vueuse/core"
 import { ContextMenu } from "@dolanske/vui"
 import { Divider } from "@dolanske/vui"
-import { useWindowManager } from "../../lib/windows.ts"
+import { findById, useWindowManager } from "../../lib/windows.ts"
 
 interface Props {
   server: ServerWithGroupedChannels
@@ -18,7 +18,7 @@ interface Props {
 
 const { server, mini } = defineProps<Props>()
 const { join, loading } = useIRCJoinChannel()
-const { close } = useWindowManager()
+const { close: closeWindow, windowsCount } = useWindowManager()
 
 const hovering = ref(false)
 const open = useLocalStorage(() => `sidebar-${server.id}`, true)
@@ -37,15 +37,31 @@ const [DefineChannelList, ReuseChannelList] = createReusableTemplate()
           <Flex class="p-xxs" :gap="0" column @click="closeMenu">
             <DropdownItem size="s" @click="join(server.id, item.data.metadata.name)">Open</DropdownItem>
             <DropdownItem size="s" @click="join(server.id, item.data.metadata.name, { split: true })">Open in split view</DropdownItem>
-            <Divider class="my-xxs" />
-            <!-- <DropdownItem size="s" @close="close()">Close</DropdownItem> -->
+            <template v-if="windowsCount > 1 && findById({ channelId: item.data.metadata.name })">
+              <Divider class="my-xxs" />
+              <DropdownItem size="s" @click="closeWindow(findById({ channelId: item.data.metadata.name })!.location)">Close</DropdownItem>
+            </template>
             <!-- <DropdownItem size="s">Leave</DropdownItem> -->
           </Flex>
         </template>
       </ContextMenu>
-      <DropdownItem class="lighter" :inert="loading" v-for="item in server.groupedChannels.available" @click="join(server.id, item.name)">
-        {{ item.name }}
-      </DropdownItem>
+      <ContextMenu v-for="item in server.groupedChannels.available" :key="item.name">
+        <DropdownItem class="lighter" :inert="loading" @click="join(server.id, item.name)">
+          {{ item.name }}
+        </DropdownItem>
+
+        <template #menu="{ close: closeMenu }">
+          <Flex class="p-xxs" :gap="0" column @click="closeMenu">
+            <DropdownItem size="s" @click="join(server.id, item.name)">Open</DropdownItem>
+            <DropdownItem size="s" @click="join(server.id, item.name, { split: true })">Open in split view</DropdownItem>
+            <template v-if="windowsCount > 1 && findById({ channelId: item.name })">
+              <Divider class="my-xxs" />
+              <DropdownItem size="s" @click="closeWindow(findById({ channelId: item.name })!.location)">Close</DropdownItem>
+            </template>
+            <!-- <DropdownItem size="s">Leave</DropdownItem> -->
+          </Flex>
+        </template>
+      </ContextMenu>
     </div>
   </DefineChannelList>
 

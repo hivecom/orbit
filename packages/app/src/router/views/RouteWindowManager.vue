@@ -78,7 +78,7 @@ onScopeDispose(() => focusScope?.stop())
 
         <template #menu="{ close: closeContext }">
           <Flex class="p-xxs" :gap="0" column @click="closeContext">
-            <DropdownItem size="s" @click="split(location, window)">Split to the side</DropdownItem>
+            <DropdownItem size="s" @click="split(location)">Split pane</DropdownItem>
             <template v-for="(w, l) in windows" :key="w?.type">
               <DropdownItem size="s" v-if="l !== location" @click="swap(location, l)">
                 {{ getSwapMessage(w, l) }}

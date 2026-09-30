@@ -35,7 +35,6 @@ export function useIRCJoinChannel() {
       }
 
       if (options.split && focusedWindow.value) {
-        // FIXME: right now it opens _this_ channel in the main view and splits into empty window
         split(_location, payload)
       } else {
         await replace(_location, payload)

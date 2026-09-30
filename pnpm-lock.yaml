@@ -10,8 +10,8 @@ catalogs:
       specifier: ^3.0.1
       version: 3.0.1
     '@dolanske/vui':
-      specifier: ^1.18.1
-      version: 1.18.1
+      specifier: ^1.18.2
+      version: 1.18.2
     '@iconify-prerendered/vue-solar':
       specifier: ^0.28.1754901129
       version: 0.28.1754901129
@@ -139,7 +139,7 @@ importers:
         version: 3.0.1(vue@3.5.38(typescript@6.0.3))
       '@dolanske/vui':
         specifier: 'catalog:'
-        version: 1.18.1(reka-ui@2.10.0(vue@3.5.38(typescript@6.0.3)))(vue@3.5.38(typescript@6.0.3))
+        version: 1.18.2(reka-ui@2.10.0(vue@3.5.38(typescript@6.0.3)))(vue@3.5.38(typescript@6.0.3))
       '@iconify-prerendered/vue-solar':
         specifier: 'catalog:'
         version: 0.28.1754901129(vue@3.5.38(typescript@6.0.3))
@@ -456,8 +456,8 @@ packages:
     peerDependencies:
       vue: latest
 
-  '@dolanske/vui@1.18.1':
-    resolution: {integrity: sha512-4P8mscBgX72UOwmQ4YKzyQRfmGM8U1K9an8pNM3qDMMB5jxrjKObTFCao582an/dQUwfTvonnjeIa1h5syPu3w==}
+  '@dolanske/vui@1.18.2':
+    resolution: {integrity: sha512-9FrLad2HJ1ckg9C2OjTMvcDENmA6wn60nEyr0P2nhdyQZ5VgFQzNM1cJFv1qn9NetrH5k+uU4rHQifidWFUaSQ==}
     peerDependencies:
       vue: ^3.5.0
 
@@ -3217,7 +3217,7 @@ snapshots:
     transitivePeerDependencies:
       - '@vue/composition-api'
 
-  '@dolanske/vui@1.18.1(reka-ui@2.10.0(vue@3.5.38(typescript@6.0.3)))(vue@3.5.38(typescript@6.0.3))':
+  '@dolanske/vui@1.18.2(reka-ui@2.10.0(vue@3.5.38(typescript@6.0.3)))(vue@3.5.38(typescript@6.0.3))':
     dependencies:
       '@floating-ui/vue': 2.0.1(vue@3.5.38(typescript@6.0.3))
       '@iconify-prerendered/vue-ph': 0.28.1714973607(vue@3.5.38(typescript@6.0.3))
