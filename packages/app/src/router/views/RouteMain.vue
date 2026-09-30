@@ -6,43 +6,23 @@ import { onMounted, ref } from "vue"
 import { useRouter } from "vue-router"
 import UsernameDialog from "../../components/dialogs/UsernameDialog.vue"
 import Stepper from "../../components/shared/Stepper.vue"
-import type { Server } from "core-wasm"
-import { serializeWindow } from "../../lib/windows.ts"
-import { IRC_UNKNOWN_CHANNEL } from "../../lib/constants.ts"
 import { useUserStore } from "../../stores/user.ts"
 // import { useIrcStore } from "../../stores/irc.ts"
 
 const router = useRouter()
-// const irc = useIrcStore()
 const user = useUserStore()
-
-// onBeforeMount(() => {
-//   if (irc.serverData.size > 0) {
-//     router.replace({ name: "RouteWindowManager" })
-//   }
-// })
 
 // First time open state sync
 const step = ref<"username" | "server">("username")
 
 onMounted(() => {
-  console.log(user.me)
   if (user.me.accountName && user.me.displayName) {
     step.value = "server"
   }
 })
 
-function redirectToChat(state: Server) {
-  router.push({
-    name: "RouteWindowManager",
-    params: {
-      f: serializeWindow({
-        type: "chat",
-        serverId: state.id,
-        channelId: IRC_UNKNOWN_CHANNEL,
-      }),
-    },
-  })
+function redirectToChat() {
+  router.push("/wm")
 }
 </script>
 

@@ -45,12 +45,10 @@ export async function createOrbitApp(root: Component<any, any, any, any, any>, p
       })
       .catch((e) => {
         const appState = useAppStateStore()
-        console.log("Failed to initialize orbit", e)
+        console.error("Failed to initialize orbit", e)
         appState.globalError = "Failed to initialize Orbit. Check console for errors."
       })
   })
-
-  console.log("WASM startup completed")
 
   return app
 }

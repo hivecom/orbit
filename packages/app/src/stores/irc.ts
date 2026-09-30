@@ -1,8 +1,10 @@
 import { defineStore } from "pinia"
 import { ChannelMessage, Message, React, type IrcConnection, type Server, type ServerList, OrbitError, IrcChannel, ChannelInfo, Channel } from "core-wasm"
-import { ref, shallowRef } from "vue"
+import { computed, ref, shallowRef } from "vue"
 import { useUserStore } from "./user"
 import { useAppStateStore } from "./app-state"
+import { toJSON } from "../lib/helpers"
+import { searchString } from "@dolanske/vui"
 
 export interface IrcChannelWithHandler {
   handler: IrcChannel
@@ -38,6 +40,36 @@ export const useIrcStore = defineStore("irc", () => {
   const serverMessages = ref<Map<string, Message[]>>(new Map())
 
   let controller: ServerList = {} as ServerList
+
+  /**
+   * Returns the servers including their group (joined/available) channels.
+   * Because the state is in a class, we have to convert it to a plain object.
+   * So none of the methods on the server & channel objects should be used.
+   */
+  const serversWithChannels = computed(() => {
+    return [...serverData.value.values()].map((server) => {
+      return {
+        // oxlint-disable-next-line typescript/no-misused-spread
+        ...toJSON(server),
+        groupedChannels: serverChannels.value.get(server.id),
+      }
+    }) as ServerWithGroupedChannels[]
+  })
+
+  function filterServersWithChannels(search: string) {
+    if (!search) return serversWithChannels.value
+
+    return serversWithChannels.value.map((server) => {
+      return {
+        // oxlint-disable-next-line typescript/no-misused-spread
+        ...server,
+        groupedChannels: {
+          joined: server.groupedChannels.joined.filter((channel) => searchString(channel.data.metadata.name, search)),
+          available: server.groupedChannels.available.filter((channel) => searchString(channel.name, search)),
+        },
+      }
+    }) as ServerWithGroupedChannels[]
+  }
 
   /**
    * Initializes empty server datasets and fetches available (unjoined channels)
@@ -188,8 +220,6 @@ export const useIrcStore = defineStore("irc", () => {
       const error = e as OrbitError
       console.error(JSON.parse(error.toString()))
     }
-
-    // return { data, handler }
   }
 
   return {
@@ -206,5 +236,9 @@ export const useIrcStore = defineStore("irc", () => {
     getServerChannel,
     requestScrollback,
     serverChannels,
+
+    // Servers containing channels list & filtering
+    serversWithChannels,
+    filterServersWithChannels,
   }
 })
