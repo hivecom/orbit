@@ -2,7 +2,7 @@
 import { Button } from "@dolanske/vui"
 import { useWindowManager, type WindowLocation, type WindowType } from "../../lib/windows"
 import { IRC_UNKNOWN_CHANNEL, IRC_UNKNOWN_SERVER } from "../../lib/constants"
-import { onBeforeMount, onMounted } from "vue"
+import { onMounted } from "vue"
 
 interface Props {
   location: WindowLocation
