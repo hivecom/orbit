@@ -131,7 +131,7 @@ onMounted(() => {
             </td>
           </tr>
         </table>
-        <div id="scroll-anchor"></div>
+        <a id="scroll-anchor"></a>
       </div>
     </div>
 
@@ -153,6 +153,8 @@ onMounted(() => {
     padding-inline: var(--space-s);
     border-bottom: 1px solid var(--color-border);
     height: 44px;
+    background: var(--color-bg-lowered);
+    z-index: 5;
   }
 
   .o-window-composer {
@@ -174,9 +176,11 @@ onMounted(() => {
       bottom: 0;
       left: 0;
       right: 0;
+      max-height: 100%;
       padding-bottom: var(--space-s);
       overflow-y: auto;
 
+      /* FIXME: this doesnt't automatically scroll when window is rendered */
       #scroll-anchor {
         overflow-anchor: auto;
         height: 1px;
