@@ -11,6 +11,9 @@ const config = {
   appearance_chat_timestamps_format: "HH:mm:ss",
   appearance_chat_center_chat: true,
   appearance_chat_width: 100,
+  appearance_chat_smooth_scroll: false,
+  appearance_chat_show_send_button: false,
+  appearance_chat_show_status_messages: true,
 }
 
 // NOTE: Keymap currently cannot be changed. We'll implement it once we have

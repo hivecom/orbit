@@ -55,6 +55,7 @@ const route = useRoute()
       padding: var(--wrap-padding);
       margin: var(--wrap-padding);
       corner-shape: squircle;
+      overflow-y: auto;
     }
   }
 }

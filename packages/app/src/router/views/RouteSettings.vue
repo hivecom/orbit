@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Button, Counter, Divider, Flex, Input, Kbd, Switch } from "@dolanske/vui"
+import { Button, Divider, Flex, Input, Kbd, Slider, Switch } from "@dolanske/vui"
 import { IconArrowLeftLinear } from "@iconify-prerendered/vue-solar"
 import { useConfigStore } from "../../stores/config"
 import { computed } from "vue"
@@ -8,7 +8,7 @@ import { useRouter } from "vue-router"
 const config = useConfigStore()
 const router = useRouter()
 
-const MIN_WIDTH = 25
+const MIN_WIDTH = 40
 const MAX_WIDTH = 100
 
 const safeguardedWidth = computed({
@@ -31,21 +31,23 @@ const safeguardedWidth = computed({
       <h4>Global</h4>
       <Switch disabled reversed accent label="Zen mode" hint="Greatly simplifies the UI, removing distractions. Can be toggled on/off using the command palette." v-model="config.options.appearance_global_zen_enabled" />
       <h4>Chat</h4>
-      <Switch disabled reversed accent label="Colored usernames" hint="Generate a random username color using the username as a seed" v-model="config.options.appearance_chat_colored_usernames" />
+      <Switch reversed accent label="Colored usernames" hint="Generate a random username color using the username as a seed" v-model="config.options.appearance_chat_colored_usernames" />
+      <Switch reversed accent label="Show status messages" hint="User joined / quit and so on" v-model="config.options.appearance_chat_show_status_messages" />
       <Switch reversed accent label="Show timestamps" hint="Display timestampts in chat view" v-model="config.options.appearance_chat_timestamps_enabled" />
       <Input label="Timestamp format" v-model="config.options.appearance_chat_timestamps_format" :disabled="!config.options.appearance_chat_timestamps_enabled" />
+      <Switch reversed accent label="Smooth scroll" hint="Scrolling mode for when chat auto-scrolls" v-model="config.options.appearance_chat_smooth_scroll" />
+
       <h4>Layout</h4>
       <Flex column :gap="0">
         <label for="chat-width-input" class="vui-label">Chat width</label>
         <p class="vui-hint">Percentual width of the chat compared to its window. On small devices, the width might be automatically adjusted</p>
-        <!-- FIXME: doesnt allow typing rn - probably because the automatic clamping immediatel removes it -->
-        <Counter id="chat-width-input" :increment-enabled="safeguardedWidth <= MAX_WIDTH" :decrement-enabled="safeguardedWidth >= MIN_WIDTH" type="number" v-model.number="safeguardedWidth" />
+        <Slider v-model="safeguardedWidth" :min="MIN_WIDTH" :max="MAX_WIDTH" />
       </Flex>
       <Switch reversed accent label="Center chat" hint="If width is other than 100%, the chat will be in the center of the chat window" v-model="config.options.appearance_chat_center_chat" />
       <div class="settings-chat-indicator">
         <div class="width-indicator">
           <div class="width-indicator chat" :class="{ center: config.options.appearance_chat_center_chat }" :style="{ width: config.options.appearance_chat_width + '%' }">
-            <span>Chat window</span>
+            <span>Chat width</span>
           </div>
         </div>
       </div>
@@ -82,6 +84,14 @@ const safeguardedWidth = computed({
       display: block;
       max-width: 480px;
     }
+  }
+
+  :deep(.vui-slider) {
+    /* So that marign-bottom visually feels the same as input. 10 pixels are to
+    add the offset of the slider handle */
+    margin-bottom: calc(var(--space-l) + 10px);
+    margin-top: var(--space-s);
+    max-width: 224px;
   }
 }
 
