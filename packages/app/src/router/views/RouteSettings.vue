@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { Button, Divider, Flex, Input, Kbd, Slider, Switch } from "@dolanske/vui"
+import { Button, Divider, Flex, Input, Kbd, Select, setColorTheme, Slider, Switch } from "@dolanske/vui"
 import { IconArrowLeftLinear } from "@iconify-prerendered/vue-solar"
 import { useConfigStore } from "../../stores/config"
 import { computed } from "vue"
 import { useRouter } from "vue-router"
+import { capitalize } from "../../lib/format"
 
 const config = useConfigStore()
 const router = useRouter()
@@ -14,6 +15,20 @@ const MAX_WIDTH = 100
 const safeguardedWidth = computed({
   get: () => config.options.appearance_chat_width,
   set: (value) => (config.options.appearance_chat_width = Math.min(MAX_WIDTH, Math.max(value, MIN_WIDTH))),
+})
+
+const themeOptions = [
+  { value: "dark", label: "Dark" },
+  { value: "light", label: "Light" },
+]
+
+const activeTheme = computed({
+  get: () => [{ value: config.options.appearance_global_theme, label: capitalize(config.options.appearance_global_theme) }],
+  set: (options) => {
+    if (!options) return
+    config.options.appearance_global_theme = options[0].value
+    setColorTheme(options[0].value as any)
+  },
 })
 </script>
 
@@ -29,6 +44,10 @@ const safeguardedWidth = computed({
     <section class="settings-section">
       <h3>Appearance</h3>
       <h4>Global</h4>
+      <Flex column :gap="0">
+        <label for="theme-select" class="vui-label">Theme variant</label>
+        <Select single :options="themeOptions" v-model="activeTheme" name="theme-select" />
+      </Flex>
       <Switch disabled reversed accent label="Zen mode" hint="Greatly simplifies the UI, removing distractions. Can be toggled on/off using the command palette." v-model="config.options.appearance_global_zen_enabled" />
       <h4>Chat</h4>
       <Switch reversed accent label="Colored usernames" hint="Generate a random username color using the username as a seed" v-model="config.options.appearance_chat_colored_usernames" />
@@ -36,7 +55,6 @@ const safeguardedWidth = computed({
       <Switch reversed accent label="Show timestamps" hint="Display timestampts in chat view" v-model="config.options.appearance_chat_timestamps_enabled" />
       <Input label="Timestamp format" v-model="config.options.appearance_chat_timestamps_format" :disabled="!config.options.appearance_chat_timestamps_enabled" />
       <Switch reversed accent label="Smooth scroll" hint="Scrolling mode for when chat auto-scrolls" v-model="config.options.appearance_chat_smooth_scroll" />
-
       <h4>Layout</h4>
       <Flex column :gap="0">
         <label for="chat-width-input" class="vui-label">Chat width</label>

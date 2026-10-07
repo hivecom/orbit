@@ -5,7 +5,7 @@ import { useIrcStore } from "../../stores/irc"
 import Composer from "../shared/composer/Composer.vue"
 import { Accordion, Avatar, Button, DropdownItem, Flex, Grid, theme } from "@dolanske/vui"
 import { computed, nextTick, onMounted, ref, useTemplateRef, watch } from "vue"
-import { useEventListener, useThrottleFn } from "@vueuse/core"
+import { useEventListener, useResizeObserver, useThrottleFn } from "@vueuse/core"
 import { IRC_UNKNOWN_CHANNEL, IRC_UNKNOWN_SERVER } from "../../lib/constants.ts"
 import { useIRCJoinChannel } from "../../composables/useIRCJoinChannel.ts"
 import { useDateFormatter } from "../../lib/date.ts"
@@ -17,9 +17,9 @@ import { getUserColor } from "../../lib/color.ts"
 const props = defineProps<WindowAndLocation<WindowChat>>()
 const irc = useIrcStore()
 const config = useConfigStore()
-
 const format = useDateFormatter()
 
+// Get all messages per this channel. Setting to hide status message optionally filters them out
 const messages = computed(() => {
   const data = irc.getChannelMessages(props.serverId, props.channelId)
   if (!config.options.appearance_chat_show_status_messages) {
@@ -28,8 +28,10 @@ const messages = computed(() => {
   return data
 })
 
+// Channel related information
 const channel = computed(() => irc.getServerChannel(props.serverId, props.channelId))
 
+// Send a message & handle scroll
 async function sendMessage(message: string) {
   if (!channel.value) return
 
@@ -58,7 +60,7 @@ const composerPositionStyle = computed(() => {
   }
 })
 
-// Automatic message fetching on scroll
+// Scroll-related functionality
 const scrollLoading = ref(false)
 const scrollContainer = useTemplateRef("chatScrollContainer")
 // How many pixels from the top of the chat will trigger load of more messages
@@ -69,33 +71,48 @@ const SCROLL_DOWN_THRESHOLD = 1000
 const BOTTOM_SCROLL_THRESHOLD = 50
 
 let forceScroll = false
+let isAtBottom = true
 const showScrollDown = ref(false)
 
-const throttledScrollCheck = useThrottleFn(async (event: Event) => {
-  const target = event.target as HTMLElement
-  if (target.scrollTop <= SCROLL_THRESHOLD && !scrollLoading.value) {
-    scrollLoading.value = true
+const throttledScrollCheck = useThrottleFn(
+  async (event: Event) => {
+    const target = event.target as HTMLElement
+    if (target.scrollTop <= SCROLL_THRESHOLD && !scrollLoading.value) {
+      scrollLoading.value = true
 
-    const prevHeight = target.scrollHeight
+      const prevHeight = target.scrollHeight
 
-    await irc.requestScrollback(props.serverId, props.channelId)
-    await nextTick()
+      await irc.requestScrollback(props.serverId, props.channelId)
+      await nextTick()
 
-    // Adjust scroll position, otherwise we'll be triggering the fetch constantly
-    const newHeight = target.scrollHeight
-    target.scrollTop += newHeight - prevHeight
+      // Adjust scroll position, otherwise we'll be triggering the fetch constantly
+      const newHeight = target.scrollHeight
+      target.scrollTop += newHeight - prevHeight
 
-    scrollLoading.value = false
-  }
+      scrollLoading.value = false
+    }
 
-  if (target.scrollTop + target.clientHeight < target.scrollHeight - SCROLL_DOWN_THRESHOLD) {
-    showScrollDown.value = true
-  } else {
-    showScrollDown.value = false
-  }
-}, 100)
+    isAtBottom = Math.ceil(target.scrollTop + target.clientHeight) >= target.scrollHeight - BOTTOM_SCROLL_THRESHOLD
+
+    if (target.scrollTop + target.clientHeight < target.scrollHeight - SCROLL_DOWN_THRESHOLD) {
+      showScrollDown.value = true
+    } else {
+      showScrollDown.value = false
+    }
+  },
+  100,
+  true,
+)
 
 useEventListener(scrollContainer, "scroll", throttledScrollCheck)
+
+// When the container shrinks (e.g. Composer textarea grows), keep the chat pinned to the bottom
+useResizeObserver(scrollContainer, () => {
+  const el = scrollContainer.value
+  if (el && isAtBottom) {
+    el.scrollTop = el.scrollHeight
+  }
+})
 
 // If user opens a window on a server where they haven't joined any channels, we
 // must give them a choice to join one
@@ -142,10 +159,10 @@ watch(
     const el = scrollContainer.value
     if (!el) return
     // Check size of chat BEFORE dom updates (flush: pre)
-    const isAtBottom = Math.ceil(el.scrollTop + el.clientHeight) >= el.scrollHeight - BOTTOM_SCROLL_THRESHOLD
+    const wasAtBottom = Math.ceil(el.scrollTop + el.clientHeight) >= el.scrollHeight - BOTTOM_SCROLL_THRESHOLD
     await nextTick()
     // Now the DOM updated and we scroll to the new pos
-    if (isAtBottom || forceScroll) {
+    if (wasAtBottom || forceScroll) {
       el.scrollTo({ top: el.scrollHeight, behavior: config.options.appearance_chat_smooth_scroll ? "smooth" : "auto" })
       forceScroll = false
     }
@@ -153,7 +170,9 @@ watch(
   { flush: "pre" },
 )
 
-// Compute message date splitters
+// Compute message date splitters as ids. When rendering messages each message
+// compares its id with this set and if it matches, it inserts a splitter row
+// before itself
 const dateIds = computed(() => {
   const ids = new Set()
   if (!messages.value) return ids
@@ -381,6 +400,10 @@ const dateIds = computed(() => {
             padding-left: var(--space-xs);
           }
 
+          &.msg-content {
+            width: 100%;
+          }
+
           &.status {
             color: var(--color-text-lighter);
             font-style: italic;
@@ -388,10 +411,6 @@ const dateIds = computed(() => {
 
           &:nth-child(1) {
             padding-left: var(--space-m);
-          }
-
-          &:nth-child(3) {
-            width: 100%;
           }
         }
       }

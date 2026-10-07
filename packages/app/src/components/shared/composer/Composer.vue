@@ -17,7 +17,7 @@ const message = defineModel<string>({
 
 function submit() {
   if (message.value) {
-    emit("send", message.value)
+    emit("send", message.value.trim())
     message.value = ""
   }
 }
@@ -33,7 +33,7 @@ onMounted(() => {
 
 <template>
   <form @submit.prevent="submit" class="o-composer">
-    <input type="text" v-model="message" :placeholder ref="inputRef" />
+    <textarea v-model="message" :placeholder ref="inputRef" @keydown.enter.exact.prevent="submit" />
   </form>
 </template>
 
@@ -47,14 +47,19 @@ onMounted(() => {
   margin: var(--space-xs);
   margin-top: 0;
 
+  textarea,
   input {
+    font-family: var(--font);
     border-radius: inherit;
     display: block;
     width: 100%;
     border: none;
-    height: 44px;
+    height: unset;
+    min-height: 40px;
+    field-sizing: content;
+    resize: none;
     padding-inline: var(--space-m);
-    padding-block: var(--space-xxxs);
+    padding-block: var(--space-s);
     background-color: transparent;
     border: none;
     font-size: var(--font-size-m);

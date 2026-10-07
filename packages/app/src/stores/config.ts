@@ -5,6 +5,7 @@ import type { KeyboardShortcuts, ShortcutCallback } from "../types/config"
 import { SETTINGS_KEY } from "../lib/constants"
 
 const config = {
+  appearance_global_theme: "dark",
   appearance_global_zen_enabled: false,
   appearance_chat_colored_usernames: false,
   appearance_chat_timestamps_enabled: true,

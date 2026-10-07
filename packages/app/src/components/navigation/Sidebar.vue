@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { Avatar, Flex, Sidebar, Button, Input, ButtonGroup, Tooltip } from "@dolanske/vui"
+import { Avatar, Flex, Sidebar, Button, Input, ButtonGroup, Tooltip, theme } from "@dolanske/vui"
 import { IconAddCircleLinear, IconCloseSquareLinear, IconMagniferLinear, IconSidebarMinimalisticLinear } from "@iconify-prerendered/vue-solar"
 import { onClickOutside, onKeyStroke, useStorage } from "@vueuse/core"
 import { useIrcStore } from "../../stores/irc"
 import { computed, ref, useTemplateRef, watch } from "vue"
 import { useConfigStore } from "../../stores/config.ts"
 import logo from "../../../public/logo-white-small.svg"
+import logoLight from "../../../public/logo-dark-small.svg"
 import SidebarServerAccordion from "./SidebarServerAccordion.vue"
 
 // TODO: nested server channels once supported
@@ -51,7 +52,7 @@ const filteredServers = computed(() => irc.filterServersWithChannels(search.valu
   <Sidebar :mini ref="sidebar" no-auto-transform variant="plain">
     <Flex column gap="xs" class="mb-m sidebar-header" :y-center="mini">
       <Flex gap="s" :column="mini" y-center>
-        <img :src="logo" />
+        <img :src="theme === 'dark' ? logo : logoLight" />
         <ButtonGroup :vertical="mini">
           <Tooltip v-bind="mini ? { placement: 'right' } : {}">
             <Button square @click="mini = !mini" aria-label="Toggle sidebar">

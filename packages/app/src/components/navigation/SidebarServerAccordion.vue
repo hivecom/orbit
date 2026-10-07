@@ -41,7 +41,8 @@ const [DefineChannelList, ReuseChannelList] = createReusableTemplate()
               <Divider class="my-xxs" />
               <DropdownItem size="s" @click="closeWindow(findById({ channelId: item.data.metadata.name })!.location)">Close</DropdownItem>
             </template>
-            <!-- <DropdownItem size="s">Leave</DropdownItem> -->
+            <Divider class="my-xxs" />
+            <DropdownItem disabled size="s">Leave</DropdownItem>
           </Flex>
         </template>
       </ContextMenu>
@@ -58,7 +59,6 @@ const [DefineChannelList, ReuseChannelList] = createReusableTemplate()
               <Divider class="my-xxs" />
               <DropdownItem size="s" @click="closeWindow(findById({ channelId: item.name })!.location)">Close</DropdownItem>
             </template>
-            <!-- <DropdownItem size="s">Leave</DropdownItem> -->
           </Flex>
         </template>
       </ContextMenu>
