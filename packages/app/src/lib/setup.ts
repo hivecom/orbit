@@ -2,7 +2,6 @@ import { createApp, type Component } from "vue"
 import { router } from "../router/router"
 import { type Platform, PLATFORM_KEY } from "platform"
 import { createPinia } from "pinia"
-import { setColorTheme } from "@dolanske/vui"
 import init, { initialize_orbit } from "core-wasm"
 import { useIrcStore } from "../stores/irc"
 import { useAppStateStore } from "../stores/app-state"
@@ -19,8 +18,6 @@ import { useConfigStore } from "../stores/config"
 export async function createOrbitApp(root: Component<any, any, any, any, any>, platform: Platform) {
   const app = createApp(root)
   const pinia = createPinia()
-
-  setColorTheme("dark")
 
   app.use(router)
   app.use(pinia)

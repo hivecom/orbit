@@ -3,6 +3,7 @@ import { defineStore } from "pinia"
 import { effectScope, onBeforeUnmount, reactive, shallowRef } from "vue"
 import type { KeyboardShortcuts, ShortcutCallback } from "../types/config"
 import { SETTINGS_KEY } from "../lib/constants"
+import { setColorTheme } from "@dolanske/vui"
 
 const config = {
   appearance_global_theme: "dark",
@@ -48,6 +49,8 @@ export const useConfigStore = defineStore("config", () => {
     // Register watcher scope for application-wide shortcut handling. We need to use a scope
     // because this registration happens outside of a specific vue component
     const watcherScope = effectScope()
+
+    setColorTheme(options.value.appearance_global_theme as any)
 
     watcherScope.run(() => {
       const keys = useMagicKeys()

@@ -12,7 +12,7 @@ import { useDateFormatter } from "../../lib/date.ts"
 import { useConfigStore } from "../../stores/config.ts"
 import { getServerInitials } from "../../lib/format.ts"
 import { IconArrowDownLinear, IconUsersGroupRoundedLinear } from "@iconify-prerendered/vue-solar"
-import { getUserColor } from "../../lib/color.ts"
+import { getUserColor, getUserColorStyle } from "../../lib/color.ts"
 import ChatUserList from "../shared/user/ChatUserList.vue"
 
 const props = defineProps<WindowAndLocation<WindowChat>>()
@@ -255,7 +255,7 @@ const showUserList = ref(false)
               </tr>
               <tr>
                 <td class="msg-timestamp" v-if="config.options.appearance_chat_timestamps_enabled">{{ format.chatTimestamp(message.metadata.server_time) }}</td>
-                <td class="msg-username" :style="config.options.appearance_chat_colored_usernames ? { '--user-color': getUserColor(message.metadata.user, theme === 'dark' ? 'dark' : 'light') } : null">{{ message.metadata.user }}</td>
+                <td class="msg-username user-color" :style="getUserColorStyle(message.metadata.user)">{{ message.metadata.user }}</td>
                 <td class="msg-content" :class="{ status: message.metadata.message_type !== MessageType.Privmsg }">
                   <template v-if="message.metadata.message_type === MessageType.Privmsg">{{ message.text?.content }} </template>
                   <template v-else-if="message.metadata.message_type === MessageType.Join"> joined </template>
@@ -439,8 +439,8 @@ const showUserList = ref(false)
             }
 
             &.msg-username {
-              --user-color: var(--color-text-light);
-              color: var(--user-color);
+              /* --user-color: var(--color-text-light);
+              color: var(--user-color); */
               padding-right: var(--space-xs);
               padding-left: var(--space-xs);
             }
