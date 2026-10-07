@@ -5,7 +5,7 @@ use core_shared::{
     SendCommand,
     actor::{self, ActorCommand, ActorMessage, IrcActor},
     response_channels::CommandResponse,
-    state::{Channel, History, Message, Server, ServerEvent, SignedIn},
+    state::{Channel, History, Message, Server, SignedIn},
 };
 use futures::{
     SinkExt, StreamExt,
@@ -17,9 +17,9 @@ use futures::{
     stream::{Fuse, LocalBoxStream, SplitSink},
 };
 use gloo_net::websocket::{self, WebSocketError, futures::WebSocket};
-use serde::Serialize;
 use serde_wasm_bindgen::to_value;
 use tracing::debug;
+use tsify::Ts;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::{js_sys, spawn_local};
 
@@ -113,7 +113,7 @@ impl ServerList {
 }
 
 #[wasm_bindgen]
-pub async fn initialize_orbit() -> Result<Js<Vec<Server>>, OrbitError> {
+pub async fn initialize_orbit() -> Result<Vec<Ts<Server>>, OrbitError> {
     let ids = {
         let store = SERVER_STORE.lock().await;
         store
@@ -126,10 +126,10 @@ pub async fn initialize_orbit() -> Result<Js<Vec<Server>>, OrbitError> {
 
     let mut states = Vec::new();
     for id in ids {
-        states.push(server_state(id).await?.0);
+        states.push(Ts::from_rust(&_server_state(id).await?).context("Failed to convert to Ts")?);
     }
 
-    Ok(Js(states))
+    Ok(states)
 }
 
 #[derive(Clone)]
@@ -169,8 +169,7 @@ pub async fn server_connect(url: String) -> Result<i32, OrbitError> {
     Ok(id)
 }
 
-#[wasm_bindgen]
-pub async fn server_state(server_id: i32) -> Result<Js<Server>, OrbitError> {
+pub async fn _server_state(server_id: i32) -> Result<Server, OrbitError> {
     let (tx, rx) = oneshot::channel();
     let mut server =
         { SERVER_STORE.lock().await.by_id(server_id) }.ok_or(OrbitError::unknown_server())?;
@@ -186,7 +185,12 @@ pub async fn server_state(server_id: i32) -> Result<Js<Server>, OrbitError> {
     let resp = rx.await.context("Failed to await actor state message")?;
     let server = cmd_resp!(resp, CommandResponse::GetState)?;
 
-    Ok(Js(*server))
+    Ok(*server)
+}
+
+#[wasm_bindgen]
+pub async fn server_state(server_id: i32) -> Result<Ts<Server>, OrbitError> {
+    Ok(Ts::from_rust(&_server_state(server_id).await?).context("Failed to convert to Ts")?)
 }
 
 #[wasm_bindgen]
@@ -233,7 +237,10 @@ pub async fn server_on_data(
             .expect("can send actor message");
 
         while let Ok(event) = handler_rx.recv().await {
-            if let Err(e) = f.call1(&JsValue::null(), &Js(ServerEvent::from(event)).into()) {
+            if let Err(e) = f.call1(
+                &JsValue::null(),
+                &to_value(&event).unwrap_or_else(|e| e.to_string().into()),
+            ) {
                 gloo_console::error!("Error during event callback: {}", e);
             }
         }
@@ -245,7 +252,7 @@ pub async fn server_on_data(
 #[wasm_bindgen]
 pub async fn server_on_error(
     server_id: i32,
-    #[wasm_bindgen(unchecked_param_type = "(event: ServerError) => void")] f: js_sys::Function,
+    #[wasm_bindgen(unchecked_param_type = "(error: OrbitError) => void")] f: js_sys::Function,
 ) -> Result<(), OrbitError> {
     let (handler_tx, mut handler_rx) = mpsc::unbounded();
 
@@ -263,8 +270,11 @@ pub async fn server_on_error(
             .await
             .expect("can send actor message");
 
-        while let Ok(event) = handler_rx.recv().await {
-            if let Err(e) = f.call1(&JsValue::null(), &OrbitError::from(event).into()) {
+        while let Ok(error) = handler_rx.recv().await {
+            if let Err(e) = f.call1(
+                &JsValue::null(),
+                &to_value(&error).unwrap_or_else(|e| e.to_string().into()),
+            ) {
                 gloo_console::error!("Error during error callback: {}", e);
             }
         }
@@ -295,7 +305,10 @@ pub async fn server_on_disconnect(
             .expect("can send actor message");
 
         while let Ok(event) = handler_rx.recv().await {
-            if let Err(e) = f.call1(&JsValue::null(), &event.into()) {
+            if let Err(e) = f.call1(
+                &JsValue::null(),
+                &to_value(&event).unwrap_or_else(|e| e.to_string().into()),
+            ) {
                 gloo_console::error!("Error during event callback: {}", e);
             }
         }
@@ -311,7 +324,7 @@ pub async fn server_sign_in(
     user: String,
     realname: String,
     password: String,
-) -> Result<Js<SignedIn>, OrbitError> {
+) -> Result<Ts<SignedIn>, OrbitError> {
     let (tx, rx) = oneshot::channel();
     let mut server =
         { SERVER_STORE.lock().await.by_id(server_id) }.ok_or(OrbitError::unknown_server())?;
@@ -332,7 +345,7 @@ pub async fn server_sign_in(
     let resp = rx.await.context("Failed to await actor sign in message")?;
     let result = cmd_resp!(resp, CommandResponse::SignIn)?;
 
-    Ok(Js(result))
+    Ok(Ts::from_rust(&result).context("Failed to convert to Ts")?)
 }
 
 #[wasm_bindgen]
@@ -341,7 +354,7 @@ pub async fn server_sign_in_anonymous(
     nick: String,
     user: String,
     realname: String,
-) -> Result<Js<SignedIn>, OrbitError> {
+) -> Result<Ts<SignedIn>, OrbitError> {
     let (tx, rx) = oneshot::channel();
     let mut server =
         { SERVER_STORE.lock().await.by_id(server_id) }.ok_or(OrbitError::unknown_server())?;
@@ -362,7 +375,7 @@ pub async fn server_sign_in_anonymous(
 
     let result = cmd_resp!(resp, CommandResponse::SignIn)?;
 
-    Ok(Js(result))
+    Ok(Ts::from_rust(&result).context("Failed to convert to Ts")?)
 }
 
 #[wasm_bindgen]
@@ -394,7 +407,7 @@ pub async fn chat_channel_history_before(
     server_id: i32,
     channel: String,
     before_msgid: String,
-) -> Result<Js<History>, OrbitError> {
+) -> Result<Ts<History>, OrbitError> {
     let (tx, rx) = oneshot::channel();
     let mut server =
         { SERVER_STORE.lock().await.by_id(server_id) }.ok_or(OrbitError::unknown_server())?;
@@ -413,14 +426,14 @@ pub async fn chat_channel_history_before(
     let resp = rx.await.context("Failed to await actor history message")?;
     let history = cmd_resp!(resp, CommandResponse::History)?;
 
-    Ok(Js(history))
+    Ok(Ts::from_rust(&history).context("Failed to convert to Ts")?)
 }
 
 #[wasm_bindgen]
 pub async fn chat_channel_state(
     server_id: i32,
     channel_name: String,
-) -> Result<Js<Option<Channel>>, OrbitError> {
+) -> Result<Option<Ts<Channel>>, OrbitError> {
     let mut server =
         { SERVER_STORE.lock().await.by_id(server_id) }.ok_or(OrbitError::unknown_server())?;
 
@@ -437,7 +450,10 @@ pub async fn chat_channel_state(
     let resp = rx.await.context("Failed to await actor state message")?;
     let channel = cmd_resp!(resp, CommandResponse::GetChannelState)?;
 
-    Ok(Js(*channel))
+    Ok(channel
+        .map(|c| Ts::from_rust(&c))
+        .transpose()
+        .context("Failed to convert to Ts")?)
 }
 
 #[wasm_bindgen]
@@ -445,7 +461,7 @@ pub async fn chat_channel_send_message(
     server_id: i32,
     channel_name: String,
     text: String,
-) -> Result<Js<Message>, OrbitError> {
+) -> Result<Ts<Message>, OrbitError> {
     let mut server =
         { SERVER_STORE.lock().await.by_id(server_id) }.ok_or(OrbitError::unknown_server())?;
 
@@ -465,7 +481,7 @@ pub async fn chat_channel_send_message(
     let resp = rx.await.context("Failed to await actor privmessage")?;
     let message = cmd_resp!(resp, CommandResponse::Privmsg)?;
 
-    Ok(Js(*message))
+    Ok(Ts::from_rust(&*message).context("Failed to convert to Ts")?)
 }
 
 struct WsConnection {
@@ -524,37 +540,5 @@ impl SendCommand for OutgoingSink {
             .await?;
 
         Ok(())
-    }
-}
-
-pub struct Js<T: Serialize>(T);
-
-impl<T: Serialize> From<T> for Js<T> {
-    fn from(value: T) -> Self {
-        Js(value)
-    }
-}
-
-use wasm_bindgen::convert::IntoWasmAbi;
-use wasm_bindgen::describe::WasmDescribe;
-
-impl<T: Serialize> From<Js<T>> for JsValue {
-    fn from(v: Js<T>) -> Self {
-        serde_wasm_bindgen::to_value(&v.0).unwrap_or_else(|e| e.to_string().into())
-    }
-}
-
-impl<T: Serialize> WasmDescribe for Js<T> {
-    fn describe() {
-        wasm_bindgen::JsValue::describe()
-    }
-}
-
-impl<T: Serialize> IntoWasmAbi for Js<T> {
-    type Abi = <wasm_bindgen::JsValue as IntoWasmAbi>::Abi;
-
-    fn into_abi(self) -> Self::Abi {
-        let js_val: wasm_bindgen::JsValue = self.into();
-        js_val.into_abi()
     }
 }
