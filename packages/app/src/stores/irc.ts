@@ -84,7 +84,7 @@ export const useIrcStore = defineStore("irc", () => {
     await handler.channel_list().then((channels) => {
       const data = serverChannels.value.get(server.id)
       if (!data) return
-      data.available = channels
+      data.available = channels.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()))
       serverChannels.value.set(server.id, data)
     })
   }
@@ -210,6 +210,7 @@ export const useIrcStore = defineStore("irc", () => {
 
       // Add channel to joined, remove it from available
       channels.joined.push({ data, handler })
+      channels.joined = [...channels.joined].sort((a, b) => a.data.metadata.name.toLowerCase().localeCompare(b.data.metadata.name.toLowerCase()))
       channels.available = channels.available.filter((item) => item.name !== data.metadata.name)
 
       // Upon joining, show backlog

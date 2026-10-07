@@ -1,0 +1,4 @@
+.user-color {
+  --user-color: var(--color-text-light);
+  color: var(--user-color) !important;
+}

@@ -3,14 +3,19 @@ import { defineStore } from "pinia"
 import { effectScope, onBeforeUnmount, reactive, shallowRef } from "vue"
 import type { KeyboardShortcuts, ShortcutCallback } from "../types/config"
 import { SETTINGS_KEY } from "../lib/constants"
+import { setColorTheme } from "@dolanske/vui"
 
 const config = {
+  appearance_global_theme: "dark",
   appearance_global_zen_enabled: false,
   appearance_chat_colored_usernames: false,
   appearance_chat_timestamps_enabled: true,
   appearance_chat_timestamps_format: "HH:mm:ss",
   appearance_chat_center_chat: true,
   appearance_chat_width: 100,
+  appearance_chat_smooth_scroll: false,
+  appearance_chat_show_send_button: false,
+  appearance_chat_show_status_messages: true,
 }
 
 // NOTE: Keymap currently cannot be changed. We'll implement it once we have
@@ -44,6 +49,8 @@ export const useConfigStore = defineStore("config", () => {
     // Register watcher scope for application-wide shortcut handling. We need to use a scope
     // because this registration happens outside of a specific vue component
     const watcherScope = effectScope()
+
+    setColorTheme(options.value.appearance_global_theme as any)
 
     watcherScope.run(() => {
       const keys = useMagicKeys()

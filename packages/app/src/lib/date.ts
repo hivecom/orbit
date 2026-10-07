@@ -4,21 +4,25 @@ import { useConfigStore } from "../stores/config"
 /**
  * Formats an IRC timestamp
  */
-export function formatTimestamp() {}
-
 export function useDateFormatter() {
   const config = useConfigStore()
 
   /**
-   * Formats IRC message timestamp
+   * Formats IRC message timestamp based on the user configuration
    */
-  function chatTimestamp(unixInSeconds: number) {
-    return dayjs(unixInSeconds).format(config.options.appearance_chat_timestamps_format)
+  function chatTimestamp(unixTimestamp: number) {
+    return dayjs(unixTimestamp).format(config.options.appearance_chat_timestamps_format)
   }
 
-  // function chatDisplay() {}
+  /**
+   * Formats a unix timestamp to the `D dddd YYYY` format. For instance `6 October 2026`
+   */
+  function simple(unixTimestamp: number) {
+    return dayjs(unixTimestamp).format("D MMMM YYYY")
+  }
 
   return {
     chatTimestamp,
+    simple,
   }
 }
