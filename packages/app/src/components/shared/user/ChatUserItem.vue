@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Badge, DropdownItem, Flex } from "@dolanske/vui"
+import { Badge, DropdownItem } from "@dolanske/vui"
 import { getUserRole } from "../../../lib/format"
 import { ChannelUser } from "core-wasm"
 import { computed } from "vue"
