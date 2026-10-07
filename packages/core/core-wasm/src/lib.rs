@@ -126,7 +126,7 @@ pub async fn initialize_orbit() -> Result<Vec<Ts<Server>>, OrbitError> {
 
     let mut states = Vec::new();
     for id in ids {
-        states.push(Ts::from_rust(&_server_state(id).await?).context("Failed to convert to Ts")?);
+        states.push(Ts::from_rust(&server_state(id).await?).context("Failed to convert to Ts")?);
     }
 
     Ok(states)
@@ -151,25 +151,7 @@ impl IrcConnection {
     }
 }
 
-#[wasm_bindgen]
-pub async fn server_connect(url: String) -> Result<i32, OrbitError> {
-    let id = {
-        let store = SERVER_STORE.lock().await;
-
-        store.max_id().unwrap_or(-1) + 1
-    };
-    let connection = IrcConnection::connect(id, url).await?;
-
-    {
-        let mut store = SERVER_STORE.lock().await;
-
-        store.servers.push(connection.clone());
-    };
-
-    Ok(id)
-}
-
-pub async fn _server_state(server_id: i32) -> Result<Server, OrbitError> {
+async fn server_state(server_id: i32) -> Result<Server, OrbitError> {
     let (tx, rx) = oneshot::channel();
     let mut server =
         { SERVER_STORE.lock().await.by_id(server_id) }.ok_or(OrbitError::unknown_server())?;
@@ -189,8 +171,21 @@ pub async fn _server_state(server_id: i32) -> Result<Server, OrbitError> {
 }
 
 #[wasm_bindgen]
-pub async fn server_state(server_id: i32) -> Result<Ts<Server>, OrbitError> {
-    Ok(Ts::from_rust(&_server_state(server_id).await?).context("Failed to convert to Ts")?)
+pub async fn server_connect(url: String) -> Result<Ts<Server>, OrbitError> {
+    let id = {
+        let store = SERVER_STORE.lock().await;
+
+        store.max_id().unwrap_or(-1) + 1
+    };
+    let connection = IrcConnection::connect(id, url).await?;
+
+    {
+        let mut store = SERVER_STORE.lock().await;
+
+        store.servers.push(connection.clone());
+    };
+
+    Ok(Ts::from_rust(&server_state(id).await?).context("Failed to convert to Ts")?)
 }
 
 #[wasm_bindgen]
@@ -389,7 +384,7 @@ pub async fn chat_channel_join(
     server_id: i32,
     channel: String,
     password: Option<String>,
-) -> Result<String, OrbitError> {
+) -> Result<Ts<Channel>, OrbitError> {
     let (tx, rx) = oneshot::channel();
     let mut server =
         { SERVER_STORE.lock().await.by_id(server_id) }.ok_or(OrbitError::unknown_server())?;
@@ -405,7 +400,7 @@ pub async fn chat_channel_join(
     let resp = rx.await.context("Failed to await actor join message")?;
     let channel = cmd_resp!(resp, CommandResponse::Join)?;
 
-    Ok(channel.metadata.name)
+    Ok(Ts::from_rust(&*channel).context("Failed to convert to Ts")?)
 }
 
 #[wasm_bindgen]
@@ -433,33 +428,6 @@ pub async fn chat_channel_history_before(
     let history = cmd_resp!(resp, CommandResponse::History)?;
 
     Ok(Ts::from_rust(&history).context("Failed to convert to Ts")?)
-}
-
-#[wasm_bindgen]
-pub async fn chat_channel_state(
-    server_id: i32,
-    channel_name: String,
-) -> Result<Option<Ts<Channel>>, OrbitError> {
-    let mut server =
-        { SERVER_STORE.lock().await.by_id(server_id) }.ok_or(OrbitError::unknown_server())?;
-
-    let (tx, rx) = oneshot::channel();
-    server
-        .address
-        .send(ActorMessage {
-            command: ActorCommand::GetChannelState(channel_name),
-            reply_tx: Some(tx),
-        })
-        .await
-        .context("Failed to send ActorMessage")?;
-
-    let resp = rx.await.context("Failed to await actor state message")?;
-    let channel = cmd_resp!(resp, CommandResponse::GetChannelState)?;
-
-    Ok(channel
-        .map(|c| Ts::from_rust(&c))
-        .transpose()
-        .context("Failed to convert to Ts")?)
 }
 
 #[wasm_bindgen]
