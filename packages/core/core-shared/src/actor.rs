@@ -424,6 +424,25 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
         Ok(())
     }
 
+    pub(crate) async fn channel_with_messages(
+        &mut self,
+        target: &str,
+    ) -> Result<Channel, OrbitError> {
+        let mut channel = self
+            .state
+            .channels
+            .get(target)
+            .expect("should exist after just joining")
+            .clone();
+
+        channel.messages = self
+            .database
+            .messages(self.state.id, &channel.metadata.name)
+            .await?;
+
+        Ok(channel)
+    }
+
     pub(crate) async fn channel_mut(&mut self, name: String) -> &mut Channel {
         self.state
             .channels

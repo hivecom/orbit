@@ -123,27 +123,19 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
             self.history_latest(target.to_string(), None, 5, label)
                 .await
                 .context("Failed to request latest history")?;
-        } else {
-            if !self.state.capabilities.labeled_response.enabled {
-                let channel = self
-                    .state
-                    .channels
-                    .get(&target)
-                    .expect("should exist after just joining");
-                self.response_channels
-                    .reply(
-                        &CommandKey::Join(target),
-                        CommandResponse::Join(Box::new(channel.clone())),
-                    )
-                    .map_err(|e| anyhow!("Failed to reply to JOIN command {e:?}"))?;
-            }
+        } else if !self.state.capabilities.labeled_response.enabled {
+            let channel = self.channel_with_messages(&target).await?;
 
-            self.on_event(ServerEvent::Joined(channel)).await?;
+            self.response_channels
+                .reply(
+                    &CommandKey::Join(target),
+                    CommandResponse::Join(Box::new(channel)),
+                )
+                .map_err(|e| anyhow!("Failed to reply to JOIN command {e:?}"))?;
         }
 
         Ok(())
     }
-
     #[tracing::instrument(err, skip(self))]
     pub(crate) async fn handle_caps(
         &mut self,
@@ -261,11 +253,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
             if !self.state.capabilities.history.enabled
                 && !self.state.capabilities.labeled_response.enabled
             {
-                let channel = self
-                    .state
-                    .channels
-                    .get(target)
-                    .expect("should exist after just joining");
+                let channel = self.channel_with_messages(&target).await?;
                 self.response_channels
                     .reply(
                         &CommandKey::Join(target.to_string()),
@@ -534,6 +522,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
         }
     }
 
+    #[tracing::instrument(err, skip(self))]
     pub(crate) async fn handle_batch(
         &mut self,
         message: &IrcMessage,
@@ -708,11 +697,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                                     CommandKey::Join(channel_name.clone())
                                 };
 
-                                let channel = self
-                                    .state
-                                    .channels
-                                    .get(&channel_name)
-                                    .expect("should exist after just joining");
+                                let channel = self.channel_with_messages(&channel_name).await?;
 
                                 self.response_channels
                                     .reply(&key, CommandResponse::Join(Box::new(channel.clone())))
