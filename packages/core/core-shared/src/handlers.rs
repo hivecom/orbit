@@ -17,10 +17,11 @@ use crate::{
         IrcConnection, RequestedBatch, SaslState,
     },
     database::Database,
+    error::OrbitError,
     response_channels::{CommandKey, CommandResponse},
     state::{
         Channel, ChannelInfo, ChannelRole, ChannelUser, History, Message, MessageMetadata,
-        MessageReference, MessageType, OrbitError, ServerEvent, SignedIn, TIME_FORMAT_CONFIG, Tags,
+        MessageReference, MessageType, ServerEvent, SignedIn, TIME_FORMAT_CONFIG, Tags,
         TextMessage, User,
     },
 };

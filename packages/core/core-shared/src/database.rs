@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::state::{Message, OrbitError};
+use crate::{error::OrbitError, state::Message};
 
 pub trait Database: fmt::Debug + Sized {
     fn insert_message(

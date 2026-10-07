@@ -1,7 +1,7 @@
 use std::fmt;
 
 use anyhow::{Context, anyhow};
-use core_shared::{database::Database as ActorDatabase, state::OrbitError};
+use core_shared::{database::Database as ActorDatabase, error::OrbitError};
 use indexed_db_futures::prelude::QuerySource;
 use indexed_db_futures::transaction::Transaction;
 use indexed_db_futures::{

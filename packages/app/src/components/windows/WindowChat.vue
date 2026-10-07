@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { MessageType } from "core-wasm"
+import { type MessageType } from "core-wasm"
 import { type WindowAndLocation, type WindowChat } from "../../lib/windows"
 import { useIrcStore } from "../../stores/irc"
 import Composer from "../shared/composer/Composer.vue"
@@ -256,10 +256,10 @@ const showUserList = ref(false)
               <tr>
                 <td class="msg-timestamp" v-if="config.options.appearance_chat_timestamps_enabled">{{ format.chatTimestamp(message.metadata.server_time) }}</td>
                 <td class="msg-username user-color" :style="getUserColorStyle(message.metadata.user)">{{ message.metadata.user }}</td>
-                <td class="msg-content" :class="{ status: message.metadata.message_type !== MessageType.Privmsg }">
-                  <template v-if="message.metadata.message_type === MessageType.Privmsg">{{ message.text?.content }} </template>
-                  <template v-else-if="message.metadata.message_type === MessageType.Join"> joined </template>
-                  <template v-else-if="message.metadata.message_type === MessageType.Part"> left </template>
+                <td class="msg-content" :class="{ status: message.metadata.message_type !== 'Privmsg' }">
+                  <template v-if="message.metadata.message_type === 'Privmsg'">{{ message.text?.content }} </template>
+                  <template v-else-if="message.metadata.message_type === 'Join'"> joined </template>
+                  <template v-else-if="message.metadata.message_type === 'Part'"> left </template>
                   <template v-else> quit </template>
                 </td>
               </tr>

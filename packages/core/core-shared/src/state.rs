@@ -4,15 +4,12 @@ use std::str::FromStr;
 
 use irc_proto::message::Tag;
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
 use time::OffsetDateTime;
 use time::format_description::well_known::Iso8601;
 use time::format_description::well_known::iso8601::{Config, EncodedConfig, TimePrecision};
-use tracing::{debug, error, warn};
+use tracing::{debug, warn};
 #[cfg(feature = "web")]
 use tsify::Tsify;
-#[cfg(feature = "web")]
-use wasm_bindgen::prelude::*;
 
 #[cfg(feature = "web")]
 #[allow(unused_imports)]
@@ -24,7 +21,8 @@ pub const TIME_FORMAT_CONFIG: EncodedConfig = Config::DEFAULT
     })
     .encode();
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "web", derive(Tsify))]
 pub struct Server {
     pub id: i32,
     pub metadata: ServerMetadata,
@@ -57,9 +55,8 @@ impl Server {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "web", derive(Tsify))]
-#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone, inspectable))]
 pub struct ServerMetadata {
     pub name: Option<String>,
     pub motd: Option<String>,
@@ -85,7 +82,8 @@ impl ServerMetadata {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "web", derive(Tsify))]
 pub struct Channel {
     pub metadata: ChannelMetadata,
     pub messages: Vec<Message>,
@@ -108,9 +106,8 @@ impl Channel {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "web", derive(Tsify))]
-#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone, inspectable))]
 pub struct ChannelMetadata {
     pub name: String,
     pub display_name: Option<String>,
@@ -119,9 +116,8 @@ pub struct ChannelMetadata {
     pub icon: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "web", derive(Tsify))]
-#[cfg_attr(feature = "web", wasm_bindgen(inspectable))]
 pub struct Capabilities {
     // reacts / replies
     pub message_tags: Capability,
@@ -164,9 +160,8 @@ pub struct Capabilities {
     pub(crate) userhost_in_names: Capability,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "web", derive(Tsify))]
-#[cfg_attr(feature = "web", wasm_bindgen(inspectable))]
 pub struct Capability {
     pub has: bool,
     pub enabled: bool,
@@ -270,7 +265,8 @@ impl Capabilities {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "web", derive(Tsify))]
 pub struct Support {
     pub accept: Option<i64>,
     pub account_extended_ban: Option<Vec<String>>,
@@ -452,9 +448,8 @@ impl Support {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "web", derive(Tsify))]
-#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone, inspectable))]
 pub struct User {
     pub nickname: String,
     pub username: Option<String>,
@@ -479,8 +474,8 @@ impl User {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "web", wasm_bindgen)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "web", derive(Tsify))]
 pub enum ChannelRole {
     Owner,
     Admin,
@@ -503,15 +498,15 @@ impl From<char> for ChannelRole {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "web", derive(Tsify))]
-#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone, inspectable))]
 pub struct ChannelUser {
     pub nickname: String,
     pub role: ChannelRole,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "web", derive(Tsify))]
 pub struct Message {
     pub text: Option<TextMessage>,
     pub metadata: MessageMetadata,
@@ -526,7 +521,7 @@ impl PartialEq for Message {
 impl Eq for Message {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "web", wasm_bindgen)]
+#[cfg_attr(feature = "web", derive(Tsify))]
 pub enum MessageType {
     Privmsg,
     Notice,
@@ -537,6 +532,7 @@ pub enum MessageType {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "web", derive(Tsify))]
 pub struct TextMessage {
     pub content: String,
     pub reactions: HashMap<String, Vec<String>>,
@@ -548,7 +544,6 @@ pub struct TextMessage {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "web", derive(Tsify))]
-#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone, inspectable))]
 pub struct MessageMetadata {
     pub msgid: String,
     pub server_time: f64,
@@ -566,7 +561,6 @@ impl Eq for MessageMetadata {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "web", derive(Tsify))]
-#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone, inspectable))]
 pub struct MessageReference {
     /// Unset if message wasn't found or if reply wasn't to a text message
     pub text: Option<String>,
@@ -574,7 +568,9 @@ pub struct MessageReference {
     pub username: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "tag", content = "value")]
+#[cfg_attr(feature = "web", derive(Tsify))]
 pub enum ServerEvent {
     Joined(Channel),
     ChannelUpdated(ChannelMetadata),
@@ -595,52 +591,22 @@ pub enum ServerEvent {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "web", derive(Tsify))]
 pub struct History {
     pub target: String,
     pub messages: Vec<Message>,
 }
 
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "web", wasm_bindgen)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "web", derive(Tsify))]
 pub enum SignedIn {
     User,
     Guest,
 }
 
-#[derive(Debug, Error, Clone)]
-pub enum OrbitError {
-    #[error("Nickname is already in use")]
-    NickTaken,
-
-    #[error("{0}")]
-    SaslFailed(String),
-
-    #[error("Capability '{0}' is not enabled on this server")]
-    CapabilityDisabled(&'static str),
-
-    #[error("Not found")]
-    NotFound,
-
-    #[error("{0}")]
-    Generic(String),
-
-    #[error("Unknown error: {0}")]
-    Unknown(String),
-}
-
-impl From<anyhow::Error> for OrbitError {
-    fn from(error: anyhow::Error) -> Self {
-        let err = error.chain().skip(1).fold(error.to_string(), |acc, cause| {
-            format!("{}: {}\n", acc, cause)
-        });
-        error!("Unexpected Orbit error: {}", err);
-
-        Self::Unknown(error.to_string())
-    }
-}
-
 #[derive(Debug, Default)]
+#[cfg_attr(feature = "web", derive(Tsify))]
 pub struct Tags {
     pub server_time: Option<OffsetDateTime>,
     pub msgid: Option<String>,
@@ -719,9 +685,8 @@ impl Tags {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "web", derive(Tsify))]
-#[cfg_attr(feature = "web", wasm_bindgen(getter_with_clone, inspectable))]
 pub struct ChannelInfo {
     pub name: String,
     pub user_count: i32,

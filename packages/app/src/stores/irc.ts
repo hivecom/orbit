@@ -1,5 +1,5 @@
 import { defineStore } from "pinia"
-import { ChannelMessage, Message, React, type IrcConnection, type Server, type ServerList, OrbitError, IrcChannel, ChannelInfo, Channel } from "core-wasm"
+import { type Message, type IrcConnection, type Server, type ServerList, type OrbitError, IrcChannel, type ChannelInfo, type Channel } from "core-wasm"
 import { computed, ref, shallowRef } from "vue"
 import { useUserStore } from "./user"
 import { useAppStateStore } from "./app-state"
@@ -134,15 +134,15 @@ export const useIrcStore = defineStore("irc", () => {
   function registerServerEvents(key: number, handler: IrcConnection) {
     // Runs whenever some dataset on the server object changes
     handler.on_data((event) => {
-      if (event instanceof ChannelMessage) {
-        const messageKey = `${key}:${event.channel}`
+      if (event.tag === "Privmsg") {
+        const messageKey = `${key}:${event.value.channel}`
         const messages = serverMessages.value.get(messageKey) ?? []
-        messages.push(event.message)
+        messages.push(event.value.message)
         messages.sort((a: Message, b: Message) => a.metadata.server_time - b.metadata.server_time)
         serverMessages.value.set(messageKey, messages)
-      } else if (event instanceof React) {
+      } else if (event.tag === "React") {
         // TODO
-        console.log("Received reaction", event)
+        console.log("Received reaction", event.value)
       }
     })
 

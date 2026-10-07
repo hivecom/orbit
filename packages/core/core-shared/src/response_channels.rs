@@ -9,7 +9,10 @@ use web_time::Instant;
 use futures::channel::oneshot;
 use tracing::warn;
 
-use crate::state::{Channel, ChannelInfo, History, Message, OrbitError, Server, SignedIn};
+use crate::{
+    error::OrbitError,
+    state::{Channel, ChannelInfo, History, Message, Server, SignedIn},
+};
 
 #[cfg(feature = "web")]
 #[allow(unused_imports)]

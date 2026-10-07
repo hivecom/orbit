@@ -132,6 +132,7 @@ dependencies = [
  "irc-proto",
  "rand",
  "serde",
+ "serde-wasm-bindgen 0.6.5",
  "thiserror 2.0.18",
  "time",
  "tokio",
@@ -155,6 +156,7 @@ dependencies = [
  "irc-proto",
  "js-sys",
  "serde",
+ "serde-wasm-bindgen 0.6.5",
  "tracing",
  "tracing-subscriber",
  "tracing-subscriber-wasm",
@@ -1214,7 +1216,6 @@ checksum = "8ec5505497c87f1c050b4392d3f11b49a04537fcb9dc0da57bc0af168a6331f2"
 dependencies = [
  "gloo-utils 0.2.0",
  "serde",
- "serde-wasm-bindgen 0.6.5",
  "serde_json",
  "tsify-macros",
  "wasm-bindgen",

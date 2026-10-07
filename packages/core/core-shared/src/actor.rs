@@ -15,8 +15,9 @@ use crate::state::ChannelInfo;
 use crate::{
     SendCommand,
     database::Database,
+    error::OrbitError,
     response_channels::{CommandResponse, ResponseChannels},
-    state::{Channel, Message, OrbitError, Server, ServerEvent, User},
+    state::{Channel, Message, Server, ServerEvent, User},
 };
 use anyhow::Context;
 use futures::{

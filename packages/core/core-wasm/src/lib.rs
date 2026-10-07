@@ -5,10 +5,7 @@ use core_shared::{
     SendCommand,
     actor::{self, ActorCommand, ActorMessage, IrcActor},
     response_channels::CommandResponse,
-    state::{
-        self, Capabilities, ChannelInfo, ChannelMetadata, ChannelUser, MessageMetadata,
-        MessageReference, ServerMetadata, SignedIn, User,
-    },
+    state::{Channel, History, Message, Server, ServerEvent, SignedIn},
 };
 use futures::{
     SinkExt, StreamExt,
@@ -19,11 +16,15 @@ use futures::{
     stream::{Fuse, LocalBoxStream, SplitSink},
 };
 use gloo_net::websocket::{self, WebSocketError, futures::WebSocket};
-use js_sys::{JsString, Map};
+use serde::Serialize;
+use serde_wasm_bindgen::to_value;
 use tracing::debug;
-use tsify::Tsify;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::{js_sys, spawn_local};
+
+pub use error::OrbitError;
+
+mod error;
 
 #[macro_export]
 macro_rules! dbg {
@@ -145,7 +146,7 @@ impl IrcConnection {
     }
 
     #[wasm_bindgen]
-    pub async fn state(&mut self) -> Result<Server, OrbitError> {
+    pub async fn state(&mut self) -> Result<Js<Server>, OrbitError> {
         let (tx, rx) = oneshot::channel();
         self.address
             .send(ActorMessage {
@@ -158,7 +159,7 @@ impl IrcConnection {
         let resp = rx.await.context("Failed to await actor state message")?;
         let server = cmd_resp!(resp, CommandResponse::GetState)?;
 
-        Ok((*server).into())
+        Ok(Js(*server))
     }
 
     #[wasm_bindgen]
@@ -167,7 +168,7 @@ impl IrcConnection {
     }
 
     #[wasm_bindgen]
-    pub async fn channel_list(&mut self) -> Result<Vec<ChannelInfo>, OrbitError> {
+    pub async fn channel_list(&mut self) -> Result<JsValue, OrbitError> {
         let (tx, rx) = oneshot::channel();
         self.address
             .send(ActorMessage {
@@ -182,7 +183,7 @@ impl IrcConnection {
             unreachable!("expected channel list, got: {:?}", resp);
         };
 
-        Ok(list)
+        Ok(to_value(&list)?)
     }
 
     #[wasm_bindgen]
@@ -205,7 +206,7 @@ impl IrcConnection {
                 .expect("can send actor message");
 
             while let Ok(event) = handler_rx.recv().await {
-                if let Err(e) = f.call1(&JsValue::null(), &ServerEvent::from(event).into()) {
+                if let Err(e) = f.call1(&JsValue::null(), &Js(ServerEvent::from(event)).into()) {
                     gloo_console::error!("Error during event callback: {}", e);
                 }
             }
@@ -273,7 +274,7 @@ impl IrcConnection {
         user: String,
         realname: String,
         password: String,
-    ) -> Result<SignedIn, OrbitError> {
+    ) -> Result<Js<SignedIn>, OrbitError> {
         let (tx, rx) = oneshot::channel();
         self.address
             .send(ActorMessage {
@@ -291,7 +292,7 @@ impl IrcConnection {
         let resp = rx.await.context("Failed to await actor sign in message")?;
         let result = cmd_resp!(resp, CommandResponse::SignIn)?;
 
-        Ok(result)
+        Ok(Js(result))
     }
 
     #[wasm_bindgen]
@@ -300,7 +301,7 @@ impl IrcConnection {
         nick: String,
         user: String,
         realname: String,
-    ) -> Result<SignedIn, OrbitError> {
+    ) -> Result<Js<SignedIn>, OrbitError> {
         let (tx, rx) = oneshot::channel();
         self.address
             .send(ActorMessage {
@@ -318,7 +319,7 @@ impl IrcConnection {
 
         let result = cmd_resp!(resp, CommandResponse::SignIn)?;
 
-        Ok(result)
+        Ok(Js(result))
     }
 
     #[wasm_bindgen]
@@ -350,7 +351,7 @@ impl IrcConnection {
         &mut self,
         channel: String,
         before_msgid: String,
-    ) -> Result<History, OrbitError> {
+    ) -> Result<Js<History>, OrbitError> {
         let (tx, rx) = oneshot::channel();
         self.address
             .send(ActorMessage {
@@ -366,7 +367,7 @@ impl IrcConnection {
         let resp = rx.await.context("Failed to await actor history message")?;
         let history = cmd_resp!(resp, CommandResponse::History)?;
 
-        Ok(history.into())
+        Ok(Js(history))
     }
 }
 
@@ -379,7 +380,7 @@ pub struct IrcChannel {
 #[wasm_bindgen]
 impl IrcChannel {
     #[wasm_bindgen]
-    pub async fn state(&mut self) -> Result<Option<Channel>, OrbitError> {
+    pub async fn state(&mut self) -> Result<Js<Option<Channel>>, OrbitError> {
         let (tx, rx) = oneshot::channel();
         self.address
             .send(ActorMessage {
@@ -392,11 +393,11 @@ impl IrcChannel {
         let resp = rx.await.context("Failed to await actor state message")?;
         let channel = cmd_resp!(resp, CommandResponse::GetChannelState)?;
 
-        Ok((*channel).map(Into::into))
+        Ok(Js(*channel))
     }
 
     #[wasm_bindgen]
-    pub async fn send_message(&mut self, text: String) -> Result<Message, OrbitError> {
+    pub async fn send_message(&mut self, text: String) -> Result<Js<Message>, OrbitError> {
         let (tx, rx) = oneshot::channel();
         self.address
             .send(ActorMessage {
@@ -412,7 +413,7 @@ impl IrcChannel {
         let resp = rx.await.context("Failed to await actor privmessage")?;
         let message = cmd_resp!(resp, CommandResponse::Privmsg)?;
 
-        Ok((*message).into())
+        Ok(Js(*message))
     }
 }
 
@@ -475,230 +476,34 @@ impl SendCommand for OutgoingSink {
     }
 }
 
-#[derive(Debug, Clone, Tsify)]
-#[wasm_bindgen(getter_with_clone, inspectable)]
-pub struct Server {
-    pub id: i32,
-    pub metadata: ServerMetadata,
+pub struct Js<T: Serialize>(T);
 
-    #[tsify(type = "Map<string, Channel>")]
-    pub channels: Map<JsString, JsValue>,
-
-    pub capabilities: Capabilities,
-
-    #[tsify(type = "Map<string, User>")]
-    pub users: Map<JsString, JsValue>,
-
-    pub me: Option<User>,
-}
-
-impl From<state::Server> for Server {
-    fn from(server: state::Server) -> Self {
-        let mut channels = js_sys::Map::new_typed();
-        for (k, v) in server.channels {
-            channels = channels.set(&JsString::from(k), &JsValue::from(Channel::from(v)));
-        }
-
-        let mut users = js_sys::Map::new_typed();
-        for (k, v) in server.users {
-            users = users.set(&JsString::from(k), &JsValue::from(v));
-        }
-
-        Self {
-            id: server.id,
-            metadata: server.metadata,
-            channels,
-            capabilities: server.capabilities,
-            users,
-            me: server.me,
-        }
+impl<T: Serialize> From<T> for Js<T> {
+    fn from(value: T) -> Self {
+        Js(value)
     }
 }
 
-#[derive(Debug, Clone, Tsify)]
-#[wasm_bindgen(getter_with_clone)]
-pub struct Channel {
-    pub metadata: ChannelMetadata,
-    pub messages: Vec<Message>,
-    pub users: Vec<ChannelUser>,
-}
+use wasm_bindgen::convert::IntoWasmAbi;
+use wasm_bindgen::describe::WasmDescribe;
 
-impl From<state::Channel> for Channel {
-    fn from(channel: state::Channel) -> Self {
-        Self {
-            metadata: channel.metadata,
-            messages: channel.messages.into_iter().map(Into::into).collect(),
-            users: channel.users,
-        }
+impl<T: Serialize> From<Js<T>> for JsValue {
+    fn from(v: Js<T>) -> Self {
+        serde_wasm_bindgen::to_value(&v.0).unwrap_or_else(|e| e.to_string().into())
     }
 }
 
-#[derive(Debug, Clone, Tsify)]
-#[wasm_bindgen]
-#[serde(untagged)]
-pub enum ServerEvent {
-    Joined(Channel),
-    ChannelUpdated(ChannelMetadata),
-    ServerInfo(ServerMetadata),
-    UserList(UserList),
-    Privmsg(ChannelMessage),
-    React(React),
-}
-
-impl From<state::ServerEvent> for ServerEvent {
-    fn from(event: state::ServerEvent) -> Self {
-        match event {
-            state::ServerEvent::Joined(c) => Self::Joined(c.into()),
-            state::ServerEvent::ChannelUpdated(cm) => Self::ChannelUpdated(cm),
-            state::ServerEvent::ServerInfo(sm) => Self::ServerInfo(sm),
-            state::ServerEvent::UserList { channel, users } => {
-                Self::UserList(UserList { channel, users })
-            }
-            state::ServerEvent::Privmsg { channel, message } => Self::Privmsg(ChannelMessage {
-                channel,
-                message: message.into(),
-            }),
-            state::ServerEvent::React {
-                target_message,
-                user,
-                text,
-                is_unreact,
-            } => Self::React(React {
-                target_message,
-                user,
-                text,
-                is_unreact,
-            }),
-        }
+impl<T: Serialize> WasmDescribe for Js<T> {
+    fn describe() {
+        wasm_bindgen::JsValue::describe()
     }
 }
 
-#[derive(Debug, Clone, Tsify)]
-#[wasm_bindgen(getter_with_clone, inspectable)]
-pub struct ChannelMessage {
-    pub channel: String,
-    pub message: Message,
-}
+impl<T: Serialize> IntoWasmAbi for Js<T> {
+    type Abi = <wasm_bindgen::JsValue as IntoWasmAbi>::Abi;
 
-#[derive(Debug, Clone, PartialEq, Eq, Tsify)]
-#[wasm_bindgen(getter_with_clone, inspectable)]
-pub struct UserList {
-    pub channel: String,
-    pub users: Vec<ChannelUser>,
-}
-
-#[derive(Debug, Clone, Tsify)]
-#[wasm_bindgen(getter_with_clone, inspectable)]
-pub struct TextMessage {
-    pub content: String,
-    #[tsify(type = "Map<string, string[]>")]
-    pub reactions: Map<JsString, JsValue>,
-    pub reply: Option<MessageReference>,
-    pub redacted: bool,
-    pub edited: bool,
-    pub relayed_by: Option<String>,
-}
-
-impl From<state::TextMessage> for TextMessage {
-    fn from(message: state::TextMessage) -> Self {
-        let mut reactions = js_sys::Map::new_typed();
-        for (k, v) in message.reactions {
-            reactions = reactions.set(&JsString::from(k), &JsValue::from(v));
-        }
-
-        Self {
-            content: message.content,
-            reactions,
-            reply: message.reply,
-            redacted: message.redacted,
-            edited: message.edited,
-            relayed_by: message.relayed_by,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Tsify)]
-#[wasm_bindgen(getter_with_clone, inspectable)]
-pub struct Message {
-    pub text: Option<TextMessage>,
-    pub metadata: MessageMetadata,
-}
-
-impl From<state::Message> for Message {
-    fn from(message: state::Message) -> Self {
-        Self {
-            text: message.text.map(Into::into),
-            metadata: message.metadata,
-        }
-    }
-}
-
-#[derive(Debug, Tsify)]
-#[wasm_bindgen(getter_with_clone, inspectable)]
-pub struct OrbitError {
-    pub kind: OrbitErrorKind,
-    pub description: String,
-}
-
-impl From<state::OrbitError> for OrbitError {
-    fn from(error: state::OrbitError) -> Self {
-        let kind = match error {
-            state::OrbitError::NickTaken => OrbitErrorKind::NickTaken,
-            state::OrbitError::SaslFailed(_) => OrbitErrorKind::SaslFailed,
-            state::OrbitError::CapabilityDisabled(_) => OrbitErrorKind::CapabilityDisabled,
-            state::OrbitError::NotFound => OrbitErrorKind::NotFound,
-            state::OrbitError::Generic(_) => OrbitErrorKind::Generic,
-            state::OrbitError::Unknown(_) => OrbitErrorKind::Unknown,
-        };
-
-        Self {
-            kind,
-            description: error.to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-#[wasm_bindgen]
-pub enum OrbitErrorKind {
-    NickTaken,
-    SaslFailed,
-    CapabilityDisabled,
-    NotFound,
-    Generic,
-    Unknown,
-}
-
-impl From<anyhow::Error> for OrbitError {
-    fn from(error: anyhow::Error) -> Self {
-        Self {
-            kind: OrbitErrorKind::Unknown,
-            description: error.to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Tsify)]
-#[wasm_bindgen(getter_with_clone, inspectable)]
-pub struct React {
-    pub target_message: String,
-    pub user: String,
-    pub text: String,
-    pub is_unreact: bool,
-}
-
-#[derive(Debug, Clone, Tsify)]
-#[wasm_bindgen(getter_with_clone, inspectable)]
-pub struct History {
-    pub channel: String,
-    pub messages: Vec<Message>,
-}
-
-impl From<state::History> for History {
-    fn from(history: state::History) -> Self {
-        Self {
-            channel: history.target,
-            messages: history.messages.into_iter().map(Into::into).collect(),
-        }
+    fn into_abi(self) -> Self::Abi {
+        let js_val: wasm_bindgen::JsValue = self.into();
+        js_val.into_abi()
     }
 }
