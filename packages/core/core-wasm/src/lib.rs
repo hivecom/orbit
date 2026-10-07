@@ -155,7 +155,7 @@ impl IrcConnection {
 }
 
 #[wasm_bindgen]
-pub async fn state(server_id: i32) -> Result<Js<Server>, OrbitError> {
+pub async fn server_state(server_id: i32) -> Result<Js<Server>, OrbitError> {
     let (tx, rx) = oneshot::channel();
     let mut server =
         { SERVER_STORE.lock().await.by_id(server_id) }.ok_or(OrbitError::unknown_server())?;
@@ -355,7 +355,7 @@ pub async fn join_channel(
     server_id: i32,
     channel: String,
     password: Option<String>,
-) -> Result<IrcChannel, OrbitError> {
+) -> Result<String, OrbitError> {
     let (tx, rx) = oneshot::channel();
     let mut server =
         { SERVER_STORE.lock().await.by_id(server_id) }.ok_or(OrbitError::unknown_server())?;
@@ -371,10 +371,7 @@ pub async fn join_channel(
     let resp = rx.await.context("Failed to await actor join message")?;
     let channel = cmd_resp!(resp, CommandResponse::Join)?;
 
-    Ok(IrcChannel {
-        name: channel.metadata.name,
-        address: server.address.clone(),
-    })
+    Ok(channel.metadata.name)
 }
 
 #[wasm_bindgen]
@@ -405,49 +402,55 @@ pub async fn history_before(
 }
 
 #[wasm_bindgen]
-pub struct IrcChannel {
-    name: String,
-    address: UnboundedSender<ActorMessage>,
+pub async fn channel_state(
+    server_id: i32,
+    channel_name: String,
+) -> Result<Js<Option<Channel>>, OrbitError> {
+    let mut server =
+        { SERVER_STORE.lock().await.by_id(server_id) }.ok_or(OrbitError::unknown_server())?;
+
+    let (tx, rx) = oneshot::channel();
+    server
+        .address
+        .send(ActorMessage {
+            command: ActorCommand::GetChannelState(channel_name),
+            reply_tx: Some(tx),
+        })
+        .await
+        .context("Failed to send ActorMessage")?;
+
+    let resp = rx.await.context("Failed to await actor state message")?;
+    let channel = cmd_resp!(resp, CommandResponse::GetChannelState)?;
+
+    Ok(Js(*channel))
 }
 
 #[wasm_bindgen]
-impl IrcChannel {
-    #[wasm_bindgen]
-    pub async fn state(&mut self) -> Result<Js<Option<Channel>>, OrbitError> {
-        let (tx, rx) = oneshot::channel();
-        self.address
-            .send(ActorMessage {
-                command: ActorCommand::GetChannelState(self.name.clone()),
-                reply_tx: Some(tx),
-            })
-            .await
-            .context("Failed to send ActorMessage")?;
+pub async fn send_message(
+    server_id: i32,
+    channel_name: String,
+    text: String,
+) -> Result<Js<Message>, OrbitError> {
+    let mut server =
+        { SERVER_STORE.lock().await.by_id(server_id) }.ok_or(OrbitError::unknown_server())?;
 
-        let resp = rx.await.context("Failed to await actor state message")?;
-        let channel = cmd_resp!(resp, CommandResponse::GetChannelState)?;
+    let (tx, rx) = oneshot::channel();
+    server
+        .address
+        .send(ActorMessage {
+            command: ActorCommand::Privmsg {
+                target: channel_name,
+                text,
+            },
+            reply_tx: Some(tx),
+        })
+        .await
+        .context("Failed to send ActorMessage")?;
 
-        Ok(Js(*channel))
-    }
+    let resp = rx.await.context("Failed to await actor privmessage")?;
+    let message = cmd_resp!(resp, CommandResponse::Privmsg)?;
 
-    #[wasm_bindgen]
-    pub async fn send_message(&mut self, text: String) -> Result<Js<Message>, OrbitError> {
-        let (tx, rx) = oneshot::channel();
-        self.address
-            .send(ActorMessage {
-                command: ActorCommand::Privmsg {
-                    target: self.name.clone(),
-                    text,
-                },
-                reply_tx: Some(tx),
-            })
-            .await
-            .context("Failed to send ActorMessage")?;
-
-        let resp = rx.await.context("Failed to await actor privmessage")?;
-        let message = cmd_resp!(resp, CommandResponse::Privmsg)?;
-
-        Ok(Js(*message))
-    }
+    Ok(Js(*message))
 }
 
 struct WsConnection {
