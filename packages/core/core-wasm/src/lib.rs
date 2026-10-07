@@ -5,7 +5,7 @@ use core_shared::{
     SendCommand,
     actor::{self, ActorCommand, ActorMessage, IrcActor},
     response_channels::CommandResponse,
-    state::{Channel, History, Message, Server, SignedIn},
+    state::{Channel, ChannelInfo, History, Message, Server, SignedIn},
 };
 use futures::{
     SinkExt, StreamExt,
@@ -194,7 +194,7 @@ pub async fn server_state(server_id: i32) -> Result<Ts<Server>, OrbitError> {
 }
 
 #[wasm_bindgen]
-pub async fn server_channel_list(server_id: i32) -> Result<JsValue, OrbitError> {
+pub async fn server_channel_list(server_id: i32) -> Result<Vec<Ts<ChannelInfo>>, OrbitError> {
     let (tx, rx) = oneshot::channel();
     let mut server =
         { SERVER_STORE.lock().await.by_id(server_id) }.ok_or(OrbitError::unknown_server())?;
@@ -212,7 +212,13 @@ pub async fn server_channel_list(server_id: i32) -> Result<JsValue, OrbitError> 
         unreachable!("expected channel list, got: {:?}", resp);
     };
 
-    Ok(to_value(&list)?)
+    let list = list
+        .into_iter()
+        .map(|c| Ts::from_rust(&c))
+        .collect::<Result<Vec<_>, tsify::Error>>()
+        .context("Failed to convert to Ts")?;
+
+    Ok(list)
 }
 
 #[wasm_bindgen]
