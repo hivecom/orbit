@@ -113,26 +113,23 @@ impl ServerList {
 }
 
 #[wasm_bindgen]
-pub async fn initialize_orbit() {
-    SERVER_STORE.lock().await;
-}
-
-#[wasm_bindgen]
-pub async fn connect(url: String) -> Result<i32, OrbitError> {
-    let id = {
+pub async fn initialize_orbit() -> Result<Js<Vec<Server>>, OrbitError> {
+    let ids = {
         let store = SERVER_STORE.lock().await;
-
-        store.max_id().unwrap_or(-1) + 1
-    };
-    let connection = IrcConnection::connect(id, url).await?;
-
-    {
-        let mut store = SERVER_STORE.lock().await;
-
-        store.servers.push(connection.clone());
+        store
+            .servers
+            .iter()
+            .map(|s| &s.id)
+            .copied()
+            .collect::<Vec<_>>()
     };
 
-    Ok(id)
+    let mut states = Vec::new();
+    for id in ids {
+        states.push(server_state(id).await?.0);
+    }
+
+    Ok(Js(states))
 }
 
 #[derive(Clone)]
@@ -152,6 +149,24 @@ impl IrcConnection {
 
         Ok(Self { id, address })
     }
+}
+
+#[wasm_bindgen]
+pub async fn server_connect(url: String) -> Result<i32, OrbitError> {
+    let id = {
+        let store = SERVER_STORE.lock().await;
+
+        store.max_id().unwrap_or(-1) + 1
+    };
+    let connection = IrcConnection::connect(id, url).await?;
+
+    {
+        let mut store = SERVER_STORE.lock().await;
+
+        store.servers.push(connection.clone());
+    };
+
+    Ok(id)
 }
 
 #[wasm_bindgen]
@@ -175,7 +190,7 @@ pub async fn server_state(server_id: i32) -> Result<Js<Server>, OrbitError> {
 }
 
 #[wasm_bindgen]
-pub async fn channel_list(server_id: i32) -> Result<JsValue, OrbitError> {
+pub async fn server_channel_list(server_id: i32) -> Result<JsValue, OrbitError> {
     let (tx, rx) = oneshot::channel();
     let mut server =
         { SERVER_STORE.lock().await.by_id(server_id) }.ok_or(OrbitError::unknown_server())?;
@@ -197,7 +212,7 @@ pub async fn channel_list(server_id: i32) -> Result<JsValue, OrbitError> {
 }
 
 #[wasm_bindgen]
-pub async fn on_data(
+pub async fn server_on_data(
     server_id: i32,
     #[wasm_bindgen(unchecked_param_type = "(event: ServerEvent) => void")] f: js_sys::Function,
 ) -> Result<(), OrbitError> {
@@ -228,7 +243,7 @@ pub async fn on_data(
 }
 
 #[wasm_bindgen]
-pub async fn on_error(
+pub async fn server_on_error(
     server_id: i32,
     #[wasm_bindgen(unchecked_param_type = "(event: ServerError) => void")] f: js_sys::Function,
 ) -> Result<(), OrbitError> {
@@ -259,7 +274,7 @@ pub async fn on_error(
 }
 
 #[wasm_bindgen]
-pub async fn on_disconnect(
+pub async fn server_on_disconnect(
     server_id: i32,
     #[wasm_bindgen(unchecked_param_type = "(event: string) => void")] f: js_sys::Function,
 ) -> Result<(), OrbitError> {
@@ -290,7 +305,7 @@ pub async fn on_disconnect(
 }
 
 #[wasm_bindgen]
-pub async fn sign_in(
+pub async fn server_sign_in(
     server_id: i32,
     nick: String,
     user: String,
@@ -321,7 +336,7 @@ pub async fn sign_in(
 }
 
 #[wasm_bindgen]
-pub async fn sign_in_anonymous(
+pub async fn server_sign_in_anonymous(
     server_id: i32,
     nick: String,
     user: String,
@@ -351,7 +366,7 @@ pub async fn sign_in_anonymous(
 }
 
 #[wasm_bindgen]
-pub async fn join_channel(
+pub async fn chat_channel_join(
     server_id: i32,
     channel: String,
     password: Option<String>,
@@ -375,7 +390,7 @@ pub async fn join_channel(
 }
 
 #[wasm_bindgen]
-pub async fn history_before(
+pub async fn chat_channel_history_before(
     server_id: i32,
     channel: String,
     before_msgid: String,
@@ -402,7 +417,7 @@ pub async fn history_before(
 }
 
 #[wasm_bindgen]
-pub async fn channel_state(
+pub async fn chat_channel_state(
     server_id: i32,
     channel_name: String,
 ) -> Result<Js<Option<Channel>>, OrbitError> {
@@ -426,7 +441,7 @@ pub async fn channel_state(
 }
 
 #[wasm_bindgen]
-pub async fn send_message(
+pub async fn chat_channel_send_message(
     server_id: i32,
     channel_name: String,
     text: String,
