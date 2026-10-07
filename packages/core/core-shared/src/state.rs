@@ -606,7 +606,6 @@ pub enum SignedIn {
 }
 
 #[derive(Debug, Default)]
-#[cfg_attr(feature = "web", derive(Tsify))]
 pub struct Tags {
     pub server_time: Option<OffsetDateTime>,
     pub msgid: Option<String>,
