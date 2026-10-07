@@ -1,18 +1,12 @@
 import { defineStore } from "pinia"
-import { type Message, type IrcConnection, type Server, type ServerList, type OrbitError, IrcChannel, type ChannelInfo, type Channel } from "core-wasm"
+import { type Message, type Server, type OrbitError, type ChannelInfo, type Channel, server_sign_in_anonymous, server_channel_list, server_connect, server_on_data, server_on_disconnect, server_on_error, chat_channel_history_before, chat_channel_join } from "core-wasm"
 import { computed, ref, shallowRef } from "vue"
 import { useUserStore } from "./user"
 import { useAppStateStore } from "./app-state"
-import { toJSON } from "../lib/helpers"
 import { searchString } from "@dolanske/vui"
 
-export interface IrcChannelWithHandler {
-  handler: IrcChannel
-  data: Channel
-}
-
 export interface IrcChannels {
-  joined: IrcChannelWithHandler[]
+  joined: Channel[]
   available: ChannelInfo[]
 }
 
@@ -26,20 +20,12 @@ export type ServerWithGroupedChannels = Server & {
 export const useIrcStore = defineStore("irc", () => {
   const user = useUserStore()
   const app = useAppStateStore()
-
   const initialized = shallowRef(false)
 
   // Holds reference to server metadata
   const serverData = ref<Map<number, Server>>(new Map())
-  const serverHandlers = ref<Map<number, IrcConnection>>(new Map())
-
-  // Holds channel information per server
   const serverChannels = ref<Map<number, IrcChannels>>(new Map())
-
-  // Holds references to messages per server where the id is `serverId:channelId`
   const serverMessages = ref<Map<string, Message[]>>(new Map())
-
-  let controller: ServerList = {} as ServerList
 
   /**
    * Returns the servers including their group (joined/available) channels.
@@ -49,8 +35,7 @@ export const useIrcStore = defineStore("irc", () => {
   const serversWithChannels = computed(() => {
     return [...serverData.value.values()].map((server) => {
       return {
-        // oxlint-disable-next-line typescript/no-misused-spread
-        ...toJSON(server),
+        ...server,
         groupedChannels: serverChannels.value.get(server.id),
       }
     }) as ServerWithGroupedChannels[]
@@ -64,7 +49,7 @@ export const useIrcStore = defineStore("irc", () => {
         // oxlint-disable-next-line typescript/no-misused-spread
         ...server,
         groupedChannels: {
-          joined: server.groupedChannels.joined.filter((channel) => searchString(channel.data.metadata.name, search)),
+          joined: server.groupedChannels.joined.filter((channel) => searchString(channel.metadata.name, search)),
           available: server.groupedChannels.available.filter((channel) => searchString(channel.name, search)),
         },
       }
@@ -74,14 +59,13 @@ export const useIrcStore = defineStore("irc", () => {
   /**
    * Initializes empty server datasets and fetches available (unjoined channels)
    */
-  async function initializeServer(server: Server, handler: IrcConnection) {
+  async function initializeServer(server: Server) {
     serverData.value.set(server.id, server)
-    serverHandlers.value.set(server.id, handler)
     serverChannels.value.set(server.id, { joined: [], available: [] })
 
-    await handler.sign_in_anonymous(user.me.displayName, user.me.accountName, user.me.accountName)
+    await server_sign_in_anonymous(server.id, user.me.displayName, user.me.accountName, user.me.accountName)
 
-    await handler.channel_list().then((channels) => {
+    await server_channel_list(server.id).then((channels) => {
       const data = serverChannels.value.get(server.id)
       if (!data) return
       data.available = channels.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()))
@@ -94,18 +78,9 @@ export const useIrcStore = defineStore("irc", () => {
    * the `createOrbitApp` and nowhere else. Takes in the initial dataset
    * returned by the IRC/Depot/etc servers.
    */
-  async function init(_controller: ServerList) {
-    controller = _controller
-
-    // Get server state and save their data & controllers
-    await Promise.allSettled(
-      controller.servers.map(async (serv, index) => {
-        const server = await serv.state()
-        await initializeServer(server, controller.servers[index]!)
-        return serv.state()
-      }),
-    )
-
+  async function init(servers: Server[]) {
+    // Initialize servers
+    await Promise.allSettled(servers.map(initializeServer))
     initialized.value = true
   }
 
@@ -116,44 +91,40 @@ export const useIrcStore = defineStore("irc", () => {
    * unjoined channels and users get to choose the first one they join in the UI.
    */
   async function serverConnect(url: string) {
-    const handler = await controller.connect(url).catch((e) => {
+    const state = await server_connect(url).catch((e) => {
       throw new Error(e)
     })
 
-    const state = await handler.state()
-    await initializeServer(state, handler)
+    await initializeServer(state)
+    registerServerEvents(state.id)
 
-    registerServerEvents(state.id, handler)
-
-    return {
-      handler,
-      state,
-    }
+    return state
   }
 
-  function registerServerEvents(key: number, handler: IrcConnection) {
+  function registerServerEvents(serverId: number) {
     // Runs whenever some dataset on the server object changes
-    handler.on_data((event) => {
+    void server_on_data(serverId, (event) => {
       if (event.tag === "Privmsg") {
-        const messageKey = `${key}:${event.value.channel}`
+        const messageKey = `${serverId}:${event.value.channel}`
         const messages = serverMessages.value.get(messageKey) ?? []
         messages.push(event.value.message)
         messages.sort((a: Message, b: Message) => a.metadata.server_time - b.metadata.server_time)
         serverMessages.value.set(messageKey, messages)
       } else if (event.tag === "React") {
-        // TODO
         console.log("Received reaction", event.value)
+      } else {
+        console.log("=====")
+        console.log("Received unknown dataset", event)
       }
     })
 
     // Leaving server - clean up state
-    handler.on_disconnect((reason) => {
+    void server_on_disconnect(serverId, (reason) => {
       console.log("Disconnected", reason)
-      serverHandlers.value.delete(key)
-      serverData.value.delete(key)
+      serverData.value.delete(serverId)
     })
 
-    handler.on_error((error) => {
+    void server_on_error(serverId, (error) => {
       app.ircErrors.push(error)
     })
   }
@@ -172,7 +143,7 @@ export const useIrcStore = defineStore("irc", () => {
   }
 
   function getServerChannel(serverId: number, channelId: string) {
-    return serverChannels.value.get(serverId)?.joined.find((channel) => channel.data.metadata.name === channelId)
+    return serverChannels.value.get(serverId)?.joined.find((channel) => channel.metadata.name === channelId)
   }
 
   async function requestScrollback(serverId: number, channelId: string) {
@@ -182,7 +153,7 @@ export const useIrcStore = defineStore("irc", () => {
       const oldestId = serverMessages.value.get(messageId)?.[0]
       if (!oldestId) return
 
-      const history = await serverHandlers.value.get(serverId)?.history_before(channelId, oldestId.metadata.msgid)
+      const history = await chat_channel_history_before(serverId, channelId, oldestId.metadata.msgid)
       if (!history) return
 
       const messages = serverMessages.value.get(messageId)
@@ -192,8 +163,7 @@ export const useIrcStore = defineStore("irc", () => {
       messages.sort((a, b) => a.metadata.server_time - b.metadata.server_time)
       serverMessages.value.set(messageId, messages)
     } catch (e: unknown) {
-      const error = e as OrbitError
-      console.error(JSON.parse(error.toString()))
+      console.error(e as OrbitError)
     }
   }
 
@@ -202,24 +172,24 @@ export const useIrcStore = defineStore("irc", () => {
    */
   async function channelJoin(serverId: number, channelId: string) {
     try {
-      const serverHandler = serverHandlers.value.get(serverId)
       const channels = serverChannels.value.get(serverId)
-      if (!serverHandler || !channels) return
-      const handler = await serverHandler.join_channel(channelId)
-      const data = (await handler.state())!
+      if (!channels) return
+      const data = await chat_channel_join(serverId, channelId)
+      if (!data) return
+
+      console.log(data)
 
       // Add channel to joined, remove it from available
-      channels.joined.push({ data, handler })
-      channels.joined = [...channels.joined].sort((a, b) => a.data.metadata.name.toLowerCase().localeCompare(b.data.metadata.name.toLowerCase()))
+      channels.joined.push(data)
+      channels.joined = [...channels.joined].sort((a, b) => a.metadata.name.toLowerCase().localeCompare(b.metadata.name.toLowerCase()))
       channels.available = channels.available.filter((item) => item.name !== data.metadata.name)
 
       // Upon joining, show backlog
       serverMessages.value.set(`${serverId}:${channelId}`, data.messages)
 
       serverChannels.value.set(serverId, channels)
-    } catch (e: unknown) {
-      const error = e as OrbitError
-      console.error(JSON.parse(error.toString()))
+    } catch (e: any) {
+      console.error(e as OrbitError)
     }
   }
 
@@ -228,9 +198,7 @@ export const useIrcStore = defineStore("irc", () => {
     serverConnect,
     channelJoin,
     initialized,
-    controller,
     serverData,
-    serverHandlers,
     getServerState,
     getChannelMessages,
     getServerChannels,

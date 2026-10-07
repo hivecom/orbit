@@ -34,11 +34,11 @@ export async function createOrbitApp(root: Component<any, any, any, any, any>, p
 
   await init().then(async () => {
     return initialize_orbit()
-      .then(async (controller) => {
+      .then(async (servers) => {
         useUserStore().init()
         useConfigStore().init()
 
-        await useIrcStore(pinia).init(controller)
+        await useIrcStore(pinia).init(servers)
       })
       .catch((e) => {
         const appState = useAppStateStore()

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { type MessageType } from "core-wasm"
+import { chat_channel_send_message } from "core-wasm"
 import { type WindowAndLocation, type WindowChat } from "../../lib/windows"
 import { useIrcStore } from "../../stores/irc"
 import Composer from "../shared/composer/Composer.vue"
@@ -24,7 +24,7 @@ const format = useDateFormatter()
 const messages = computed(() => {
   const data = irc.getChannelMessages(props.serverId, props.channelId)
   if (!config.options.appearance_chat_show_status_messages) {
-    return data?.filter((msg) => msg.metadata.message_type === MessageType.Privmsg)
+    return data?.filter((msg) => msg.metadata.message_type === "Privmsg")
   }
   return data
 })
@@ -37,7 +37,7 @@ async function sendMessage(message: string) {
   if (!channel.value) return
 
   forceScroll = true
-  channel.value.handler.send_message(message)
+  chat_channel_send_message(props.serverId, props.channelId, message)
 
   // Await DOM update in case the Composer height shrinks after clearing text
   await nextTick()
@@ -201,10 +201,10 @@ const showUserList = ref(false)
         <template #start>
           <IconUsersGroupRoundedLinear />
         </template>
-        {{ channel?.data.users.length }}
+        {{ channel?.users.length }}
       </Button>
     </div>
-    <ChatUserList v-if="showUserList && channel" :users="channel.data.users" />
+    <ChatUserList v-if="showUserList && channel" :users="channel.users" />
     <div class="o-window-chat-wrap">
       <div class="o-channel-list" v-if="props.channelId === IRC_UNKNOWN_CHANNEL || props.serverId === IRC_UNKNOWN_SERVER">
         <!-- 
@@ -223,8 +223,8 @@ const showUserList = ref(false)
                 </Flex>
               </template>
               <Grid :columns="4">
-                <DropdownItem :disabled="loadingChannel" v-for="channel in server.groupedChannels.joined" :key="channel.data.metadata.name" @click="join(server.id, channel.data.metadata.name, { forceLocation: props.location })">
-                  {{ channel.data.metadata.name }}
+                <DropdownItem :disabled="loadingChannel" v-for="channel in server.groupedChannels.joined" :key="channel.metadata.name" @click="join(server.id, channel.metadata.name, { forceLocation: props.location })">
+                  {{ channel.metadata.name }}
                 </DropdownItem>
                 <DropdownItem class="lighter" :disabled="loadingChannel" v-for="channel in server.groupedChannels.available" :key="channel.name" @click="join(server.id, channel.name, { forceLocation: props.location })">
                   {{ channel.name }}

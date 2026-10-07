@@ -29,17 +29,17 @@ const [DefineChannelList, ReuseChannelList] = createReusableTemplate()
 <template>
   <DefineChannelList>
     <div class="o-sidebar-server-channels" :class="{ mini }">
-      <ContextMenu v-for="item in server.groupedChannels.joined" :key="item.data.metadata.name">
-        <DropdownItem :inert="loading" @click="join(server.id, item.data.metadata.name)">
-          {{ item.data.metadata.name }}
+      <ContextMenu v-for="item in server.groupedChannels.joined" :key="item.metadata.name">
+        <DropdownItem :inert="loading" @click="join(server.id, item.metadata.name)">
+          {{ item.metadata.name }}
         </DropdownItem>
         <template #menu="{ close: closeMenu }">
           <Flex class="p-xxs" :gap="0" column @click="closeMenu">
-            <DropdownItem size="s" @click="join(server.id, item.data.metadata.name)">Open</DropdownItem>
-            <DropdownItem size="s" @click="join(server.id, item.data.metadata.name, { split: true })">Open in split view</DropdownItem>
-            <template v-if="windowsCount > 1 && findById({ channelId: item.data.metadata.name })">
+            <DropdownItem size="s" @click="join(server.id, item.metadata.name)">Open</DropdownItem>
+            <DropdownItem size="s" @click="join(server.id, item.metadata.name, { split: true })">Open in split view</DropdownItem>
+            <template v-if="windowsCount > 1 && findById({ channelId: item.metadata.name })">
               <Divider class="my-xxs" />
-              <DropdownItem size="s" @click="closeWindow(findById({ channelId: item.data.metadata.name })!.location)">Close</DropdownItem>
+              <DropdownItem size="s" @click="closeWindow(findById({ channelId: item.metadata.name })!.location)">Close</DropdownItem>
             </template>
             <Divider class="my-xxs" />
             <DropdownItem disabled size="s">Leave</DropdownItem>

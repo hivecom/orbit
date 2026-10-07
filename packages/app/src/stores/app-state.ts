@@ -2,6 +2,7 @@ import { defineStore } from "pinia"
 import { useIrcStore } from "./irc"
 import { computed, shallowRef } from "vue"
 import { useUserStore } from "./user"
+import type { OrbitError } from "core-wasm"
 
 /**
  * Tracks global state such as initialization, errors & etc
@@ -11,7 +12,7 @@ export const useAppStateStore = defineStore("app-state", () => {
   const userStore = useUserStore()
 
   const globalError = shallowRef<string | null>(null)
-  const ircErrors = shallowRef<string[]>([])
+  const ircErrors = shallowRef<OrbitError[]>([])
 
   /**
    * Contains the `initialize` state from all stores, where initialization might

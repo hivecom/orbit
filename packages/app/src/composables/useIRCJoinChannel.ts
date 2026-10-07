@@ -20,7 +20,7 @@ export function useIRCJoinChannel() {
       // `irc.channelJoin` and just replace instead
       const existing = irc.serverChannels.get(serverId)
 
-      if (!existing?.joined.find((item) => item.data.metadata.name === channelId)) {
+      if (!existing?.joined.find((item) => item.metadata.name === channelId)) {
         await irc.channelJoin(serverId, channelId)
       }
 
