@@ -9,6 +9,15 @@ pub struct OrbitError {
     pub description: String,
 }
 
+impl OrbitError {
+    pub fn unknown_server() -> Self {
+        Self {
+            kind: OrbitErrorKind::UnknownServer,
+            description: String::from("No server with the provided ID is known"),
+        }
+    }
+}
+
 impl From<ActorOrbitError> for OrbitError {
     fn from(error: ActorOrbitError) -> Self {
         let kind = match error {
@@ -40,6 +49,7 @@ pub enum OrbitErrorKind {
     CapabilityDisabled,
     NotFound,
     Generic,
+    UnknownServer,
     Serialize,
     Unknown,
 }

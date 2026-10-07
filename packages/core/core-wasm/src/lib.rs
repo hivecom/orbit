@@ -1,4 +1,4 @@
-use std::{fmt, str::FromStr};
+use std::{fmt, str::FromStr, sync::LazyLock};
 
 use anyhow::{Context, bail};
 use core_shared::{
@@ -13,6 +13,7 @@ use futures::{
         mpsc::{self, UnboundedSender},
         oneshot,
     },
+    lock::Mutex,
     stream::{Fuse, LocalBoxStream, SplitSink},
 };
 use gloo_net::websocket::{self, WebSocketError, futures::WebSocket};
@@ -70,6 +71,9 @@ mod database;
 
 const DATABASE_NAME: &str = "orbit-core";
 
+static SERVER_STORE: LazyLock<Mutex<ServerList>> =
+    LazyLock::new(|| Mutex::new(ServerList::default()));
+
 fn init_tracing() {
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_writer(MakeConsoleWriter::default())
@@ -92,47 +96,51 @@ fn init() {
     debug!("WASM panic hook & logger initialized");
 }
 
-#[wasm_bindgen]
-pub async fn initialize_orbit() -> Result<ServerList, OrbitError> {
-    ServerList::new().await
-}
-
-#[wasm_bindgen(getter_with_clone)]
+#[derive(Default)]
 pub struct ServerList {
     pub servers: Vec<IrcConnection>,
 }
 
 #[wasm_bindgen]
 impl ServerList {
-    #[wasm_bindgen]
-    pub async fn new() -> Result<Self, OrbitError> {
-        Ok(Self {
-            servers: Vec::new(),
-        })
+    fn max_id(&self) -> Option<i32> {
+        self.servers.iter().map(|s| s.id).max()
     }
 
-    #[wasm_bindgen]
-    pub async fn connect(&mut self, url: String) -> Result<IrcConnection, OrbitError> {
-        let id = self.max_id().unwrap_or(-1) + 1;
-        let connection = IrcConnection::connect(id, url).await?;
-        self.servers.push(connection.clone());
-
-        Ok(connection)
-    }
-
-    fn max_id(&mut self) -> Option<i32> {
-        self.servers.iter().map(|s| s.id()).max()
+    fn by_id(&self, id: i32) -> Option<IrcConnection> {
+        self.servers.iter().find(|s| s.id == id).cloned()
     }
 }
 
-#[derive(Clone)]
 #[wasm_bindgen]
+pub async fn initialize_orbit() {
+    SERVER_STORE.lock().await;
+}
+
+#[wasm_bindgen]
+pub async fn connect(url: String) -> Result<i32, OrbitError> {
+    let id = {
+        let store = SERVER_STORE.lock().await;
+
+        store.max_id().unwrap_or(-1) + 1
+    };
+    let connection = IrcConnection::connect(id, url).await?;
+
+    {
+        let mut store = SERVER_STORE.lock().await;
+
+        store.servers.push(connection.clone());
+    };
+
+    Ok(id)
+}
+
+#[derive(Clone)]
 pub struct IrcConnection {
     id: i32,
     address: UnboundedSender<ActorMessage>,
 }
 
-#[wasm_bindgen]
 impl IrcConnection {
     async fn connect(id: i32, url: String) -> Result<Self, OrbitError> {
         let connection = WsConnection::new(url)?;
@@ -144,231 +152,256 @@ impl IrcConnection {
 
         Ok(Self { id, address })
     }
+}
 
-    #[wasm_bindgen]
-    pub async fn state(&mut self) -> Result<Js<Server>, OrbitError> {
-        let (tx, rx) = oneshot::channel();
-        self.address
-            .send(ActorMessage {
-                command: ActorCommand::GetState,
-                reply_tx: Some(tx),
-            })
-            .await
-            .context("Failed to send ActorMessage")?;
-
-        let resp = rx.await.context("Failed to await actor state message")?;
-        let server = cmd_resp!(resp, CommandResponse::GetState)?;
-
-        Ok(Js(*server))
-    }
-
-    #[wasm_bindgen]
-    pub fn id(&self) -> i32 {
-        self.id
-    }
-
-    #[wasm_bindgen]
-    pub async fn channel_list(&mut self) -> Result<JsValue, OrbitError> {
-        let (tx, rx) = oneshot::channel();
-        self.address
-            .send(ActorMessage {
-                command: ActorCommand::GetChannelList,
-                reply_tx: Some(tx),
-            })
-            .await
-            .context("Failed to send ActorMessage")?;
-
-        let resp = rx.await.context("Failed to await actor state message")?;
-        let CommandResponse::ChannelList(list) = resp else {
-            unreachable!("expected channel list, got: {:?}", resp);
-        };
-
-        Ok(to_value(&list)?)
-    }
-
-    #[wasm_bindgen]
-    pub fn on_data(
-        &mut self,
-        #[wasm_bindgen(unchecked_param_type = "(event: ServerEvent) => void")] f: js_sys::Function,
-    ) {
-        let (handler_tx, mut handler_rx) = mpsc::unbounded();
-
-        let mut address = self.address.clone();
-        spawn_local(async move {
-            address
-                .send(ActorMessage {
-                    command: ActorCommand::AddEventHandler {
-                        handler: handler_tx,
-                    },
-                    reply_tx: None,
-                })
-                .await
-                .expect("can send actor message");
-
-            while let Ok(event) = handler_rx.recv().await {
-                if let Err(e) = f.call1(&JsValue::null(), &Js(ServerEvent::from(event)).into()) {
-                    gloo_console::error!("Error during event callback: {}", e);
-                }
-            }
-        });
-    }
-
-    #[wasm_bindgen]
-    pub fn on_error(
-        &mut self,
-        #[wasm_bindgen(unchecked_param_type = "(event: ServerError) => void")] f: js_sys::Function,
-    ) {
-        let (handler_tx, mut handler_rx) = mpsc::unbounded();
-
-        let mut address = self.address.clone();
-        spawn_local(async move {
-            address
-                .send(ActorMessage {
-                    command: ActorCommand::AddErrorHandler {
-                        handler: handler_tx,
-                    },
-                    reply_tx: None,
-                })
-                .await
-                .expect("can send actor message");
-
-            while let Ok(event) = handler_rx.recv().await {
-                if let Err(e) = f.call1(&JsValue::null(), &OrbitError::from(event).into()) {
-                    gloo_console::error!("Error during error callback: {}", e);
-                }
-            }
-        });
-    }
-
-    #[wasm_bindgen]
-    pub fn on_disconnect(
-        &mut self,
-        #[wasm_bindgen(unchecked_param_type = "(event: string) => void")] f: js_sys::Function,
-    ) {
-        let (handler_tx, mut handler_rx) = mpsc::unbounded();
-
-        let mut address = self.address.clone();
-        spawn_local(async move {
-            address
-                .send(ActorMessage {
-                    command: ActorCommand::AddDisconectHandler {
-                        handler: handler_tx,
-                    },
-                    reply_tx: None,
-                })
-                .await
-                .expect("can send actor message");
-
-            while let Ok(event) = handler_rx.recv().await {
-                if let Err(e) = f.call1(&JsValue::null(), &event.into()) {
-                    gloo_console::error!("Error during event callback: {}", e);
-                }
-            }
-        });
-    }
-
-    #[wasm_bindgen]
-    pub async fn sign_in(
-        &mut self,
-        nick: String,
-        user: String,
-        realname: String,
-        password: String,
-    ) -> Result<Js<SignedIn>, OrbitError> {
-        let (tx, rx) = oneshot::channel();
-        self.address
-            .send(ActorMessage {
-                command: ActorCommand::SignIn {
-                    nick,
-                    user,
-                    realname,
-                    password,
-                },
-                reply_tx: Some(tx),
-            })
-            .await
-            .context("Failed to send ActorMessage")?;
-
-        let resp = rx.await.context("Failed to await actor sign in message")?;
-        let result = cmd_resp!(resp, CommandResponse::SignIn)?;
-
-        Ok(Js(result))
-    }
-
-    #[wasm_bindgen]
-    pub async fn sign_in_anonymous(
-        &mut self,
-        nick: String,
-        user: String,
-        realname: String,
-    ) -> Result<Js<SignedIn>, OrbitError> {
-        let (tx, rx) = oneshot::channel();
-        self.address
-            .send(ActorMessage {
-                command: ActorCommand::SignInAnonymous {
-                    nick,
-                    user,
-                    realname,
-                },
-                reply_tx: Some(tx),
-            })
-            .await
-            .context("Failed to send ActorMessage")?;
-
-        let resp = rx.await.context("Failed to await actor sign in message")?;
-
-        let result = cmd_resp!(resp, CommandResponse::SignIn)?;
-
-        Ok(Js(result))
-    }
-
-    #[wasm_bindgen]
-    pub async fn join_channel(
-        &mut self,
-        channel: String,
-        password: Option<String>,
-    ) -> Result<IrcChannel, OrbitError> {
-        let (tx, rx) = oneshot::channel();
-        self.address
-            .send(ActorMessage {
-                command: ActorCommand::Join { channel, password },
-                reply_tx: Some(tx),
-            })
-            .await
-            .context("Failed to send ActorMessage")?;
-
-        let resp = rx.await.context("Failed to await actor join message")?;
-        let channel = cmd_resp!(resp, CommandResponse::Join)?;
-
-        Ok(IrcChannel {
-            name: channel.metadata.name,
-            address: self.address.clone(),
+#[wasm_bindgen]
+pub async fn state(server_id: i32) -> Result<Js<Server>, OrbitError> {
+    let (tx, rx) = oneshot::channel();
+    let mut server =
+        { SERVER_STORE.lock().await.by_id(server_id) }.ok_or(OrbitError::unknown_server())?;
+    server
+        .address
+        .send(ActorMessage {
+            command: ActorCommand::GetState,
+            reply_tx: Some(tx),
         })
-    }
+        .await
+        .context("Failed to send ActorMessage")?;
 
-    #[wasm_bindgen]
-    pub async fn history_before(
-        &mut self,
-        channel: String,
-        before_msgid: String,
-    ) -> Result<Js<History>, OrbitError> {
-        let (tx, rx) = oneshot::channel();
-        self.address
+    let resp = rx.await.context("Failed to await actor state message")?;
+    let server = cmd_resp!(resp, CommandResponse::GetState)?;
+
+    Ok(Js(*server))
+}
+
+#[wasm_bindgen]
+pub async fn channel_list(server_id: i32) -> Result<JsValue, OrbitError> {
+    let (tx, rx) = oneshot::channel();
+    let mut server =
+        { SERVER_STORE.lock().await.by_id(server_id) }.ok_or(OrbitError::unknown_server())?;
+    server
+        .address
+        .send(ActorMessage {
+            command: ActorCommand::GetChannelList,
+            reply_tx: Some(tx),
+        })
+        .await
+        .context("Failed to send ActorMessage")?;
+
+    let resp = rx.await.context("Failed to await actor state message")?;
+    let CommandResponse::ChannelList(list) = resp else {
+        unreachable!("expected channel list, got: {:?}", resp);
+    };
+
+    Ok(to_value(&list)?)
+}
+
+#[wasm_bindgen]
+pub async fn on_data(
+    server_id: i32,
+    #[wasm_bindgen(unchecked_param_type = "(event: ServerEvent) => void")] f: js_sys::Function,
+) -> Result<(), OrbitError> {
+    let (handler_tx, mut handler_rx) = mpsc::unbounded();
+
+    let server =
+        { SERVER_STORE.lock().await.by_id(server_id) }.ok_or(OrbitError::unknown_server())?;
+    let mut address = server.address.clone();
+    spawn_local(async move {
+        address
             .send(ActorMessage {
-                command: ActorCommand::RequestHistory {
-                    channel,
-                    before_msgid,
+                command: ActorCommand::AddEventHandler {
+                    handler: handler_tx,
                 },
-                reply_tx: Some(tx),
+                reply_tx: None,
             })
             .await
-            .context("Failed to send ActorMessage")?;
+            .expect("can send actor message");
 
-        let resp = rx.await.context("Failed to await actor history message")?;
-        let history = cmd_resp!(resp, CommandResponse::History)?;
+        while let Ok(event) = handler_rx.recv().await {
+            if let Err(e) = f.call1(&JsValue::null(), &Js(ServerEvent::from(event)).into()) {
+                gloo_console::error!("Error during event callback: {}", e);
+            }
+        }
+    });
 
-        Ok(Js(history))
-    }
+    Ok(())
+}
+
+#[wasm_bindgen]
+pub async fn on_error(
+    server_id: i32,
+    #[wasm_bindgen(unchecked_param_type = "(event: ServerError) => void")] f: js_sys::Function,
+) -> Result<(), OrbitError> {
+    let (handler_tx, mut handler_rx) = mpsc::unbounded();
+
+    let server =
+        { SERVER_STORE.lock().await.by_id(server_id) }.ok_or(OrbitError::unknown_server())?;
+    let mut address = server.address.clone();
+    spawn_local(async move {
+        address
+            .send(ActorMessage {
+                command: ActorCommand::AddErrorHandler {
+                    handler: handler_tx,
+                },
+                reply_tx: None,
+            })
+            .await
+            .expect("can send actor message");
+
+        while let Ok(event) = handler_rx.recv().await {
+            if let Err(e) = f.call1(&JsValue::null(), &OrbitError::from(event).into()) {
+                gloo_console::error!("Error during error callback: {}", e);
+            }
+        }
+    });
+
+    Ok(())
+}
+
+#[wasm_bindgen]
+pub async fn on_disconnect(
+    server_id: i32,
+    #[wasm_bindgen(unchecked_param_type = "(event: string) => void")] f: js_sys::Function,
+) -> Result<(), OrbitError> {
+    let (handler_tx, mut handler_rx) = mpsc::unbounded();
+
+    let server =
+        { SERVER_STORE.lock().await.by_id(server_id) }.ok_or(OrbitError::unknown_server())?;
+    let mut address = server.address.clone();
+    spawn_local(async move {
+        address
+            .send(ActorMessage {
+                command: ActorCommand::AddDisconectHandler {
+                    handler: handler_tx,
+                },
+                reply_tx: None,
+            })
+            .await
+            .expect("can send actor message");
+
+        while let Ok(event) = handler_rx.recv().await {
+            if let Err(e) = f.call1(&JsValue::null(), &event.into()) {
+                gloo_console::error!("Error during event callback: {}", e);
+            }
+        }
+    });
+
+    Ok(())
+}
+
+#[wasm_bindgen]
+pub async fn sign_in(
+    server_id: i32,
+    nick: String,
+    user: String,
+    realname: String,
+    password: String,
+) -> Result<Js<SignedIn>, OrbitError> {
+    let (tx, rx) = oneshot::channel();
+    let mut server =
+        { SERVER_STORE.lock().await.by_id(server_id) }.ok_or(OrbitError::unknown_server())?;
+    server
+        .address
+        .send(ActorMessage {
+            command: ActorCommand::SignIn {
+                nick,
+                user,
+                realname,
+                password,
+            },
+            reply_tx: Some(tx),
+        })
+        .await
+        .context("Failed to send ActorMessage")?;
+
+    let resp = rx.await.context("Failed to await actor sign in message")?;
+    let result = cmd_resp!(resp, CommandResponse::SignIn)?;
+
+    Ok(Js(result))
+}
+
+#[wasm_bindgen]
+pub async fn sign_in_anonymous(
+    server_id: i32,
+    nick: String,
+    user: String,
+    realname: String,
+) -> Result<Js<SignedIn>, OrbitError> {
+    let (tx, rx) = oneshot::channel();
+    let mut server =
+        { SERVER_STORE.lock().await.by_id(server_id) }.ok_or(OrbitError::unknown_server())?;
+    server
+        .address
+        .send(ActorMessage {
+            command: ActorCommand::SignInAnonymous {
+                nick,
+                user,
+                realname,
+            },
+            reply_tx: Some(tx),
+        })
+        .await
+        .context("Failed to send ActorMessage")?;
+
+    let resp = rx.await.context("Failed to await actor sign in message")?;
+
+    let result = cmd_resp!(resp, CommandResponse::SignIn)?;
+
+    Ok(Js(result))
+}
+
+#[wasm_bindgen]
+pub async fn join_channel(
+    server_id: i32,
+    channel: String,
+    password: Option<String>,
+) -> Result<IrcChannel, OrbitError> {
+    let (tx, rx) = oneshot::channel();
+    let mut server =
+        { SERVER_STORE.lock().await.by_id(server_id) }.ok_or(OrbitError::unknown_server())?;
+    server
+        .address
+        .send(ActorMessage {
+            command: ActorCommand::Join { channel, password },
+            reply_tx: Some(tx),
+        })
+        .await
+        .context("Failed to send ActorMessage")?;
+
+    let resp = rx.await.context("Failed to await actor join message")?;
+    let channel = cmd_resp!(resp, CommandResponse::Join)?;
+
+    Ok(IrcChannel {
+        name: channel.metadata.name,
+        address: server.address.clone(),
+    })
+}
+
+#[wasm_bindgen]
+pub async fn history_before(
+    server_id: i32,
+    channel: String,
+    before_msgid: String,
+) -> Result<Js<History>, OrbitError> {
+    let (tx, rx) = oneshot::channel();
+    let mut server =
+        { SERVER_STORE.lock().await.by_id(server_id) }.ok_or(OrbitError::unknown_server())?;
+    server
+        .address
+        .send(ActorMessage {
+            command: ActorCommand::RequestHistory {
+                channel,
+                before_msgid,
+            },
+            reply_tx: Some(tx),
+        })
+        .await
+        .context("Failed to send ActorMessage")?;
+
+    let resp = rx.await.context("Failed to await actor history message")?;
+    let history = cmd_resp!(resp, CommandResponse::History)?;
+
+    Ok(Js(history))
 }
 
 #[wasm_bindgen]
