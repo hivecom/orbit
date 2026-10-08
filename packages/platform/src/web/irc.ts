@@ -1,4 +1,4 @@
-import init, { chat_channel_history_before, chat_channel_join, chat_channel_send_message, initialize_orbit, server_channel_list, server_connect, server_on_data, server_on_disconnect, server_on_error, server_sign_in, server_sign_in_anonymous } from "core-wasm"
+import init, { chat_channel_history_before, chat_channel_join, chat_channel_send_message, initialize_orbit, server_channel_list, server_connect, server_on_data, server_on_disconnect, server_on_error, server_sign_in, server_sign_in_anonymous } from "core/wasm"
 import type { IrcPort } from "../types"
 
 // Browser IRC adapter backed by the core-wasm module

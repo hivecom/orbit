@@ -3,7 +3,7 @@ packages:
   - packages/app
   - packages/depot
   - packages/platform
-  - packages/core/core-wasm
+  - packages/core
   - tools/*
 
 catalogMode: prefer

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ChannelUser } from "core-wasm"
+import type { ChannelUser } from "core/types"
 import ChatUserItem from "./ChatUserItem.vue"
 import { computed } from "vue"
 

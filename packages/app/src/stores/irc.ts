@@ -1,5 +1,5 @@
 import { defineStore } from "pinia"
-import type { Message, Server, OrbitError, ChannelInfo, Channel } from "core-wasm"
+import type { Message, Server, OrbitError, ChannelInfo, Channel } from "core/types"
 import { computed, ref, shallowRef } from "vue"
 import { usePlatform } from "platform"
 import { useUserStore } from "./user"

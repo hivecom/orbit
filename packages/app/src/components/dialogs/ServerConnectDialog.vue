@@ -4,7 +4,7 @@ import { Button, Card, Flex, Input } from "@dolanske/vui"
 import { computed, reactive, ref } from "vue"
 import { useIrcStore } from "../../stores/irc"
 import { useRouter } from "vue-router"
-import type { OrbitError, Server } from "core-wasm"
+import type { OrbitError, Server } from "core/types"
 
 const irc = useIrcStore()
 const router = useRouter()

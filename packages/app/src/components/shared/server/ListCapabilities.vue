@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Capabilities } from "core-wasm"
+import type { Capabilities } from "core/types"
 import { Badge } from "@dolanske/vui"
 
 const props = defineProps<{ capabilities: Capabilities }>()

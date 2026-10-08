@@ -1,0 +1,25 @@
+{
+  "name": "core",
+  "version": "0.1.0",
+  "private": true,
+  "files": [
+    "core-wasm/pkg"
+  ],
+  "type": "module",
+  "sideEffects": [
+    "./core-wasm/pkg/snippets/*"
+  ],
+  "exports": {
+    "./wasm": {
+      "types": "./core-wasm/pkg/core_wasm.d.ts",
+      "import": "./core-wasm/pkg/core_wasm.js"
+    },
+    "./types": {
+      "types": "./core-wasm/pkg/core_wasm.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "wasm-pack build core-wasm --target web && node ./core-wasm/rm-generated-gitignore.js",
+    "dev": "cargo watch -i core-wasm/pkg -s 'wasm-pack build core-wasm --target web'"
+  }
+}

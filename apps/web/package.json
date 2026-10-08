@@ -4,14 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vp run core-wasm#build && vp dev",
+    "dev": "vp run core#build && vp dev",
     "dev:core": "./dev.sh",
     "build": "vue-tsc -b && vp build",
     "preview": "vp preview"
   },
   "dependencies": {
     "app": "workspace:*",
-    "core-wasm": "workspace:*",
+    "core": "workspace:*",
     "platform": "workspace:*",
     "vue": "^3.5.38"
   },

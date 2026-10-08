@@ -2,7 +2,7 @@ import { defineStore } from "pinia"
 import { useIrcStore } from "./irc"
 import { computed, shallowRef } from "vue"
 import { useUserStore } from "./user"
-import type { OrbitError } from "core-wasm"
+import type { OrbitError } from "core/types"
 
 /**
  * Tracks global state such as initialization, errors & etc

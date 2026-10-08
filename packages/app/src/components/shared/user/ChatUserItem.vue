@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Badge, DropdownItem } from "@dolanske/vui"
 import { getUserRole } from "../../../lib/format"
-import type { ChannelUser } from "core-wasm"
+import type { ChannelUser } from "core/types"
 import { computed } from "vue"
 import { getUserColorStyle } from "../../../lib/color"
 

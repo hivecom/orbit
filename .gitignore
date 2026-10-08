@@ -38,3 +38,4 @@ dist-ssr
 # Auto generated wasm-pack output
 /packages/core/core-wasm/pkg/core_wasm_bg.wasm
 /packages/core/core-wasm/pkg/package.json
+/packages/core/core-wasm/pkg/README.md

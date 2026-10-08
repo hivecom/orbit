@@ -1,4 +1,4 @@
-import { type ChannelRole, type Server } from "core-wasm"
+import type { ChannelRole, Server } from "core/types"
 
 export function truncate(text: string, limit: number, append?: string) {
   return text.substring(0, limit) + append

@@ -1,4 +1,4 @@
-import type { Channel, ChannelInfo, History, Message, OrbitError, Server, ServerEvent, SignedIn } from "core-wasm"
+import type { Channel, ChannelInfo, History, Message, OrbitError, Server, ServerEvent, SignedIn } from "core/types"
 
 export interface NotificationOptions {
   title: string
