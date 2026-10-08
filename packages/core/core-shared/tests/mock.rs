@@ -1,7 +1,8 @@
 use core_shared::actor::IrcConnection;
 use core_shared::database::Database;
+use core_shared::error::OrbitError;
 use core_shared::response_channels::CommandResponse;
-use core_shared::state::{Capabilities, Capability, OrbitError, User};
+use core_shared::state::{Capabilities, Capability, User};
 use futures::SinkExt;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
 use irc_proto::{CapSubCommand, Command, Message as IrcMessage};
