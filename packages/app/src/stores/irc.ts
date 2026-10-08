@@ -71,7 +71,6 @@ export const useIrcStore = defineStore("irc", () => {
       const data = serverChannels.value.get(server.id)
       if (!data) return
       data.available = channels.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()))
-      serverChannels.value.set(server.id, data)
     })
   }
 
@@ -108,10 +107,17 @@ export const useIrcStore = defineStore("irc", () => {
     void irc.serverOnData(serverId, (event) => {
       if (event.tag === "Message") {
         const messageKey = `${serverId}:${event.value.channel}`
-        const messages = serverMessages.value.get(messageKey) ?? []
+        const messages = serverMessages.value.get(messageKey)
+        if (!messages) {
+          serverMessages.value.set(messageKey, [event.value.message])
+          return
+        }
         messages.push(event.value.message)
         messages.sort((a: Message, b: Message) => a.metadata.server_time - b.metadata.server_time)
-        serverMessages.value.set(messageKey, messages)
+      } else if (event.tag === "UserList") {
+        const affected = getServerChannel(serverId, event.value.channel)
+        if (!affected) return
+        affected.users = event.value.users
       } else if (event.tag === "React") {
         console.log("Received reaction", event.value)
       } else {
@@ -163,7 +169,6 @@ export const useIrcStore = defineStore("irc", () => {
 
       messages.push(...history.messages)
       messages.sort((a, b) => a.metadata.server_time - b.metadata.server_time)
-      serverMessages.value.set(messageId, messages)
     } catch (e: unknown) {
       console.error("Error when requesting scrollback", e as OrbitError)
     }
@@ -181,13 +186,11 @@ export const useIrcStore = defineStore("irc", () => {
 
       // Add channel to joined, remove it from available
       channels.joined.push(data)
-      channels.joined = [...channels.joined].sort((a, b) => a.metadata.name.toLowerCase().localeCompare(b.metadata.name.toLowerCase()))
+      channels.joined.sort((a, b) => a.metadata.name.toLowerCase().localeCompare(b.metadata.name.toLowerCase()))
       channels.available = channels.available.filter((item) => item.name !== data.metadata.name)
 
       // Upon joining, show backlog
       serverMessages.value.set(`${serverId}:${channelId}`, data.messages)
-
-      serverChannels.value.set(serverId, channels)
     } catch (e: any) {
       console.error("Error when joining channel", e as OrbitError)
     }
@@ -206,7 +209,6 @@ export const useIrcStore = defineStore("irc", () => {
     //   if (!channels) return
     //   channels.joined = channels?.joined.filter((c) => c.metadata.name !== channelId)
     //   serverMessages.value.delete(`${serverId}:${channelId}`)
-    //   serverChannels.value.set(serverId, channels)
 
     // } catch (e) {
     //   console.error(e as OrbitError)
