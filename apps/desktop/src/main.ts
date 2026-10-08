@@ -1,5 +1,5 @@
 import { createOrbitApp } from "app"
-import { createDesktopPlatform } from "platform"
+import { createDesktopPlatform } from "platform/desktop"
 import App from "./App.vue"
 
 const platform = createDesktopPlatform()

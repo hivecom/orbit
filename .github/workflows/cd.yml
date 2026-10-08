@@ -172,14 +172,6 @@ jobs:
             packages/core
             apps/desktop/src-tauri
 
-      # The desktop front end bundles core-wasm through packages/app. Same
-      # command as core-wasm's build script, without `vp run` in front: its
-      # task cache injects a preload library into child processes, and dyld
-      # aborts when that library and the child differ in architecture.
-      - name: Build core-wasm
-        working-directory: packages/core/core-wasm
-        run: wasm-pack build . --target web
-
       # No tagName, so the action builds and uploads and never touches a
       # release. The desktop- prefix keeps these separate from the Pages
       # artifact when the release job collects them.

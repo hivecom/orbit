@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test"
 import { createOrbitApp } from "../src/index.ts"
-import { createWebPlatform, PLATFORM_KEY } from "platform"
+import { PLATFORM_KEY } from "platform"
+import { createWebPlatform } from "platform/web"
 import { mount } from "@vue/test-utils"
 import TestApp from "./fixtures/TestApp.vue"
 
