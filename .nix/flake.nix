@@ -4,21 +4,34 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    # The toolchain CI pins in .github/actions/setup-rust, with the wasm32 std
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = {
     nixpkgs,
     flake-utils,
+    rust-overlay,
     ...
   }:
     flake-utils.lib.eachDefaultSystem (
       system: let
-        pkgs = import nixpkgs {inherit system;};
+        pkgs = import nixpkgs {
+          inherit system;
+          overlays = [rust-overlay.overlays.default];
+        };
       in {
         devShells.default = pkgs.mkShell {
           nativeBuildInputs = with pkgs; [
             nodejs
 
+            (rust-bin.stable."1.98.0".default.override {
+              extensions = ["rust-src"];
+              targets = ["wasm32-unknown-unknown"];
+            })
             cargo-tauri
             cargo-watch
             clippy
