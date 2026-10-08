@@ -17,7 +17,6 @@ use futures::{
     stream::{Fuse, LocalBoxStream, SplitSink},
 };
 use gloo_net::websocket::{self, WebSocketError, futures::WebSocket};
-use serde_wasm_bindgen::to_value;
 use tracing::debug;
 use tsify::Ts;
 use wasm_bindgen::prelude::*;
@@ -240,7 +239,9 @@ pub async fn server_on_data(
         while let Ok(event) = handler_rx.recv().await {
             if let Err(e) = f.call1(
                 &JsValue::null(),
-                &to_value(&event).unwrap_or_else(|e| e.to_string().into()),
+                &Ts::from_rust(&event)
+                    .map(JsValue::from)
+                    .unwrap_or_else(|e| e.to_string().into()),
             ) {
                 gloo_console::error!("Error during event callback: {}", e);
             }
@@ -274,7 +275,9 @@ pub async fn server_on_error(
         while let Ok(error) = handler_rx.recv().await {
             if let Err(e) = f.call1(
                 &JsValue::null(),
-                &to_value(&error).unwrap_or_else(|e| e.to_string().into()),
+                &Ts::from_rust(&OrbitError::from(error))
+                    .map(JsValue::from)
+                    .unwrap_or_else(|e| e.to_string().into()),
             ) {
                 gloo_console::error!("Error during error callback: {}", e);
             }
@@ -306,10 +309,7 @@ pub async fn server_on_disconnect(
             .expect("can send actor message");
 
         while let Ok(event) = handler_rx.recv().await {
-            if let Err(e) = f.call1(
-                &JsValue::null(),
-                &to_value(&event).unwrap_or_else(|e| e.to_string().into()),
-            ) {
+            if let Err(e) = f.call1(&JsValue::null(), &JsValue::from_str(&event)) {
                 gloo_console::error!("Error during event callback: {}", e);
             }
         }

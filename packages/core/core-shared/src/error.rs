@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::error;
+#[cfg(feature = "web")]
+use tsify::Tsify;
 
 #[derive(Debug, Error, Clone, Serialize, Deserialize)]
 pub enum OrbitError {
