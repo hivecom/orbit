@@ -105,7 +105,7 @@ const filteredServers = computed(() => irc.filterServersWithChannels(search.valu
     </Flex>
 
     <Flex column gap="xs" :y-center="mini">
-      <SidebarServerAccordion v-for="server in filteredServers" :key="server.metadata.name" :mini :server />
+      <SidebarServerAccordion v-for="server in filteredServers" :key="server.metadata.address" :mini :server />
     </Flex>
   </Sidebar>
 </template>
