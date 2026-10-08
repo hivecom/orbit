@@ -29,17 +29,14 @@
             nodejs
 
             (rust-bin.stable."1.98.0".default.override {
-              extensions = ["rust-src"];
+              extensions = ["rust-src" "rust-analyzer"];
               targets = ["wasm32-unknown-unknown"];
             })
             cargo-tauri
             cargo-watch
-            clippy
-            rust-analyzer
             wasm-pack
             bacon
             tmux
-            rustfmt
 
             pkg-config
             llvmPackages.bintools
