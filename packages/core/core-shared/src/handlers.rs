@@ -276,7 +276,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
             .insert_message(self.state.id, target, state_message.clone())
             .await?;
 
-        self.on_event(ServerEvent::Privmsg {
+        self.on_event(ServerEvent::Message {
             channel: target.to_string(),
             message: state_message,
         })
@@ -324,7 +324,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
             .insert_message(self.state.id, target, state_message.clone())
             .await?;
 
-        self.on_event(ServerEvent::Privmsg {
+        self.on_event(ServerEvent::Message {
             channel: target.to_string(),
             message: state_message,
         })
@@ -403,7 +403,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
         }
 
         for msg in channel_quits {
-            self.on_event(ServerEvent::Privmsg {
+            self.on_event(ServerEvent::Message {
                 channel: String::new(),
                 message: msg,
             })
@@ -495,7 +495,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
             error!("Failed to reply to PRIVMSG command {e:?}");
         }
 
-        self.on_event(ServerEvent::Privmsg {
+        self.on_event(ServerEvent::Message {
             channel: target.clone(),
             message: state_message,
         })
@@ -741,7 +741,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                             error!("Failed to reply to PRIVMSG command {e:?}");
                         }
 
-                        self.on_event(ServerEvent::Privmsg {
+                        self.on_event(ServerEvent::Message {
                             channel: target.to_string(),
                             message: *state_message,
                         })
@@ -1170,7 +1170,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                         .send(CommandResponse::Privmsg(Box::new(state_message.clone())))
                         .unwrap();
 
-                    self.on_event(ServerEvent::Privmsg {
+                    self.on_event(ServerEvent::Message {
                         channel: target.to_string(),
                         message: state_message,
                     })

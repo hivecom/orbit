@@ -579,7 +579,7 @@ pub enum ServerEvent {
         channel: String,
         users: Vec<ChannelUser>,
     },
-    Privmsg {
+    Message {
         channel: String,
         message: Message,
     },
