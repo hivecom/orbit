@@ -19,7 +19,7 @@
     }
   },
   "scripts": {
-    "build": "wasm-pack build . --target web && rm ./pkg/.gitignore",
+    "build": "wasm-pack build . --target web && node ./rm-generated-gitignore.js",
     "dev": "cargo watch -i pkg -s 'wasm-pack build . --target web'"
   }
 }
