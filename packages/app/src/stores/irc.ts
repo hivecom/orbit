@@ -106,7 +106,7 @@ export const useIrcStore = defineStore("irc", () => {
   function registerServerEvents(serverId: number) {
     // Runs whenever some dataset on the server object changes
     void irc.serverOnData(serverId, (event) => {
-      if (event.tag === "Privmsg") {
+      if (event.tag === "Message") {
         const messageKey = `${serverId}:${event.value.channel}`
         const messages = serverMessages.value.get(messageKey) ?? []
         messages.push(event.value.message)
