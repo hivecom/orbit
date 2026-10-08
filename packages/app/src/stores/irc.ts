@@ -72,6 +72,8 @@ export const useIrcStore = defineStore("irc", () => {
       if (!data) return
       data.available = channels.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()))
     })
+
+    registerServerEvents(server.id)
   }
 
   /**
@@ -92,13 +94,10 @@ export const useIrcStore = defineStore("irc", () => {
    * unjoined channels and users get to choose the first one they join in the UI.
    */
   async function serverConnect(url: string) {
-    const state = await irc.serverConnect(url).catch((e) => {
-      throw new Error(e)
+    const state = await irc.serverConnect(url).catch((e: OrbitError) => {
+      throw new Error(e.description)
     })
-
     await initializeServer(state)
-    registerServerEvents(state.id)
-
     return state
   }
 
@@ -215,11 +214,18 @@ export const useIrcStore = defineStore("irc", () => {
     // }
   }
 
+  async function sendMessage(serverId: number, channelId: string, message: string) {
+    await irc.channelSendMessage(serverId, channelId, message).catch((e: OrbitError) => {
+      throw new Error(e.description)
+    })
+  }
+
   return {
     init,
     serverConnect,
     channelJoin,
     channelLeave,
+    sendMessage,
     initialized,
     serverData,
     getServerState,

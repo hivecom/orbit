@@ -17,7 +17,6 @@ import ChatUserList from "../shared/user/ChatUserList.vue"
 
 const props = defineProps<WindowAndLocation<WindowChat>>()
 const irc = useIrcStore()
-const platform = usePlatform()
 const config = useConfigStore()
 const format = useDateFormatter()
 
@@ -38,7 +37,7 @@ async function sendMessage(message: string) {
   if (!channel.value) return
 
   forceScroll = true
-  void platform.irc.channelSendMessage(props.serverId, props.channelId, message)
+  irc.sendMessage(props.serverId, props.channelId, message)
 
   // Await DOM update in case the Composer height shrinks after clearing text
   await nextTick()
