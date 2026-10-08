@@ -34,3 +34,7 @@ dist-ssr
 !.vscode/
 !.vscode/settings.json
 !.vscode/extensions.json
+
+# Auto generated wasm-pack output
+/packages/core/core-wasm/pkg/core_wasm_bg.wasm
+/packages/core/core-wasm/pkg/package.json

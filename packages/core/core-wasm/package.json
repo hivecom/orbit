@@ -12,13 +12,14 @@
   "types": "./pkg/core_wasm.d.ts",
   "exports": {
     ".": {
-      "types": "./pkg/core_wasm.d.ts",
       "import": "./pkg/core_wasm.js"
     },
-    "./*": "./pkg/*"
+    "./types": {
+      "types": "./core_wasm.d.ts"
+    }
   },
   "scripts": {
-    "build": "wasm-pack build . --target web",
+    "build": "wasm-pack build . --target web && rm ./pkg/.gitignore",
     "dev": "cargo watch -i pkg -s 'wasm-pack build . --target web'"
   }
 }
