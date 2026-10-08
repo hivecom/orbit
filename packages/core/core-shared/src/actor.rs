@@ -55,6 +55,9 @@ pub enum ActorCommand {
         channel: String,
         password: Option<String>,
     },
+    Part {
+        channel: String,
+    },
     Privmsg {
         text: String,
         target: String,

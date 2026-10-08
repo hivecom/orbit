@@ -573,6 +573,7 @@ pub struct MessageReference {
 #[cfg_attr(feature = "web", derive(Tsify))]
 pub enum ServerEvent {
     Joined(Channel),
+    Part(String),
     ChannelUpdated(ChannelMetadata),
     ServerInfo(ServerMetadata),
     UserList {

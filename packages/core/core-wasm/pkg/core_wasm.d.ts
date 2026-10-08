@@ -206,7 +206,7 @@ export type MessageType = "Privmsg" | "Notice" | "Action" | "Join" | "Part" | "Q
 
 export type OrbitErrorKind = "NickTaken" | "SaslFailed" | "CapabilityDisabled" | "NotFound" | "Generic" | "UnknownServer" | "Unknown";
 
-export type ServerEvent = { tag: "Joined"; value: Channel } | { tag: "ChannelUpdated"; value: ChannelMetadata } | { tag: "ServerInfo"; value: ServerMetadata } | { tag: "UserList"; value: { channel: string; users: ChannelUser[] } } | { tag: "Message"; value: { channel: string; message: Message } } | { tag: "React"; value: { target_message: string; user: string; text: string; is_unreact: boolean } };
+export type ServerEvent = { tag: "Joined"; value: Channel } | { tag: "Part"; value: string } | { tag: "ChannelUpdated"; value: ChannelMetadata } | { tag: "ServerInfo"; value: ServerMetadata } | { tag: "UserList"; value: { channel: string; users: ChannelUser[] } } | { tag: "Message"; value: { channel: string; message: Message } } | { tag: "React"; value: { target_message: string; user: string; text: string; is_unreact: boolean } };
 
 export type SignedIn = "User" | "Guest";
 
@@ -214,6 +214,8 @@ export type SignedIn = "User" | "Guest";
 export function chat_channel_history_before(server_id: number, channel: string, before_msgid: string): Promise<History>;
 
 export function chat_channel_join(server_id: number, channel: string, password?: string | null): Promise<Channel>;
+
+export function chat_channel_leave(server_id: number, channel: string): Promise<void>;
 
 export function chat_channel_send_message(server_id: number, channel_name: string, text: string): Promise<Message>;
 
@@ -241,6 +243,7 @@ export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly chat_channel_history_before: (a: number, b: number, c: number, d: number, e: number) => any;
     readonly chat_channel_join: (a: number, b: number, c: number, d: number, e: number) => any;
+    readonly chat_channel_leave: (a: number, b: number, c: number) => any;
     readonly chat_channel_send_message: (a: number, b: number, c: number, d: number, e: number) => any;
     readonly init: () => void;
     readonly initialize_orbit: () => any;
