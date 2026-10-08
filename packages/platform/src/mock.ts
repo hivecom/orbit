@@ -99,5 +99,18 @@ export function createMockPlatform(target: Platform["target"]): Platform {
       },
       clear: () => Promise.resolve(),
     },
+    irc: {
+      initialize: () => Promise.resolve([]),
+      serverConnect: (url) => Promise.reject(new Error(`IRC is not implemented on this platform (${url})`)),
+      serverSignIn: () => Promise.resolve("Guest"),
+      serverSignInAnonymous: () => Promise.resolve("Guest"),
+      serverChannelList: () => Promise.resolve([]),
+      serverOnData: () => Promise.resolve(),
+      serverOnDisconnect: () => Promise.resolve(),
+      serverOnError: () => Promise.resolve(),
+      channelJoin: (serverId, channel) => Promise.reject(new Error(`IRC is not implemented on this platform (${serverId}:${channel})`)),
+      channelHistoryBefore: (serverId, channel) => Promise.reject(new Error(`IRC is not implemented on this platform (${serverId}:${channel})`)),
+      channelSendMessage: (serverId, channel) => Promise.reject(new Error(`IRC is not implemented on this platform (${serverId}:${channel})`)),
+    },
   }
 }

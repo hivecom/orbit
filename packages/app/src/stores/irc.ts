@@ -1,6 +1,7 @@
 import { defineStore } from "pinia"
-import { type Message, type Server, type OrbitError, type ChannelInfo, type Channel, server_sign_in_anonymous, server_channel_list, server_connect, server_on_data, server_on_disconnect, server_on_error, chat_channel_history_before, chat_channel_join } from "core-wasm"
+import type { Message, Server, OrbitError, ChannelInfo, Channel } from "core-wasm"
 import { computed, ref, shallowRef } from "vue"
+import { usePlatform } from "platform"
 import { useUserStore } from "./user"
 import { useAppStateStore } from "./app-state"
 import { searchString } from "@dolanske/vui"
@@ -20,6 +21,7 @@ export type ServerWithGroupedChannels = Server & {
 export const useIrcStore = defineStore("irc", () => {
   const user = useUserStore()
   const app = useAppStateStore()
+  const { irc } = usePlatform()
   const initialized = shallowRef(false)
 
   // Holds reference to server metadata
@@ -63,9 +65,9 @@ export const useIrcStore = defineStore("irc", () => {
     serverData.value.set(server.id, server)
     serverChannels.value.set(server.id, { joined: [], available: [] })
 
-    await server_sign_in_anonymous(server.id, user.me.displayName, user.me.accountName, user.me.accountName)
+    await irc.serverSignInAnonymous(server.id, user.me.displayName, user.me.accountName, user.me.accountName)
 
-    await server_channel_list(server.id).then((channels) => {
+    await irc.serverChannelList(server.id).then((channels) => {
       const data = serverChannels.value.get(server.id)
       if (!data) return
       data.available = channels.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()))
@@ -91,7 +93,7 @@ export const useIrcStore = defineStore("irc", () => {
    * unjoined channels and users get to choose the first one they join in the UI.
    */
   async function serverConnect(url: string) {
-    const state = await server_connect(url).catch((e) => {
+    const state = await irc.serverConnect(url).catch((e) => {
       throw new Error(e)
     })
 
@@ -103,7 +105,7 @@ export const useIrcStore = defineStore("irc", () => {
 
   function registerServerEvents(serverId: number) {
     // Runs whenever some dataset on the server object changes
-    void server_on_data(serverId, (event) => {
+    void irc.serverOnData(serverId, (event) => {
       if (event.tag === "Privmsg") {
         const messageKey = `${serverId}:${event.value.channel}`
         const messages = serverMessages.value.get(messageKey) ?? []
@@ -119,12 +121,12 @@ export const useIrcStore = defineStore("irc", () => {
     })
 
     // Leaving server - clean up state
-    void server_on_disconnect(serverId, (reason) => {
+    void irc.serverOnDisconnect(serverId, (reason) => {
       console.log("Disconnected", reason)
       serverData.value.delete(serverId)
     })
 
-    void server_on_error(serverId, (error) => {
+    void irc.serverOnError(serverId, (error) => {
       app.ircErrors.push(error)
     })
   }
@@ -153,7 +155,7 @@ export const useIrcStore = defineStore("irc", () => {
       const oldestId = serverMessages.value.get(messageId)?.[0]
       if (!oldestId) return
 
-      const history = await chat_channel_history_before(serverId, channelId, oldestId.metadata.msgid)
+      const history = await irc.channelHistoryBefore(serverId, channelId, oldestId.metadata.msgid)
       if (!history) return
 
       const messages = serverMessages.value.get(messageId)
@@ -163,7 +165,7 @@ export const useIrcStore = defineStore("irc", () => {
       messages.sort((a, b) => a.metadata.server_time - b.metadata.server_time)
       serverMessages.value.set(messageId, messages)
     } catch (e: unknown) {
-      console.error(e as OrbitError)
+      console.error("Error when requesting scrollback", e as OrbitError)
     }
   }
 
@@ -174,10 +176,8 @@ export const useIrcStore = defineStore("irc", () => {
     try {
       const channels = serverChannels.value.get(serverId)
       if (!channels) return
-      const data = await chat_channel_join(serverId, channelId)
+      const data = await irc.channelJoin(serverId, channelId)
       if (!data) return
-
-      console.log(data)
 
       // Add channel to joined, remove it from available
       channels.joined.push(data)
@@ -189,14 +189,35 @@ export const useIrcStore = defineStore("irc", () => {
 
       serverChannels.value.set(serverId, channels)
     } catch (e: any) {
-      console.error(e as OrbitError)
+      console.error("Error when joining channel", e as OrbitError)
     }
+  }
+
+  /**
+   * Leaves a channel and removes all of its stored information
+   */
+  async function channelLeave(serverId: number, channelId: string) {
+    void serverId
+    void channelId
+    return null
+    //   // TODO: Wait for jokler to implement chat_channel_leave() and call it here
+    // try {
+    //   const channels = serverChannels.value.get(serverId)
+    //   if (!channels) return
+    //   channels.joined = channels?.joined.filter((c) => c.metadata.name !== channelId)
+    //   serverMessages.value.delete(`${serverId}:${channelId}`)
+    //   serverChannels.value.set(serverId, channels)
+
+    // } catch (e) {
+    //   console.error(e as OrbitError)
+    // }
   }
 
   return {
     init,
     serverConnect,
     channelJoin,
+    channelLeave,
     initialized,
     serverData,
     getServerState,

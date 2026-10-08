@@ -1,3 +1,5 @@
+import type { Channel, ChannelInfo, History, Message, OrbitError, Server, ServerEvent, SignedIn } from "core-wasm"
+
 export interface NotificationOptions {
   title: string
   body?: string
@@ -104,6 +106,20 @@ export interface BufferStats {
   newest: number
 }
 
+export interface IrcPort {
+  initialize: () => Promise<Server[]>
+  serverConnect: (url: string) => Promise<Server>
+  serverSignIn: (serverId: number, nick: string, user: string, realname: string, password: string) => Promise<SignedIn>
+  serverSignInAnonymous: (serverId: number, nick: string, user: string, realname: string) => Promise<SignedIn>
+  serverChannelList: (serverId: number) => Promise<ChannelInfo[]>
+  serverOnData: (serverId: number, listener: (event: ServerEvent) => void) => Promise<void>
+  serverOnDisconnect: (serverId: number, listener: (reason: string) => void) => Promise<void>
+  serverOnError: (serverId: number, listener: (error: OrbitError) => void) => Promise<void>
+  channelJoin: (serverId: number, channel: string, password?: string | null) => Promise<Channel>
+  channelHistoryBefore: (serverId: number, channel: string, beforeMsgid: string) => Promise<History>
+  channelSendMessage: (serverId: number, channel: string, text: string) => Promise<Message>
+}
+
 export interface Platform {
   readonly target: "web" | "desktop" | "mobile"
   /**
@@ -134,4 +150,8 @@ export interface Platform {
    * @targets Web, Desktop, Mobile
    */
   readonly historyCache: HistoryCachePort
+  /**
+   * @targets Web, Desktop, Mobile
+   */
+  readonly irc: IrcPort
 }

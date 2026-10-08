@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test"
-import { createWebPlatform } from "../src/web.ts"
+import { createWebPlatform } from "../src/web/index.ts"
 
 describe("web platform adapter", () => {
   it("reports the web target", () => {

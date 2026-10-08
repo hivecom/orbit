@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { chat_channel_send_message } from "core-wasm"
+import { usePlatform } from "platform"
 import { type WindowAndLocation, type WindowChat } from "../../lib/windows"
 import { useIrcStore } from "../../stores/irc"
 import Composer from "../shared/composer/Composer.vue"
@@ -17,6 +17,7 @@ import ChatUserList from "../shared/user/ChatUserList.vue"
 
 const props = defineProps<WindowAndLocation<WindowChat>>()
 const irc = useIrcStore()
+const platform = usePlatform()
 const config = useConfigStore()
 const format = useDateFormatter()
 
@@ -37,7 +38,7 @@ async function sendMessage(message: string) {
   if (!channel.value) return
 
   forceScroll = true
-  chat_channel_send_message(props.serverId, props.channelId, message)
+  void platform.irc.channelSendMessage(props.serverId, props.channelId, message)
 
   // Await DOM update in case the Composer height shrinks after clearing text
   await nextTick()
@@ -196,6 +197,9 @@ const showUserList = ref(false)
   <div class="o-window-chat" :class="{ 'show-users': showUserList }">
     <div class="o-window-meta" v-if="props.channelId !== IRC_UNKNOWN_CHANNEL">
       <p>{{ props.channelId }}</p>
+      <p class="text-xs text-color-lighter meta-topic">{{ channel?.metadata.topic }}</p>
+
+      <div class="flex-1"></div>
 
       <Button @click="showUserList = !showUserList" plain>
         <template #start>
@@ -209,6 +213,7 @@ const showUserList = ref(false)
       <div class="o-channel-list" v-if="props.channelId === IRC_UNKNOWN_CHANNEL || props.serverId === IRC_UNKNOWN_SERVER">
         <!-- 
     Render all servers
+    TODO: still needs to be tested
       1. if server id is -1 we open first accordion
       2. if server is id real, we open accordion of that server -->
         <Flex column x-center y-center class="h-100">
@@ -297,6 +302,7 @@ const showUserList = ref(false)
     width: 100%;
     align-items: center;
     justify-content: space-between;
+    gap: var(--space-m);
     padding-inline: var(--space-s);
     border-bottom: 1px solid var(--color-border);
     height: 44px;
@@ -305,6 +311,12 @@ const showUserList = ref(false)
     border-top-left-radius: var(--border-radius-m);
     border-top-right-radius: var(--border-radius-m);
     grid-area: meta;
+
+    .meta-topic {
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      overflow: hidden;
+    }
   }
 
   .o-window-users {

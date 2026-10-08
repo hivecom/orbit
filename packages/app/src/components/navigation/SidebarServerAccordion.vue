@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Avatar, Button, DropdownItem, Flex, PopoutHover } from "@dolanske/vui"
 import { getServerInitials, truncate } from "../../lib/format"
-import { type ServerWithGroupedChannels } from "../../stores/irc"
+import { useIrcStore, type ServerWithGroupedChannels } from "../../stores/irc"
 import { useIRCJoinChannel } from "../../composables/useIRCJoinChannel"
 import ListCapabilities from "../shared/server/ListCapabilities.vue"
 import { IconAltArrowDownLinear } from "@iconify-prerendered/vue-solar"
@@ -19,11 +19,21 @@ interface Props {
 const { server, mini } = defineProps<Props>()
 const { join, loading } = useIRCJoinChannel()
 const { close: closeWindow, windowsCount } = useWindowManager()
+const irc = useIrcStore()
 
 const hovering = ref(false)
 const open = useLocalStorage(() => `sidebar-${server.id}`, true)
 
 const [DefineChannelList, ReuseChannelList] = createReusableTemplate()
+
+const leavingLoading = ref<string>("")
+
+async function leave(channelId: string) {
+  leavingLoading.value = channelId
+  await irc.channelLeave(server.id, channelId)
+  closeWindow(findById({ channelId })!.location)
+  leavingLoading.value = ""
+}
 </script>
 
 <template>
@@ -42,7 +52,7 @@ const [DefineChannelList, ReuseChannelList] = createReusableTemplate()
               <DropdownItem size="s" @click="closeWindow(findById({ channelId: item.metadata.name })!.location)">Close</DropdownItem>
             </template>
             <Divider class="my-xxs" />
-            <DropdownItem disabled size="s">Leave</DropdownItem>
+            <DropdownItem :disabled="leavingLoading === item.metadata.name" size="s" @click="leave(item.metadata.name)">Leave</DropdownItem>
           </Flex>
         </template>
       </ContextMenu>

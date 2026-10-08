@@ -1,5 +1,5 @@
-import { createMockPlatform } from "./mock"
-import type { Platform } from "./types"
+import { createMockPlatform } from "../mock"
+import type { Platform } from "../types"
 
 // TODO: This needs to be implemented immediately when Tauri work begins. For
 // now we fallback to the web implementation and changing the target as per

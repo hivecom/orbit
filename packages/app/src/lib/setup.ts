@@ -2,7 +2,6 @@ import { createApp, type Component } from "vue"
 import { router } from "../router/router"
 import { type Platform, PLATFORM_KEY } from "platform"
 import { createPinia } from "pinia"
-import init, { initialize_orbit } from "core-wasm"
 import { useIrcStore } from "../stores/irc"
 import { useAppStateStore } from "../stores/app-state"
 import { useUserStore } from "../stores/user"
@@ -28,24 +27,20 @@ export async function createOrbitApp(root: Component<any, any, any, any, any>, p
   //    Each data holding store contains an init function which takes in the
   //    initial dataset and populates the state. After that, it registers a data
   //    update listener which will subsqeuently update all the state on change
+  //    2.1 Handle server capabilities (TODO)
 
-  //    2.1 Handle server capabilities
-  //    2.2 Handle other server & channel state
-
-  await init().then(async () => {
-    return initialize_orbit()
-      .then(async (servers) => {
-        useUserStore().init()
-        useConfigStore().init()
-
-        await useIrcStore(pinia).init(servers)
-      })
-      .catch((e) => {
-        const appState = useAppStateStore()
-        console.error("Failed to initialize orbit", e)
-        appState.globalError = "Failed to initialize Orbit. Check console for errors."
-      })
-  })
+  await platform.irc
+    .initialize()
+    .then(async (servers) => {
+      useUserStore().init()
+      useConfigStore().init()
+      await useIrcStore(pinia).init(servers)
+    })
+    .catch((e) => {
+      const appState = useAppStateStore()
+      console.error("Failed to initialize orbit", e)
+      appState.globalError = "Failed to initialize Orbit. Check console for errors."
+    })
 
   return app
 }
