@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { usePlatform } from "platform"
 import { type WindowAndLocation, type WindowChat } from "../../lib/windows"
 import { useIrcStore } from "../../stores/irc"
 import Composer from "../shared/composer/Composer.vue"
