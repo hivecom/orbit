@@ -7,8 +7,10 @@ export default defineConfig({
   fmt: {
     semi: false,
     printWidth: 320,
+    ignorePatterns: ["packages/core/**"],
   },
   lint: {
+    ignorePatterns: ["dist/**", "packages/core/**"],
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
     rules: {
       "vite-plus/prefer-vite-plus-imports": "error",
