@@ -1,6 +1,6 @@
 use core_shared::error::OrbitError as ActorOrbitError;
 use serde::{Deserialize, Serialize};
-use tsify::Tsify;
+use tsify::{Ts, Tsify};
 use wasm_bindgen::JsValue;
 
 #[derive(Debug, Tsify, Deserialize, Serialize)]
@@ -38,7 +38,9 @@ impl From<ActorOrbitError> for OrbitError {
 
 impl From<OrbitError> for JsValue {
     fn from(e: OrbitError) -> Self {
-        serde_wasm_bindgen::to_value(&e).unwrap_or_else(|e| e.to_string().into())
+        Ts::from_rust(&e)
+            .map(JsValue::from)
+            .unwrap_or_else(|e| e.to_string().into())
     }
 }
 
@@ -50,7 +52,6 @@ pub enum OrbitErrorKind {
     NotFound,
     Generic,
     UnknownServer,
-    Serialize,
     Unknown,
 }
 
@@ -58,15 +59,6 @@ impl From<anyhow::Error> for OrbitError {
     fn from(error: anyhow::Error) -> Self {
         Self {
             kind: OrbitErrorKind::Unknown,
-            description: error.to_string(),
-        }
-    }
-}
-
-impl From<serde_wasm_bindgen::Error> for OrbitError {
-    fn from(error: serde_wasm_bindgen::Error) -> Self {
-        Self {
-            kind: OrbitErrorKind::Serialize,
             description: error.to_string(),
         }
     }
