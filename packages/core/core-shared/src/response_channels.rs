@@ -22,6 +22,7 @@ use crate::dbg;
 pub(crate) enum CommandKey {
     SignIn,
     Join(String),
+    Part(String),
     Privmsg { target: String, text: String },
     ChannelList,
     History(String),
@@ -32,9 +33,10 @@ pub(crate) enum CommandKey {
 pub enum CommandResponse {
     GetState(Box<Server>),
     GetChannelState(Box<Option<Channel>>),
-    Capabilities,
+    Capabilities(()),
     SignIn(SignedIn),
     Join(Box<Channel>),
+    Part(()),
     Privmsg(Box<Message>),
     ChannelList(Vec<ChannelInfo>),
     History(History),

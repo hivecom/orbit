@@ -404,6 +404,26 @@ pub async fn chat_channel_join(
 }
 
 #[wasm_bindgen]
+pub async fn chat_channel_leave(server_id: i32, channel: String) -> Result<(), OrbitError> {
+    let (tx, rx) = oneshot::channel();
+    let mut server =
+        { SERVER_STORE.lock().await.by_id(server_id) }.ok_or(OrbitError::unknown_server())?;
+    server
+        .address
+        .send(ActorMessage {
+            command: ActorCommand::Part { channel },
+            reply_tx: Some(tx),
+        })
+        .await
+        .context("Failed to send ActorMessage")?;
+
+    let resp = rx.await.context("Failed to await actor part message")?;
+    cmd_resp!(resp, CommandResponse::Part)?;
+
+    Ok(())
+}
+
+#[wasm_bindgen]
 pub async fn chat_channel_history_before(
     server_id: i32,
     channel: String,

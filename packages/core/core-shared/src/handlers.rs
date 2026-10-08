@@ -305,6 +305,25 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
             return Ok(());
         }
 
+        if source == self.state.me.as_ref().unwrap().nickname {
+            self.state.channels.remove(target);
+
+            let key = if let Some(label) = tags.label {
+                CommandKey::Label(label)
+            } else {
+                CommandKey::Part(target.to_string())
+            };
+
+            let reply = self
+                .response_channels
+                .reply(&key, CommandResponse::Part(()))
+                .map_err(|e| anyhow!("Failed to reply to PART command {e:?}"))?;
+
+            if !reply {
+                self.on_event(ServerEvent::Part(target.to_string())).await?;
+            }
+        }
+
         self.database
             .insert_message(self.state.id, target, state_message.clone())
             .await?;
@@ -1124,6 +1143,21 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                     None
                 };
                 self.join(channel, password, label).await.unwrap();
+            }
+            ActorCommand::Part { channel } => {
+                let label = if self.state.capabilities.labeled_response.enabled {
+                    let label = self
+                        .response_channels
+                        .register_labeled(cmd.reply_tx.unwrap());
+
+                    Some(label)
+                } else {
+                    self.response_channels
+                        .register(CommandKey::Part(channel.clone()), cmd.reply_tx.unwrap());
+
+                    None
+                };
+                self.part(channel, label).await.unwrap();
             }
             ActorCommand::Privmsg { text, target } => {
                 if self.state.capabilities.echo_messages.enabled {

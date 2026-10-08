@@ -104,6 +104,14 @@ pub trait SendCommand {
         async { self.command(JOIN(channel, password, None), label).await }
     }
 
+    fn part(
+        &mut self,
+        channel: String,
+        label: Option<String>,
+    ) -> impl std::future::Future<Output = Result<(), Self::Error>> {
+        async { self.command(PART(channel, None), label).await }
+    }
+
     fn privmsg(
         &mut self,
         target: String,
