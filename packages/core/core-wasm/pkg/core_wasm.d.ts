@@ -52,7 +52,7 @@ export interface Channel {
 export interface ChannelInfo {
     name: string;
     user_count: number;
-    topic: string;
+    topic: string | null;
 }
 
 export interface ChannelMetadata {
@@ -254,16 +254,16 @@ export interface InitOutput {
     readonly server_on_error: (a: number, b: any) => any;
     readonly server_sign_in: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => any;
     readonly server_sign_in_anonymous: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => any;
-    readonly wasm_bindgen__convert__closures_____invoke__h69af921b525aa026: (a: number, b: number, c: any) => [number, number];
-    readonly wasm_bindgen__convert__closures_____invoke__h28099c7ca05505e8: (a: number, b: number, c: any) => [number, number];
-    readonly wasm_bindgen__convert__closures_____invoke__h55ccb1222fc95a46: (a: number, b: number, c: any, d: any) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__h2f5a6b754968c579: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__h04b81f5efcb0df6f: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__h2f5a6b754968c579_3: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__h2f5a6b754968c579_5: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__he561c48a3e9220eb: (a: number, b: number) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__hd7c0f5330375ec49: (a: number, b: number) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__h84f8f095dc5775a9: (a: number, b: number) => void;
+    readonly wasm_bindgen_590c35605e59bfca___convert__closures_____invoke___wasm_bindgen_590c35605e59bfca___JsValue__core_f0fd674eaa06beef___result__Result_____wasm_bindgen_590c35605e59bfca___JsError___true_: (a: number, b: number, c: any) => [number, number];
+    readonly wasm_bindgen_590c35605e59bfca___convert__closures_____invoke___web_sys_49436ef5c49e1cce___features__gen_IdbVersionChangeEvent__IdbVersionChangeEvent__core_f0fd674eaa06beef___result__Result_____wasm_bindgen_590c35605e59bfca___JsValue___true_: (a: number, b: number, c: any) => [number, number];
+    readonly wasm_bindgen_590c35605e59bfca___convert__closures_____invoke___js_sys_cc9c655c8630b1e5___Function_fn_wasm_bindgen_590c35605e59bfca___JsValue_____wasm_bindgen_590c35605e59bfca___sys__Undefined___js_sys_cc9c655c8630b1e5___Function_fn_wasm_bindgen_590c35605e59bfca___JsValue_____wasm_bindgen_590c35605e59bfca___sys__Undefined_______true_: (a: number, b: number, c: any, d: any) => void;
+    readonly wasm_bindgen_590c35605e59bfca___convert__closures_____invoke___web_sys_49436ef5c49e1cce___features__gen_CloseEvent__CloseEvent______true_: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen_590c35605e59bfca___convert__closures_____invoke___web_sys_49436ef5c49e1cce___features__gen_Event__Event______true_: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen_590c35605e59bfca___convert__closures_____invoke___web_sys_49436ef5c49e1cce___features__gen_CloseEvent__CloseEvent______true__3: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen_590c35605e59bfca___convert__closures_____invoke___web_sys_49436ef5c49e1cce___features__gen_CloseEvent__CloseEvent______true__5: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen_590c35605e59bfca___convert__closures_____invoke_______true_: (a: number, b: number) => void;
+    readonly wasm_bindgen_590c35605e59bfca___convert__closures_____invoke_______true__1_: (a: number, b: number) => void;
+    readonly wasm_bindgen_590c35605e59bfca___convert__closures_____invoke_______true__2_: (a: number, b: number) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_exn_store: (a: number) => void;
