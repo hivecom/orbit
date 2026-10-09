@@ -70,7 +70,7 @@ export const useIrcStore = defineStore("irc", () => {
       await irc.serverChannelList(server.id).then((channels) => {
         const data = serverChannels.value.get(server.id)
         if (!data) return
-        data.available = channels.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()))
+        data.available = channels.sort(sortAvailableChannels)
       })
 
       registerServerEvents(server.id)
@@ -119,7 +119,7 @@ export const useIrcStore = defineStore("irc", () => {
           return
         }
         messages.push(event.value.message)
-        messages.sort((a: Message, b: Message) => a.metadata.server_time - b.metadata.server_time)
+        messages.sort(sortMessagesByTime)
       } else if (event.tag === "UserList") {
         const affected = getServerChannel(serverId, event.value.channel)
         if (!affected) return
@@ -174,7 +174,7 @@ export const useIrcStore = defineStore("irc", () => {
       if (!messages) return
 
       messages.push(...history.messages)
-      messages.sort((a, b) => a.metadata.server_time - b.metadata.server_time)
+      messages.sort(sortMessagesByTime)
     } catch (e: unknown) {
       console.error("Error when requesting scrollback", e as OrbitError)
     }
@@ -192,7 +192,7 @@ export const useIrcStore = defineStore("irc", () => {
 
       // Add channel to joined, remove it from available
       channels.joined.push(data)
-      channels.joined.sort((a, b) => a.metadata.name.toLowerCase().localeCompare(b.metadata.name.toLowerCase()))
+      channels.joined.sort(sortJoinedChannels)
       channels.available = channels.available.filter((item) => item.name !== data.metadata.name)
 
       // Upon joining, show backlog
@@ -206,19 +206,25 @@ export const useIrcStore = defineStore("irc", () => {
    * Leaves a channel and removes all of its stored information
    */
   async function channelLeave(serverId: number, channelId: string) {
-    void serverId
-    void channelId
-    return null
-    //   // TODO: Wait for jokler to implement chat_channel_leave() and call it here
-    // try {
-    //   const channels = serverChannels.value.get(serverId)
-    //   if (!channels) return
-    //   channels.joined = channels?.joined.filter((c) => c.metadata.name !== channelId)
-    //   serverMessages.value.delete(`${serverId}:${channelId}`)
+    await irc.channelLeave(serverId, channelId)
+    const channels = serverChannels.value.get(serverId)
+    if (!channels) return
 
-    // } catch (e) {
-    //   console.error(e as OrbitError)
-    // }
+    const index = channels.joined.findIndex((c) => c.metadata.name === channelId)
+    const [removed] = channels.joined.splice(index, 1)
+
+    // Joined channels is a `Channel` interface while available is `ChannelInfo`
+    // so we gotta convert it manually here
+    channels.available.push({
+      name: removed.metadata.name,
+      // FIXME: Once jokler fixes the type disparity, the `?? ""` can be removed
+      topic: removed.metadata.topic ?? "",
+      user_count: removed.users.length,
+    })
+
+    channels.available.sort(sortAvailableChannels)
+
+    serverMessages.value.delete(`${serverId}:${channelId}`)
   }
 
   /**
@@ -252,3 +258,17 @@ export const useIrcStore = defineStore("irc", () => {
     filterServersWithChannels,
   }
 })
+
+// Helpers
+
+function sortAvailableChannels(a: ChannelInfo, b: ChannelInfo) {
+  return a.name.toLowerCase().localeCompare(b.name.toLowerCase())
+}
+
+function sortJoinedChannels(a: Channel, b: Channel) {
+  return a.metadata.name.toLowerCase().localeCompare(b.metadata.name.toLowerCase())
+}
+
+function sortMessagesByTime(a: Message, b: Message) {
+  return a.metadata.server_time - b.metadata.server_time
+}

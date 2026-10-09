@@ -2,7 +2,7 @@
 import { RouterView, useRoute } from "vue-router"
 import "./style/index.css"
 import Sidebar from "./components/navigation/Sidebar.vue"
-import { Flex, Spinner } from "@dolanske/vui"
+import { Flex, Spinner, Toasts } from "@dolanske/vui"
 import { useAppStateStore } from "./stores/app-state.ts"
 
 // The main App entrypoint for orbit. It replaces the usual `App.vue` with an
@@ -34,6 +34,8 @@ const route = useRoute()
     <p class="text-color-light mb-l">Spinning up the core</p>
     <Spinner />
   </Flex>
+
+  <Toasts placement="top-end" />
 </template>
 
 <style>
