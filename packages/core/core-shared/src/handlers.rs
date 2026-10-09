@@ -747,6 +747,20 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
 
                     BatchData::Join { target } => {
                         if self.state.capabilities.history.enabled {
+                            self.requested_batches.push((
+                                RequestedBatch {
+                                    label: label.clone(),
+                                    typ: BatchType::JoinHistory {
+                                        target: target.to_string(),
+                                    },
+                                },
+                                Instant::now(),
+                            ));
+
+                            self.history_latest(target.to_string(), None, 5, label.clone())
+                                .await
+                                .context("Failed to request latest history")?;
+                        } else {
                             let channel = self
                                 .state
                                 .channels
@@ -762,20 +776,6 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                             self.response_channels
                                 .reply(&key, CommandResponse::Join(Box::new(channel.clone())))
                                 .unwrap();
-                        } else {
-                            self.requested_batches.push((
-                                RequestedBatch {
-                                    label: label.clone(),
-                                    typ: BatchType::JoinHistory {
-                                        target: target.to_string(),
-                                    },
-                                },
-                                Instant::now(),
-                            ));
-
-                            self.history_latest(target.to_string(), None, 5, label.clone())
-                                .await
-                                .context("Failed to request latest history")?;
                         }
                     }
 
