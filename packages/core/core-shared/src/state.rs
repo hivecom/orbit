@@ -690,5 +690,5 @@ impl Tags {
 pub struct ChannelInfo {
     pub name: String,
     pub user_count: i32,
-    pub topic: String,
+    pub topic: Option<String>,
 }
