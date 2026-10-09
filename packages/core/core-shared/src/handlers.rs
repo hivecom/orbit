@@ -83,7 +83,26 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                 }) {
                     let (RequestedBatch { typ, .. }, _) = self.requested_batches.remove(index);
                     if let BatchType::Join { target } = typ {
-                        self.handle_self_join(target, tags.label).await?;
+                        let channel = Channel::new(target.to_string());
+                        self.state
+                            .channels
+                            .insert(target.to_string(), channel.clone());
+
+                        if self.state.capabilities.history.enabled {
+                            self.requested_batches.push((
+                                RequestedBatch {
+                                    label: tags.label.clone(),
+                                    typ: BatchType::JoinHistory {
+                                        target: target.to_string(),
+                                    },
+                                },
+                                Instant::now(),
+                            ));
+
+                            self.history_latest(target.to_string(), None, 5, tags.label)
+                                .await
+                                .context("Failed to request latest history")?;
+                        }
                     } else {
                         unreachable!("invalid join type");
                     }
@@ -98,44 +117,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
 
         Ok(())
     }
-    #[tracing::instrument(err, skip(self))]
-    async fn handle_self_join(
-        &mut self,
-        target: String,
-        label: Option<String>,
-    ) -> Result<(), OrbitError> {
-        let channel = Channel::new(target.to_string());
-        self.state
-            .channels
-            .insert(target.to_string(), channel.clone());
 
-        if self.state.capabilities.history.enabled {
-            self.requested_batches.push((
-                RequestedBatch {
-                    label: label.clone(),
-                    typ: BatchType::JoinHistory {
-                        target: target.to_string(),
-                    },
-                },
-                Instant::now(),
-            ));
-
-            self.history_latest(target.to_string(), None, 5, label)
-                .await
-                .context("Failed to request latest history")?;
-        } else if !self.state.capabilities.labeled_response.enabled {
-            let channel = self.channel_with_messages(&target).await?;
-
-            self.response_channels
-                .reply(
-                    &CommandKey::Join(target),
-                    CommandResponse::Join(Box::new(channel)),
-                )
-                .map_err(|e| anyhow!("Failed to reply to JOIN command {e:?}"))?;
-        }
-
-        Ok(())
-    }
     #[tracing::instrument(err, skip(self))]
     pub(crate) async fn handle_caps(
         &mut self,
@@ -254,14 +236,17 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                 && !self.state.capabilities.labeled_response.enabled
             {
                 let channel = self.channel_with_messages(&target).await?;
-                self.response_channels
+                let replied = self
+                    .response_channels
                     .reply(
                         &CommandKey::Join(target.to_string()),
                         CommandResponse::Join(Box::new(channel.clone())),
                     )
                     .map_err(|e| anyhow!("Failed to reply to JOIN command {e:?}"))?;
 
-                self.on_event(ServerEvent::Joined(channel.clone())).await?;
+                if !replied {
+                    self.on_event(ServerEvent::Joined(channel.clone())).await?;
+                }
             }
         } else {
             let channel = self.channel_mut(target.to_string()).await;
@@ -761,15 +746,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                     }
 
                     BatchData::Join { target } => {
-                        if !self.state.capabilities.history.enabled {
-                            let channel = self
-                                .state
-                                .channels
-                                .get(&target)
-                                .expect("should exist after just joining");
-
-                            self.on_event(ServerEvent::Joined(channel.clone())).await?;
-                        } else {
+                        if self.state.capabilities.history.enabled {
                             self.requested_batches.push((
                                 RequestedBatch {
                                     label: label.clone(),
@@ -783,6 +760,22 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                             self.history_latest(target.to_string(), None, 5, label.clone())
                                 .await
                                 .context("Failed to request latest history")?;
+                        } else {
+                            let channel = self
+                                .state
+                                .channels
+                                .get(&target)
+                                .expect("should exist after just joining");
+
+                            let key = if let Some(label) = label {
+                                CommandKey::Label(label)
+                            } else {
+                                CommandKey::Join(target)
+                            };
+
+                            self.response_channels
+                                .reply(&key, CommandResponse::Join(Box::new(channel.clone())))
+                                .unwrap();
                         }
                     }
 
@@ -1110,15 +1103,18 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                     let label = self
                         .response_channels
                         .register_labeled(cmd.reply_tx.unwrap());
-                    self.requested_batches.push((
-                        RequestedBatch {
-                            label: Some(label.clone()),
-                            typ: BatchType::Join {
-                                target: channel.to_string(),
+
+                    if self.state.capabilities.batch.enabled {
+                        self.requested_batches.push((
+                            RequestedBatch {
+                                label: Some(label.clone()),
+                                typ: BatchType::Join {
+                                    target: channel.to_string(),
+                                },
                             },
-                        },
-                        Instant::now(),
-                    ));
+                            Instant::now(),
+                        ));
+                    }
 
                     Some(label)
                 } else {
