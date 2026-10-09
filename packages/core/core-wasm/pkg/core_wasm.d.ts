@@ -204,8 +204,6 @@ export type ChannelRole = "Owner" | "Admin" | "Operator" | "HalfOperator" | "Voi
 
 export type MessageType = "Privmsg" | "Notice" | "Action" | "Join" | "Part" | "Quit";
 
-export type OrbitError = "NickTaken" | { SaslFailed: string } | { CapabilityDisabled: string } | "NotFound" | { Generic: string } | { Unknown: string };
-
 export type OrbitErrorKind = "NickTaken" | "SaslFailed" | "CapabilityDisabled" | "NotFound" | "Generic" | "UnknownServer" | "Unknown";
 
 export type ServerEvent = { tag: "Joined"; value: Channel } | { tag: "ChannelUpdated"; value: ChannelMetadata } | { tag: "ServerInfo"; value: ServerMetadata } | { tag: "UserList"; value: { channel: string; users: ChannelUser[] } } | { tag: "Message"; value: { channel: string; message: Message } } | { tag: "React"; value: { target_message: string; user: string; text: string; is_unreact: boolean } };

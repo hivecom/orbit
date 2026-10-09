@@ -275,7 +275,7 @@ pub async fn server_on_error(
         while let Ok(error) = handler_rx.recv().await {
             if let Err(e) = f.call1(
                 &JsValue::null(),
-                &Ts::from_rust(&error)
+                &Ts::from_rust(&OrbitError::from(error))
                     .map(JsValue::from)
                     .unwrap_or_else(|e| e.to_string().into()),
             ) {

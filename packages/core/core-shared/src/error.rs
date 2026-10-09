@@ -5,7 +5,6 @@ use tracing::error;
 use tsify::Tsify;
 
 #[derive(Debug, Error, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "web", derive(Tsify))]
 pub enum OrbitError {
     #[error("Nickname is already in use")]
     NickTaken,
