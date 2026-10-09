@@ -65,15 +65,18 @@ export const useIrcStore = defineStore("irc", () => {
     serverData.value.set(server.id, server)
     serverChannels.value.set(server.id, { joined: [], available: [] })
 
-    await irc.serverSignInAnonymous(server.id, user.me.displayName, user.me.accountName, user.me.accountName)
+    try {
+      await irc.serverSignInAnonymous(server.id, user.me.displayName, user.me.accountName, user.me.accountName)
+      await irc.serverChannelList(server.id).then((channels) => {
+        const data = serverChannels.value.get(server.id)
+        if (!data) return
+        data.available = channels.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()))
+      })
 
-    await irc.serverChannelList(server.id).then((channels) => {
-      const data = serverChannels.value.get(server.id)
-      if (!data) return
-      data.available = channels.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()))
-    })
-
-    registerServerEvents(server.id)
+      registerServerEvents(server.id)
+    } catch (e) {
+      console.error("Error when initializing server", e as OrbitError)
+    }
   }
 
   /**
@@ -94,11 +97,15 @@ export const useIrcStore = defineStore("irc", () => {
    * unjoined channels and users get to choose the first one they join in the UI.
    */
   async function serverConnect(url: string) {
-    const state = await irc.serverConnect(url).catch((e: OrbitError) => {
-      throw new Error(e.description)
-    })
-    await initializeServer(state)
-    return state
+    try {
+      const state = await irc.serverConnect(url)
+      await initializeServer(state)
+      return state
+    } catch (e) {
+      console.error("Error connecting to a server", e as OrbitError)
+      // Rethrow for ServerConnectDialog to show proper error UI
+      throw e
+    }
   }
 
   function registerServerEvents(serverId: number) {
@@ -190,7 +197,7 @@ export const useIrcStore = defineStore("irc", () => {
 
       // Upon joining, show backlog
       serverMessages.value.set(`${serverId}:${channelId}`, data.messages)
-    } catch (e: any) {
+    } catch (e) {
       console.error("Error when joining channel", e as OrbitError)
     }
   }
@@ -214,10 +221,15 @@ export const useIrcStore = defineStore("irc", () => {
     // }
   }
 
+  /**
+   * Sends a message in an irc channel
+   */
   async function sendMessage(serverId: number, channelId: string, message: string) {
-    await irc.channelSendMessage(serverId, channelId, message).catch((e: OrbitError) => {
-      throw new Error(e.description)
-    })
+    try {
+      await irc.channelSendMessage(serverId, channelId, message)
+    } catch (e) {
+      console.error("Error when joining channel", e as OrbitError)
+    }
   }
 
   return {

@@ -36,7 +36,7 @@ async function sendMessage(message: string) {
   if (!channel.value) return
 
   forceScroll = true
-  irc.sendMessage(props.serverId, props.channelId, message)
+  await irc.sendMessage(props.serverId, props.channelId, message)
 
   // Await DOM update in case the Composer height shrinks after clearing text
   await nextTick()
