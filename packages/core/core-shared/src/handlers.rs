@@ -951,7 +951,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                 let topic = params[2].to_string();
                 let channel = self.channel_mut(channel_name).await;
 
-                channel.metadata.topic = Some(topic);
+                channel.metadata.topic = if topic.is_empty() { None } else { Some(topic) };
 
                 let metadata = channel.metadata.clone();
                 if !self.current_batches.iter().any(|b| b.is_join()) {
@@ -1035,7 +1035,11 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                     list.push(ChannelInfo {
                         name: name.to_owned(),
                         user_count: i32::from_str(user_count).unwrap(),
-                        topic: topic.to_owned(),
+                        topic: if topic.is_empty() {
+                            None
+                        } else {
+                            Some(topic.to_owned())
+                        },
                     });
                 }
             }
