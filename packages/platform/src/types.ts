@@ -118,6 +118,7 @@ export interface IrcPort {
   channelJoin: (serverId: number, channel: string, password?: string | null) => Promise<Channel>
   channelHistoryBefore: (serverId: number, channel: string, beforeMsgid: string) => Promise<History>
   channelSendMessage: (serverId: number, channel: string, text: string) => Promise<Message>
+  channelLeave: (serverId: number, channel: string) => Promise<void>
 }
 
 export interface Platform {

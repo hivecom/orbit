@@ -10,6 +10,7 @@ import { createReusableTemplate, useLocalStorage } from "@vueuse/core"
 import { ContextMenu } from "@dolanske/vui"
 import { Divider } from "@dolanske/vui"
 import { findById, useWindowManager } from "../../lib/windows.ts"
+import { toastError } from "../../lib/toast.ts"
 
 interface Props {
   server: ServerWithGroupedChannels
@@ -30,9 +31,17 @@ const leavingLoading = ref<string>("")
 
 async function leave(channelId: string) {
   leavingLoading.value = channelId
-  await irc.channelLeave(server.id, channelId)
-  closeWindow(findById({ channelId })!.location)
-  leavingLoading.value = ""
+  await irc
+    .channelLeave(server.id, channelId)
+    .then(() => {
+      closeWindow(findById({ channelId })!.location)
+    })
+    .catch((e) => {
+      toastError(e, "Error leaving channel")
+    })
+    .finally(() => {
+      leavingLoading.value = ""
+    })
 }
 </script>
 

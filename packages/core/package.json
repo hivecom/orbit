@@ -11,7 +11,6 @@
   ],
   "exports": {
     "./wasm": {
-      "types": "./core-wasm/pkg/core_wasm.d.ts",
       "import": "./core-wasm/pkg/core_wasm.js"
     },
     "./types": {
