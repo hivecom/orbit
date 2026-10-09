@@ -217,8 +217,7 @@ export const useIrcStore = defineStore("irc", () => {
     // so we gotta convert it manually here
     channels.available.push({
       name: removed.metadata.name,
-      // FIXME: Once jokler fixes the type disparity, the `?? ""` can be removed
-      topic: removed.metadata.topic ?? "",
+      topic: removed.metadata.topic,
       user_count: removed.users.length,
     })
 
