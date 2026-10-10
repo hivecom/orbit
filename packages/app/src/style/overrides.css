@@ -1,15 +1,15 @@
 /* Vui related style overrides */
 
 :root {
-  --font-size-xxs: 1.1rem;
-  --font-size-xs: 1.175rem;
-  --font-size-s: 1.3rem;
-  --font-size-m: 1.5rem;
-  --font-size-l: 1.8rem;
-  --font-size-xl: 2rem;
-  --font-size-xxl: 2.4rem;
-  --font-size-xxxl: 2.8rem;
-  --font-size-xxxxl: 3.2rem;
+  --font-size-xxs: calc(1.1 * var(--vui-font-unit));
+  --font-size-xs: calc(1.175 * var(--vui-font-unit));
+  --font-size-s: calc(1.3 * var(--vui-font-unit));
+  --font-size-m: calc(1.5 * var(--vui-font-unit));
+  --font-size-l: calc(1.8 * var(--vui-font-unit));
+  --font-size-xl: calc(2 * var(--vui-font-unit));
+  --font-size-xxl: calc(2.4 * var(--vui-font-unit));
+  --font-size-xxxl: calc(2.8 * var(--vui-font-unit));
+  --font-size-xxxxl: calc(3.2 * var(--vui-font-unit));
 
   --space-0: 0;
   --space-xxxs: 2px;

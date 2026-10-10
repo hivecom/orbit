@@ -10,8 +10,8 @@ catalogs:
       specifier: ^3.0.1
       version: 3.0.1
     '@dolanske/vui':
-      specifier: ^1.18.2
-      version: 1.18.2
+      specifier: ^2.0.0-beta.4
+      version: 2.0.0-beta.4
     '@iconify-prerendered/vue-solar':
       specifier: ^0.28.1754901129
       version: 0.28.1754901129
@@ -139,7 +139,7 @@ importers:
         version: 3.0.1(vue@3.5.38(typescript@6.0.3))
       '@dolanske/vui':
         specifier: 'catalog:'
-        version: 1.18.2(reka-ui@2.10.0(vue@3.5.38(typescript@6.0.3)))(vue@3.5.38(typescript@6.0.3))
+        version: 2.0.0-beta.4(reka-ui@2.10.0(vue@3.5.38(typescript@6.0.3)))(vue@3.5.38(typescript@6.0.3))
       '@iconify-prerendered/vue-solar':
         specifier: 'catalog:'
         version: 0.28.1754901129(vue@3.5.38(typescript@6.0.3))
@@ -459,8 +459,8 @@ packages:
     peerDependencies:
       vue: latest
 
-  '@dolanske/vui@1.18.2':
-    resolution: {integrity: sha512-9FrLad2HJ1ckg9C2OjTMvcDENmA6wn60nEyr0P2nhdyQZ5VgFQzNM1cJFv1qn9NetrH5k+uU4rHQifidWFUaSQ==}
+  '@dolanske/vui@2.0.0-beta.4':
+    resolution: {integrity: sha512-dm0MtIAGYheQzsghvEadM/uRDtM2pym4Qeq/4CBUqYEwubdFlOywtomZVAKp6jH+5gZsXM3h7DLQnCDt3j7ffA==}
     peerDependencies:
       vue: ^3.5.0
 
@@ -3232,12 +3232,12 @@ snapshots:
     transitivePeerDependencies:
       - '@vue/composition-api'
 
-  '@dolanske/vui@1.18.2(reka-ui@2.10.0(vue@3.5.38(typescript@6.0.3)))(vue@3.5.38(typescript@6.0.3))':
+  '@dolanske/vui@2.0.0-beta.4(reka-ui@2.10.0(vue@3.5.38(typescript@6.0.3)))(vue@3.5.38(typescript@6.0.3))':
     dependencies:
       '@floating-ui/vue': 2.0.1(vue@3.5.38(typescript@6.0.3))
       '@iconify-prerendered/vue-ph': 0.28.1714973607(vue@3.5.38(typescript@6.0.3))
       '@vuepic/vue-datepicker': 14.0.0(vue@3.5.38(typescript@6.0.3))
-      '@vueuse/core': 14.3.0(vue@3.5.38(typescript@6.0.3))
+      '@vueuse/core': 14.4.0(vue@3.5.38(typescript@6.0.3))
       emojibase: 17.0.0
       vaul-vue: 0.4.1(reka-ui@2.10.0(vue@3.5.38(typescript@6.0.3)))(vue@3.5.38(typescript@6.0.3))
       vue: 3.5.38(typescript@6.0.3)
@@ -4084,7 +4084,7 @@ snapshots:
     dependencies:
       '@date-fns/tz': 1.5.0
       '@floating-ui/vue': 1.1.11(vue@3.5.38(typescript@6.0.3))
-      '@vueuse/core': 14.3.0(vue@3.5.38(typescript@6.0.3))
+      '@vueuse/core': 14.4.0(vue@3.5.38(typescript@6.0.3))
       date-fns: 4.4.0
       vue: 3.5.38(typescript@6.0.3)
     transitivePeerDependencies:
