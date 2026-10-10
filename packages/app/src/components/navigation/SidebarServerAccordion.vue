@@ -34,7 +34,10 @@ async function leave(channelId: string) {
   await irc
     .channelLeave(server.id, channelId)
     .then(() => {
-      closeWindow(findById({ channelId })!.location)
+      const window = findById({ channelId })
+      if (window) {
+        closeWindow(findById({ channelId })!.location)
+      }
     })
     .catch((e) => {
       toastError(e, "Error leaving channel")
