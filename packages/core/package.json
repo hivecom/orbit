@@ -18,7 +18,7 @@
     }
   },
   "scripts": {
-    "build": "wasm-pack build core-wasm --target web && node ./core-wasm/rm-generated-gitignore.js",
-    "dev": "cargo watch -i core-wasm/pkg -s 'wasm-pack build core-wasm --target web'"
+    "build": "wasm-pack build core-wasm --target web && node ./core-wasm/postbuild.js",
+    "dev": "cargo watch -i core-wasm/pkg -s 'wasm-pack build core-wasm --target web && node ./core-wasm/postbuild.js'"
   }
 }

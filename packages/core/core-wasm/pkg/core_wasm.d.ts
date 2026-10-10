@@ -254,16 +254,6 @@ export interface InitOutput {
     readonly server_on_error: (a: number, b: any) => any;
     readonly server_sign_in: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => any;
     readonly server_sign_in_anonymous: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => any;
-    readonly wasm_bindgen__convert__closures_____invoke__h329e9bd1f6ebd81c: (a: number, b: number, c: any) => [number, number];
-    readonly wasm_bindgen__convert__closures_____invoke__hc618b3d57c150041: (a: number, b: number, c: any) => [number, number];
-    readonly wasm_bindgen__convert__closures_____invoke__h40e10e1132bc43bd: (a: number, b: number, c: any, d: any) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__h17c8cfd1267240e9: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__h38a7baa7ae265ab7: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__h17c8cfd1267240e9_3: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__h17c8cfd1267240e9_5: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__h54442ea4986df817: (a: number, b: number) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__h825215c0288dbb8b: (a: number, b: number) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__h94dacc021d8dd016: (a: number, b: number) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_exn_store: (a: number) => void;
