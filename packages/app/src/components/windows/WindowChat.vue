@@ -302,7 +302,7 @@ const showUserList = ref(false)
     justify-content: space-between;
     gap: var(--space-m);
     padding-inline: var(--space-s);
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border-weak);
     height: 44px;
     background-color: var(--color-bg-lowered);
     z-index: 5;
