@@ -10,14 +10,16 @@ import { useIRCJoinChannel } from "../../composables/useIRCJoinChannel.ts"
 import { useDateFormatter } from "../../lib/date.ts"
 import { useConfigStore } from "../../stores/config.ts"
 import { getServerInitials } from "../../lib/format.ts"
-import { IconArrowDownLinear, IconUsersGroupRoundedLinear } from "@iconify-prerendered/vue-solar"
+import { IconArrowDownLinear, IconArrowToDownRightLinear, IconReply2Linear, IconUsersGroupRoundedLinear } from "@iconify-prerendered/vue-solar"
 import { getUserColorStyle } from "../../lib/color.ts"
 import ChatUserList from "../shared/user/ChatUserList.vue"
+import { useUserStore } from "../../stores/user.ts"
 
 const props = defineProps<WindowAndLocation<WindowChat>>()
 const irc = useIrcStore()
 const config = useConfigStore()
 const format = useDateFormatter()
+const user = useUserStore()
 
 // Get all messages per this channel. Setting to hide status message optionally filters them out
 const messages = computed(() => {
@@ -245,6 +247,7 @@ const showUserList = ref(false)
         <div class="o-table-scroll-container" ref="chatScrollContainer">
           <table class="o-msg-table">
             <template v-for="message in messages" :key="message.metadata.msgid">
+              <!-- Date splitter -->
               <tr v-if="dateIds.has(message.metadata.msgid)" class="msg-date-splitter">
                 <td colspan="4">
                   <svg width="20" height="44" viewBox="0 0 20 44" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -256,7 +259,17 @@ const showUserList = ref(false)
                   </svg>
                 </td>
               </tr>
-              <tr>
+              <!-- Reply row -->
+              <tr class="msg-reply" v-if="message.text?.reply">
+                <td></td>
+                <td colspan="3">
+                  <IconReply2Linear />
+                  <span :style="getUserColorStyle(message.metadata.user)" class="user-color">{{ message.text.reply.username }}</span>
+                  <p>{{ message.text.reply.text }}</p>
+                </td>
+              </tr>
+              <!-- Message content row -->
+              <tr :class="{ 'highlight-reply': message.text?.reply && message.text.reply.username === user.me.displayName }">
                 <td class="msg-timestamp" v-if="config.options.appearance_chat_timestamps_enabled">{{ format.chatTimestamp(message.metadata.server_time) }}</td>
                 <td class="msg-username user-color" :style="getUserColorStyle(message.metadata.user)">{{ message.metadata.user }}</td>
                 <td class="msg-content" :class="{ status: message.metadata.message_type !== 'Privmsg' }">
@@ -427,6 +440,37 @@ const showUserList = ref(false)
             }
           }
 
+          .msg-reply {
+            td {
+              padding-left: var(--space-xs);
+
+              svg,
+              span,
+              p {
+                display: inline-block;
+                vertical-align: middle;
+                font-size: var(--font-size-s);
+                opacity: 0.5;
+              }
+
+              span {
+                margin-inline: var(--space-xxs);
+              }
+
+              svg {
+                display: inline-block;
+                vertical-align: middle;
+                color: var(--color-text);
+                transform: scale(-1);
+              }
+            }
+          }
+
+          /* TODO: hover effect */
+          tr.highlight-reply td {
+            background-color: var(--color-bg-yellow-lowered);
+          }
+
           tr:not(.msg-date-splitter):hover td {
             background-color: var(--color-bg);
           }
@@ -449,8 +493,6 @@ const showUserList = ref(false)
             }
 
             &.msg-username {
-              /* --user-color: var(--color-text-light);
-              color: var(--user-color); */
               padding-right: var(--space-xs);
               padding-left: var(--space-xs);
             }
