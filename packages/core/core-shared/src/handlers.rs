@@ -26,6 +26,8 @@ use crate::{
     },
 };
 
+pub const HISTORY_RETRIEVAL_LIMIT: i32 = 50;
+
 #[cfg(feature = "web")]
 #[allow(unused_imports)]
 use crate::dbg;
@@ -99,9 +101,14 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                                 Instant::now(),
                             ));
 
-                            self.history_latest(target.to_string(), None, 5, tags.label)
-                                .await
-                                .context("Failed to request latest history")?;
+                            self.history_latest(
+                                target.to_string(),
+                                None,
+                                HISTORY_RETRIEVAL_LIMIT,
+                                tags.label,
+                            )
+                            .await
+                            .context("Failed to request latest history")?;
                         }
                     } else {
                         unreachable!("invalid join type");
@@ -776,9 +783,14 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                                 Instant::now(),
                             ));
 
-                            self.history_latest(target.to_string(), None, 5, label.clone())
-                                .await
-                                .context("Failed to request latest history")?;
+                            self.history_latest(
+                                target.to_string(),
+                                None,
+                                HISTORY_RETRIEVAL_LIMIT,
+                                label.clone(),
+                            )
+                            .await
+                            .context("Failed to request latest history")?;
                         } else {
                             let channel = self
                                 .state
@@ -1276,7 +1288,7 @@ impl<C: IrcConnection, DB: Database> IrcActor<C, DB> {
                     )
                 };
 
-                self.history_before(channel, start, 5, label)
+                self.history_before(channel, start, HISTORY_RETRIEVAL_LIMIT, label)
                     .await
                     .context("Failed to send history before")?;
             }
