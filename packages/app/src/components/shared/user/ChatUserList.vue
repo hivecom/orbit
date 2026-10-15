@@ -12,8 +12,6 @@ const sortedUsers = computed(() => props.users.sort((a, b) => (a.role > b.role ?
 
 <template>
   <div class="o-window-users">
-    <Flex column gap="xs">
-      <ChatUserItem v-for="user in sortedUsers" :key="user.nickname" :user="user" />
-    </Flex>
+    <ChatUserItem v-for="user in sortedUsers" :key="user.nickname" :user="user" />
   </div>
 </template>

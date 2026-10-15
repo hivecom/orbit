@@ -1,15 +1,16 @@
 import DOMPurify from "dompurify"
-import { h, ref, type VNode } from "vue"
+import { h, ref, useId, type VNode } from "vue"
 import ChatImage from "../components/shared/chat/ChatImage.vue"
 import ChatExternalLink from "../components/shared/chat/ChatExternalLink.vue"
 
-export const ALLOWED_TAGS = ["a", "abbr", "b", "blockquote", "br", "code", "del", "div", "em", "h1", "h2", "h3", "h4", "h5", "h6", "hr", "i", "img", "ins", "kbd", "li", "mark", "ol", "p", "pre", "q", "s", "small", "span", "strong", "sub", "sup", "table", "tbody", "td", "tfoot", "th", "thead", "tr", "u", "ul"]
-export const ALLOWED_ATTR = ["href", "src", "alt", "title", "width", "height", "colspan", "rowspan", "start", "lang", "dir", "class"]
+export const ALLOWED_TAGS = ["a", "b", "blockquote", "br", "code", "h1", "h2", "h3", "h4", "h5", "h6", "hr", "i", "img", "li", "ol", "p", "pre", "strong", "sub", "sup", "table", "tbody", "td", "tfoot", "th", "thead", "tr", "ul"]
+export const ALLOWED_ATTR = ["href", "title", "colspan", "rowspan", "dir", "class"]
 
 /**
  * Parser is used to convert chunks of plain irc messages into interactive UI
- * elements. Such as links, embed images or mentions. String goes in, string
- * including parsed HTML goes out
+ * elements. Such as links, embed images or mentions. If messag does not contain
+ * any URLs or flagged elements, string goes out. Otherwise a vue render functions
+ * render components in their place
  */
 
 const URL = /(?<!["'=])\bhttps?:\/\/[^\s<>"'`]+(?<![.,;:!?)\]}'"])/gi
@@ -20,20 +21,18 @@ const AUDIO = /(mp3|wav|ogg)$/i
 type Child = VNode | string
 
 // Converts URL into a DOM element (or vue component) handler
-function urlToNode(url: string): Child {
-  // TODO: clicking an imaeg shows it in a modal
-  // - same as with link, single modal and we just change the src of the image
-  // - if a single message has multiple images in it, create a gallery + show arrows in the modal
+function urlToNode(url: string, galleryId: string): Child {
   // TODO: mentions
-  // TODO: server links
-  // TODO: channel links
-  // TODO: voice links
+  // TODO: [internal] server links
+  // TODO: [internal] channel links
+  // TODO: [internal] voice links
   // TODO: link embeds (og image / title etc)
   // TODO: spotify embeds (create a custom provider?)
   // TODO: custom video player
   // TODO: custom audio player
   if (IMAGE.test(url)) {
-    return h(ChatImage, { src: url })
+    // Append a gallery id to all images within a gallery
+    return h(ChatImage, { src: url, "data-gallery-id": galleryId })
   }
 
   if (AUDIO.test(url)) {
@@ -45,7 +44,8 @@ function urlToNode(url: string): Child {
     return h("video", { controls: true }, [h("source", { src: url, type: `video/${video[0]}` })])
   }
 
-  // Default back to <a />
+  // Default back to <a /> if link was not caught or doesn't have a custom
+  // component assosicated to it yet
   return h(ChatExternalLink, { href: url }, () => url)
 }
 
@@ -53,6 +53,12 @@ function urlToNode(url: string): Child {
 function splitText(text: string): Child[] {
   const pieces: Child[] = []
   let last = 0
+
+  // Create an id for all images within a single message. Now, when gallery
+  // modal is open, we can collect the images (1-n <img> elements) and get their
+  // src to create a gallery
+  const galleryId = useId()
+
   // Extracts URLs out of a string and either returns empty string nodes or
   // components retrieved from urlToNode
   for (const match of text.matchAll(URL)) {
@@ -61,7 +67,7 @@ function splitText(text: string): Child[] {
       pieces.push(text.slice(last, match.index))
     }
 
-    pieces.push(urlToNode(match[0]))
+    pieces.push(urlToNode(match[0], galleryId))
 
     // Save the end of URL index for inbetween string
     last = match.index + match[0].length
@@ -93,13 +99,13 @@ export function parseMessage(text?: string | null): Child[] {
 // components themselves
 interface MessageModal {
   type: "img" | "link"
-  payload: string
+  data: any
 }
 
 export const messageModalState = ref<MessageModal | null>(null)
 
-export function openMsgModal(type: MessageModal["type"], payload: MessageModal["payload"]) {
-  messageModalState.value = { type, payload }
+export function openMsgModal(type: MessageModal["type"], data: MessageModal["data"]) {
+  messageModalState.value = { type, data }
 }
 
 export function closeMsgModal() {
@@ -107,5 +113,5 @@ export function closeMsgModal() {
 }
 
 export function isMsgActive(type: MessageModal["type"]) {
-  return !!(messageModalState.value && messageModalState.value.type === type)
+  return !!(messageModalState.value && messageModalState.value.type === type && !!messageModalState.value.data)
 }

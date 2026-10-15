@@ -16,6 +16,7 @@ const config = {
   appearance_chat_smooth_scroll: false,
   appearance_chat_show_send_button: false,
   appearance_chat_show_status_messages: true,
+  appearance_chat_image_max_height: 512,
 }
 
 // NOTE: Keymap currently cannot be changed. We'll implement it once we have

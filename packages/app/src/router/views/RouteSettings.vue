@@ -6,15 +6,25 @@ import { computed } from "vue"
 import { useRouter } from "vue-router"
 import { capitalize } from "../../lib/format"
 
+// TODO: show actual value next to sliders (woul be nice seeing min and max as steps in slider)
+
 const config = useConfigStore()
 const router = useRouter()
 
-const MIN_WIDTH = 40
-const MAX_WIDTH = 100
+const CHAT_MIN_WIDTH = 40
+const CHAT_MAX_WIDTH = 100
+
+const CHAT_IMAGE_MAX_HEIGHT = 1024
+const CHAT_IMAGE_MIN_HEIGHT = 32
 
 const safeguardedWidth = computed({
   get: () => config.options.appearance_chat_width,
-  set: (value) => (config.options.appearance_chat_width = Math.min(MAX_WIDTH, Math.max(value, MIN_WIDTH))),
+  set: (value) => (config.options.appearance_chat_width = Math.min(CHAT_MAX_WIDTH, Math.max(value, CHAT_MIN_WIDTH))),
+})
+
+const safeguardedImageHeight = computed({
+  get: () => config.options.appearance_chat_image_max_height,
+  set: (value) => (config.options.appearance_chat_image_max_height = Math.min(CHAT_IMAGE_MAX_HEIGHT, Math.max(value, CHAT_IMAGE_MIN_HEIGHT))),
 })
 
 const themeOptions = [
@@ -55,11 +65,16 @@ const activeTheme = computed({
       <Switch reversed accent label="Show timestamps" hint="Display timestampts in chat view" v-model="config.options.appearance_chat_timestamps_enabled" />
       <Input label="Timestamp format" v-model="config.options.appearance_chat_timestamps_format" :disabled="!config.options.appearance_chat_timestamps_enabled" />
       <Switch reversed accent label="Smooth scroll" hint="Scrolling mode for when chat auto-scrolls" v-model="config.options.appearance_chat_smooth_scroll" />
+      <Flex column :gap="0">
+        <label for="chat-width-input" class="vui-label">Image max height</label>
+        <p class="vui-hint">Clamp the maximum height of images in the chat</p>
+        <Slider v-model="safeguardedImageHeight" :min="CHAT_IMAGE_MIN_HEIGHT" :max="CHAT_IMAGE_MAX_HEIGHT" />
+      </Flex>
       <h4>Layout</h4>
       <Flex column :gap="0">
         <label for="chat-width-input" class="vui-label">Chat width</label>
         <p class="vui-hint">Percentual width of the chat compared to its window. On small devices, the width might be automatically adjusted</p>
-        <Slider v-model="safeguardedWidth" :min="MIN_WIDTH" :max="MAX_WIDTH" />
+        <Slider v-model="safeguardedWidth" :min="CHAT_MIN_WIDTH" :max="CHAT_MAX_WIDTH" />
       </Flex>
       <Switch reversed accent label="Center chat" hint="If width is other than 100%, the chat will be in the center of the chat window" v-model="config.options.appearance_chat_center_chat" />
       <div class="settings-chat-indicator">

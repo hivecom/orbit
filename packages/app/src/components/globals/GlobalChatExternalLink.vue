@@ -5,8 +5,8 @@ import { computed, ref } from "vue"
 import { CHAT_URL_TRUSTED_DOMAINS_KEY } from "../../lib/constants"
 
 const domain = computed(() => {
-  if (!isMsgActive("link") || !messageModalState.value?.payload) return null
-  const url = new URL(messageModalState.value?.payload)
+  if (!isMsgActive("link") || !messageModalState.value?.data) return null
+  const url = new URL(messageModalState.value?.data)
   return url.hostname
 })
 
@@ -20,7 +20,7 @@ function goToUrl() {
     localStorage.setItem(CHAT_URL_TRUSTED_DOMAINS_KEY, JSON.stringify(list))
   }
 
-  window.open(messageModalState.value!.payload, "_blank")
+  window.open(messageModalState.value!.data, "_blank")
 }
 </script>
 
@@ -31,7 +31,7 @@ function goToUrl() {
       <p class="text-color-light">You are about to leave Orbit via external link. Are you sure the link you're clicking is safe?</p>
     </template>
 
-    <pre>{{ messageModalState?.payload }}</pre>
+    <pre>{{ messageModalState?.data }}</pre>
     <Checkbox class="mt-m" v-model="shouldTrust">
       <p>
         Trust <strong>{{ domain }}</strong> from now on

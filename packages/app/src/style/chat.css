@@ -11,10 +11,15 @@
 
 .o-chat-img {
   display: block;
-  border-radius: var(--border-radius-s);
-  overflow: hidden;
-  max-height: 512px;
-  max-width: 1024px;
-  object-fit: contain;
-  object-position: center;
+  cursor: pointer;
+
+  img {
+    display: block;
+    border-radius: var(--border-radius-s);
+    overflow: hidden;
+    max-height: 512px;
+    max-width: 100%;
+    object-fit: contain;
+    object-position: center;
+  }
 }
