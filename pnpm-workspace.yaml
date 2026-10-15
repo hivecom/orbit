@@ -24,6 +24,7 @@ catalog:
   "@vueuse/core": ^14.3.0
   "@iconify-prerendered/vue-solar": ^0.28.1754901129
   dayjs: ^1.11.23
+  dompurify: ^3.4.17
 overrides:
   vite: "catalog:"
   vitest: "catalog:"

@@ -1,0 +1,20 @@
+/* Styling of rendered message components and elements */
+
+.o-chat-a {
+  text-decoration: underline;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: none;
+  }
+}
+
+.o-chat-img {
+  display: block;
+  border-radius: var(--border-radius-s);
+  overflow: hidden;
+  max-height: 512px;
+  max-width: 1024px;
+  object-fit: contain;
+  object-position: center;
+}

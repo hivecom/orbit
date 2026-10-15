@@ -2,8 +2,9 @@
 import { RouterView, useRoute } from "vue-router"
 import "./style/index.css"
 import Sidebar from "./components/navigation/Sidebar.vue"
-import { Flex, Spinner, Toasts } from "@dolanske/vui"
+import { Flex, Spinner } from "@dolanske/vui"
 import { useAppStateStore } from "./stores/app-state.ts"
+import Globals from "./components/globals/Globals.vue"
 
 // The main App entrypoint for orbit. It replaces the usual `App.vue` with an
 // exportable component consumed by target applications (desktop/mobile/web).
@@ -35,7 +36,7 @@ const route = useRoute()
     <Spinner />
   </Flex>
 
-  <Toasts placement="top-end" />
+  <Globals />
 </template>
 
 <style>

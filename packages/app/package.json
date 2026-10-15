@@ -16,6 +16,7 @@
     "@vueuse/core": "catalog:",
     "core": "workspace:*",
     "dayjs": "catalog:",
+    "dompurify": "catalog:",
     "pinia": "catalog:",
     "platform": "workspace:*",
     "vue": "^3.5.34",

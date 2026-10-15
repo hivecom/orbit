@@ -10,10 +10,11 @@ import { useIRCJoinChannel } from "../../composables/useIRCJoinChannel.ts"
 import { useDateFormatter } from "../../lib/date.ts"
 import { useConfigStore } from "../../stores/config.ts"
 import { getServerInitials } from "../../lib/format.ts"
-import { IconArrowDownLinear, IconArrowToDownRightLinear, IconReply2Linear, IconUsersGroupRoundedLinear } from "@iconify-prerendered/vue-solar"
+import { IconArrowDownLinear, IconReply2Linear, IconUsersGroupRoundedLinear } from "@iconify-prerendered/vue-solar"
 import { getUserColorStyle } from "../../lib/color.ts"
 import ChatUserList from "../shared/user/ChatUserList.vue"
 import { useUserStore } from "../../stores/user.ts"
+import ChatParsedMessage from "../shared/chat/ChatParsedMessage.vue"
 
 const props = defineProps<WindowAndLocation<WindowChat>>()
 const irc = useIrcStore()
@@ -246,6 +247,8 @@ const showUserList = ref(false)
 
         <div class="o-table-scroll-container" ref="chatScrollContainer">
           <table class="o-msg-table">
+            <!-- TODO: expand memo when reactions come in - anything that can dynamically update a message should be here -->
+            <!-- v-memo="[message.text?.edited]" -->
             <template v-for="message in messages" :key="message.metadata.msgid">
               <!-- Date splitter -->
               <tr v-if="dateIds.has(message.metadata.msgid)" class="msg-date-splitter">
@@ -262,9 +265,10 @@ const showUserList = ref(false)
               <!-- Reply row -->
               <tr class="msg-reply" v-if="message.text?.reply">
                 <td></td>
-                <td colspan="3">
+                <td></td>
+                <td :style="getUserColorStyle(message.text.reply.username!)">
                   <IconReply2Linear />
-                  <span :style="getUserColorStyle(message.metadata.user)" class="user-color">{{ message.text.reply.username }}</span>
+                  <span>{{ message.text.reply.username }}:</span>
                   <p>{{ message.text.reply.text }}</p>
                 </td>
               </tr>
@@ -273,7 +277,7 @@ const showUserList = ref(false)
                 <td class="msg-timestamp" v-if="config.options.appearance_chat_timestamps_enabled">{{ format.chatTimestamp(message.metadata.server_time) }}</td>
                 <td class="msg-username user-color" :style="getUserColorStyle(message.metadata.user)">{{ message.metadata.user }}</td>
                 <td class="msg-content" :class="{ status: message.metadata.message_type !== 'Privmsg' }">
-                  <template v-if="message.metadata.message_type === 'Privmsg'">{{ message.text?.content }} </template>
+                  <ChatParsedMessage v-if="message.metadata.message_type === 'Privmsg'" :content="message.text!.content" />
                   <template v-else-if="message.metadata.message_type === 'Join'"> joined </template>
                   <template v-else-if="message.metadata.message_type === 'Part'"> left </template>
                   <template v-else> quit </template>
@@ -449,18 +453,19 @@ const showUserList = ref(false)
               p {
                 display: inline-block;
                 vertical-align: middle;
-                font-size: var(--font-size-s);
-                opacity: 0.5;
+                font-size: var(--font-size-xs);
+                opacity: 0.7;
               }
 
               span {
                 margin-inline: var(--space-xxs);
+                color: var(--user-color);
               }
 
               svg {
+                color: var(--user-color);
                 display: inline-block;
                 vertical-align: middle;
-                color: var(--color-text);
                 transform: scale(-1);
               }
             }
